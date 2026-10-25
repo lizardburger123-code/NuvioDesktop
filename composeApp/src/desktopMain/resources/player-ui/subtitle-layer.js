@@ -75,6 +75,11 @@
     // "(مارلو) والآن" is already right.
     if (edge === pair[0] && inner[0] === pair[1]) return line;
     const at = rest.indexOf(inner[0]);
+    // Name first: "(اليس نيكولز( تعرضت للخنق" -> the inner bracket is glued to the word before it,
+    // so it closes the name: "(اليس نيكولز) تعرضت للخنق".
+    const gluedBefore = at > 0 && !/\s/.test(rest[at - 1]);
+    const gluedAfter = at < rest.length - 1 && !/\s/.test(rest[at + 1]);
+    if (gluedBefore && !gluedAfter) return `${pair[0]}${rest.slice(0, at)}${pair[1]}${rest.slice(at + 1)}${punct}`;
     const body = (rest.slice(0, at) + pair[0] + rest.slice(at + 1).replace(/^\s+/, "")).trimEnd();
     const tail = body.match(/[.…!?؟،,:;]*$/)[0];
     return `${body.slice(0, body.length - tail.length).trimEnd()}${pair[1]}${tail}${punct}`;
