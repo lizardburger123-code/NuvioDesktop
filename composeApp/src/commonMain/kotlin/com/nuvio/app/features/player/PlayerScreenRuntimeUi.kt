@@ -71,7 +71,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
     val episodeTitle = activeEpisodeTitle
     val isEpisode = seasonNumber != null && episodeNumber != null
 
-    LaunchedEffect(runtime.title, runtime.poster, seasonNumber, episodeNumber, episodeTitle, playbackSnapshot.isPlaying, activeStreamTitle) {
+    LaunchedEffect(runtime.title, runtime.poster, seasonNumber, episodeNumber, episodeTitle, playbackSnapshot.isPlaying, activeStreamTitle, activeSourceFilename) {
         val episodeLabel = if (isEpisode) {
             val base = "S${seasonNumber}E${episodeNumber}"
             if (!episodeTitle.isNullOrBlank()) "$base - $episodeTitle" else base
@@ -92,6 +92,9 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                 episodeNumber = episodeNumber,
                 releaseInfo = metaUiState.meta?.takeIf { it.id == parentMetaId }?.releaseInfo,
                 streamTitle = activeStreamTitle,
+                parentMetaId = parentMetaId,
+                videoId = playbackSession.videoId,
+                sourceFilename = activeSourceFilename,
             ),
         )
     }

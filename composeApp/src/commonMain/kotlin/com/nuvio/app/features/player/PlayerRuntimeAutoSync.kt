@@ -87,6 +87,9 @@ internal fun PlayerScreenRuntime.attachSelectedAddonSubtitleWithAutoSync(url: St
 internal fun PlayerScreenRuntime.maybeAutoSyncRestoredSubtitleAtStart(url: String): Boolean {
     val controller = playerController ?: return false
     if (controller !is AutoSyncPlayerController) return false
+    // A delay the viewer set by hand for this video is kept; re-syncing would reset it to zero.
+    val savedDelayMs = PlayerTrackPreferenceStorage.loadSubtitleDelayMs(playbackSession.videoId)
+    if (savedDelayMs != null && savedDelayMs != 0) return false
     if (!AutoSyncPreferencesRepository.claimStartupRun(hashCode(), activePlaybackIdentity)) {
         return false
     }

@@ -32,5 +32,10 @@ internal sealed interface PresenceSnapshot {
         val episodeNumber: Int? = null,
         val releaseInfo: String? = null,
         val streamTitle: String? = null,
+        /** The title's own id (contentId can be an IMDb id used for intro lookups). */
+        val parentMetaId: String? = null,
+        val videoId: String? = null,
+        /** File name of the playing source, when the addon gave one. */
+        val sourceFilename: String? = null,
     ) : PresenceSnapshot
 }

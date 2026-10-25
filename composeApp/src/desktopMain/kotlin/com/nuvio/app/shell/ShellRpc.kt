@@ -170,6 +170,17 @@ internal class ShellRpc(private val host: ShellHost) {
             SearchHistoryRepository.ensureLoaded()
             ShellJson.strings(SearchHistoryRepository.uiState.value.take(8))
         }
+        "search.history.remove" -> {
+            SearchHistoryRepository.ensureLoaded()
+            params.string("query")?.let(SearchHistoryRepository::removeSearch)
+            ShellJson.strings(SearchHistoryRepository.uiState.value.take(8))
+        }
+        "search.history.clear" -> {
+            SearchHistoryRepository.ensureLoaded()
+            SearchHistoryRepository.uiState.value.toList().forEach(SearchHistoryRepository::removeSearch)
+            ShellJson.strings(emptyList())
+        }
+        "subtitles.match" -> matchSubtitles(params)
         "search.query" -> search(params)
         "details.load" -> loadDetails(params)
         "streams.load" -> loadStreams(params)
@@ -195,6 +206,14 @@ internal class ShellRpc(private val host: ShellHost) {
         "library.subscribe" -> subscribeLibrary()
         "continue.remove" -> {
             val id = params.string("id") ?: error("Missing title.")
+            // Cleared from Continue watching: the next play starts fresh from the source list.
+            WatchProgressRepository.uiState.value.entries.filter { it.parentMetaId == id }.forEach { entry ->
+                setOf(entry.contentType, entry.parentMetaType).forEach { type ->
+                    StreamLinkCacheRepository.remove(
+                        StreamLinkCacheRepository.contentKey(type, entry.videoId, entry.parentMetaId, entry.seasonNumber, entry.episodeNumber),
+                    )
+                }
+            }
             WatchProgressRepository.removeProgress(contentId = id)
             JsonPrimitive(true)
         }
@@ -242,7 +261,25 @@ internal class ShellRpc(private val host: ShellHost) {
 
     // ---- App -------------------------------------------------------------------------------
 
+    /**
+     * Continue watching restarts the same source: turn on link reuse (with a month-long window,
+     * debrid playback links resolve on demand) once, unless the user already chose otherwise.
+     */
+    private fun applyResumeDefaults() {
+        val store = com.nuvio.app.core.storage.DesktopStorage.store("nuvio_shell")
+        if (store.getBoolean("resume_defaults_v1") == true) return
+        PlayerSettingsRepository.ensureLoaded()
+        if (com.nuvio.app.features.player.PlayerSettingsStorage.loadStreamReuseLastLinkEnabled() == null) {
+            PlayerSettingsRepository.setStreamReuseLastLinkEnabled(true)
+        }
+        if (PlayerSettingsRepository.uiState.value.streamReuseLastLinkCacheHours < 720) {
+            PlayerSettingsRepository.setStreamReuseLastLinkCacheHours(720)
+        }
+        store.putBoolean("resume_defaults_v1", true)
+    }
+
     private suspend fun bootstrap(): JsonElement {
+        runCatching { applyResumeDefaults() }.onFailure { log.w(it) { "resume defaults" } }
         // A (re)loaded page has an empty topic cache: restart every subscription so it gets current values.
         topicJobs.values.forEach { it.cancel() }
         topicJobs.clear()
@@ -500,10 +537,41 @@ internal class ShellRpc(private val host: ShellHost) {
         )
     }
 
-    private fun play(params: JsonObject): JsonElement {
+    private fun subtitleTarget(params: JsonObject): ShellSubtitlePicker.Target {
+        val metaId = params.string("metaId") ?: params.string("id") ?: error("Missing title.")
+        return ShellSubtitlePicker.Target(
+            parentMetaId = metaId,
+            videoId = params.string("videoId") ?: metaId,
+            season = params.int("season"),
+            episode = params.int("episode"),
+        )
+    }
+
+    /** The "which subtitles?" window: ranked against the file of the source just picked. */
+    private suspend fun matchSubtitles(params: JsonObject): JsonElement {
+        val type = params.string("type") ?: error("Missing type.")
+        val target = subtitleTarget(params)
+        val stream = params.string("streamKey")?.let { streamIndex[it] }
+        val meta = MetaDetailsRepository.peek(params.string("metaType") ?: type, target.parentMetaId)
+        val filename = stream?.behaviorHints?.filename?.takeIf { it.isNotBlank() }
+            ?: stream?.title?.lineSequence()?.firstOrNull { it.isNotBlank() }
+        return ShellSubtitlePicker.match(
+            type = type,
+            target = target,
+            title = params.string("title") ?: meta?.name.orEmpty(),
+            year = meta?.releaseInfo?.let { Regex("\\d{4}").find(it)?.value?.toIntOrNull() },
+            filename = filename,
+            query = params.string("query"),
+            languages = params["languages"].asStringList().takeIf { it.isNotEmpty() },
+        )
+    }
+
+    private suspend fun play(params: JsonObject): JsonElement {
         val actions = host.actions() ?: error("Playback isn't ready yet. Try again in a moment.")
         val key = params.string("streamKey") ?: error("Missing source.")
         val stream = streamIndex[key] ?: error("That source is no longer listed. Reload the sources and pick again.")
+        // A subtitle picked in the window is saved first; the player loads it as it starts.
+        if (params.containsKey("subtitle")) ShellSubtitlePicker.choose(params.string("subtitle"), subtitleTarget(params))
         actions.launchPlayback(request(params, stream))
         return buildJsonObject { put("ok", true) }
     }
@@ -603,6 +671,7 @@ internal class ShellRpc(private val host: ShellHost) {
             put("splitLines", prefs.splitLines)
             put("autoSync", AutoSyncPreferencesRepository.preferredSubtitleAutoSyncOnStart.value)
             put("languages", ShellJson.strings(prefs.languages))
+            put("askBeforePlay", prefs.askBeforePlay)
             put("providers", buildJsonObject {
                 put("opensubtitles", buildJsonObject {
                     put("apiKey", prefs.keys.opensubtitlesApiKey)
@@ -635,6 +704,7 @@ internal class ShellRpc(private val host: ShellHost) {
             var next = prefs
             params.string("font")?.takeIf { it.isNotBlank() && it.length < 64 }?.let { next = next.copy(font = it) }
             params.bool("splitLines")?.let { next = next.copy(splitLines = it) }
+            params.bool("askBeforePlay")?.let { next = next.copy(askBeforePlay = it) }
             (params["languages"] as? JsonArray)?.let { next = next.copy(languages = params["languages"].asStringList().take(6)) }
             (params["providers"] as? JsonObject)?.let { providers ->
                 val os = providers["opensubtitles"] as? JsonObject
@@ -667,7 +737,7 @@ internal class ShellRpc(private val host: ShellHost) {
         }
         return buildJsonArray {
             add(toggle("autoplay", "Play the first source automatically", "Skips the source list and starts the top result from your addons.", s.streamAutoPlayMode != StreamAutoPlayMode.MANUAL))
-            add(toggle("reuseLastLink", "Reuse the last source", "Continue watching restarts the same file instantly while the link is still fresh.", s.streamReuseLastLinkEnabled))
+            add(toggle("reuseLastLink", "Continue with the same source", "Continue watching starts the file you were watching right away, with its subtitles, until you clear it from the row.", s.streamReuseLastLinkEnabled))
             add(toggle("nextEpisode", "Play the next episode automatically", null, s.streamAutoPlayNextEpisodeEnabled))
             add(toggle("skipIntro", "Show skip intro", null, s.skipIntroEnabled))
             add(toggle("pauseOverlay", "Show details when paused", null, s.pauseOverlayEnabled))

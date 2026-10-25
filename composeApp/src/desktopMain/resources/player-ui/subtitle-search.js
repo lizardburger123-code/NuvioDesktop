@@ -103,7 +103,8 @@
       const title = element("span", "subtitle-option-title", item.release || "Unnamed release");
       title.dir = "auto";
       copy.appendChild(title);
-      const meta = [LANGUAGE_NAMES[item.language] || String(item.language || "").toUpperCase(), formatCount(item.downloads), item.hi ? "Hearing impaired" : ""]
+      const fit = Number(item.match) >= 65 ? "Matches your file" : Number(item.match) >= 35 ? "Same source as your file" : "";
+      const meta = [fit, LANGUAGE_NAMES[item.language] || String(item.language || "").toUpperCase(), formatCount(item.downloads), item.hi ? "Hearing impaired" : ""]
         .filter(Boolean)
         .join(" · ");
       copy.appendChild(element("span", "subtitle-option-metadata", loading ? "Downloading…" : meta));

@@ -81,7 +81,7 @@ const sections = [
   { key: "torbox.library", title: "TorBox library", subtitle: "AIOStreams", addonName: "AIOStreams", type: "other", items: library },
 ];
 
-const searchHistory = ["the hunt", "fem", "persona", "death", "Slow Horses"];
+let searchHistory = ["the hunt", "fem", "persona", "death", "Slow Horses"];
 
 let appearance = {
   colors: ["#1d2b64", "#6b3fa0", "#e0607e"],
@@ -102,6 +102,7 @@ let subtitles = {
   align: "right",
   splitLines: true,
   autoSync: true,
+  askBeforePlay: true,
   providers: {
     opensubtitles: { apiKey: "", username: "", password: "" },
     subdl: { apiKey: "" },
@@ -155,7 +156,14 @@ const streamRows = [
 
 export const createMockBackend = deliver => {
   const push = (topic, data, delay = 0) => window.setTimeout(() => deliver({ topic, data }), delay);
-  const reply = (id, result, delay = 30) => { if (id) window.setTimeout(() => deliver({ id, result }), delay); };
+  const reply = (id, result, delay = 30) => {
+    if (!id) return;
+    if (result && typeof result.then === "function") {
+      result.then(value => deliver({ id, result: value }), error => deliver({ id, error: error.message }));
+      return;
+    }
+    window.setTimeout(() => deliver({ id, result }), delay);
+  };
 
   let homeLoaded = false;
   const pushHome = () => {
@@ -189,6 +197,28 @@ export const createMockBackend = deliver => {
     },
     "home.refresh": () => { pushHome(); return true; },
     "search.history": () => searchHistory,
+    "search.history.remove": ({ query }) => { searchHistory = searchHistory.filter(item => item !== query); return searchHistory; },
+    "search.history.clear": () => { searchHistory = []; return searchHistory; },
+    "subtitles.match": ({ query, languages, title }) => new Promise(resolve => setTimeout(() => {
+      const filename = "Hannibal.S01E01.Aperitif.1080p.BluRay.x264-DEMAND.mkv";
+      const releases = [
+        ["Hannibal.S01E01.1080p.BluRay.x264-DEMAND", "ar", "SubDL", 92, 0],
+        ["Hannibal.S01E01.720p.BluRay.x264-DEMAND", "ar", "OpenSubtitles", 70, 18400],
+        ["Hannibal.S01E01.HDTV.x264-LOL", "ar", "SubSource", 0, 9100],
+        ["Hannibal S01E01 WEB-DL NF", "ar", "SubSense", 20, 0],
+        ["Hannibal.S01E01.1080p.BluRay.x264-DEMAND", "en", "OpenSubtitles", 92, 52000],
+        ["Hannibal.S01E01.HDTV.x264-2HD", "en", "Podnapisi", 5, 3000],
+      ].filter(([release]) => !query || release.toLowerCase().includes(String(query).toLowerCase().split(" ")[0]));
+      const wanted = languages && languages.length ? languages : ["ar", "en"];
+      resolve({
+        filename, configured: 3,
+        languages: [{ code: "ar", name: "Arabic" }, { code: "en", name: "English" }],
+        results: releases.filter(r => wanted.includes(r[1])).map(([release, language, source, match, downloads], i) => ({
+          key: `k${i}`, source, addon: source === "SubSense", language, languageName: language === "ar" ? "Arabic" : "English",
+          release, downloads, match, matchLabel: match >= 65 ? "Exact release" : match >= 35 ? "Same source" : match >= 15 ? "Close" : undefined, best: i === 0,
+        })),
+      });
+    }, 700)),
     "search.query": ({ query }) => {
       const q = String(query || "").trim().toLowerCase();
       push("search", { query, loading: true, sections: [] });
@@ -222,7 +252,7 @@ export const createMockBackend = deliver => {
       }, 700);
       return true;
     },
-    "play": params => { console.info("play", params); return { ok: true }; },
+    "play": params => new Promise(resolve => setTimeout(() => { console.info("play", params); resolve({ ok: true }); }, params.subtitle && params.subtitle !== "none" ? 600 : 50)),
     "play.resume": () => ({ handled: false }),
     "app.openTrailer": () => true,
     "watchLater.toggle": ({ item }) => {

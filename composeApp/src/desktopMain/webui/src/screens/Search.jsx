@@ -6,6 +6,7 @@ import SearchHero from "../components/SearchHero.jsx";
 import { PosterCard, SkeletonPosters } from "../components/Cards.jsx";
 import { navigate } from "../lib/router.js";
 import { useScreenActive } from "../lib/screen.js";
+import { loadHistory } from "../lib/searchHistory.js";
 import "./Search.css";
 
 export default function Search({ params }) {
@@ -19,7 +20,7 @@ export default function Search({ params }) {
     window.clearTimeout(timer.current);
     const go = () => {
       setQuery(text);
-      call("search.query", { query: text, commit: !live }).catch(() => {});
+      call("search.query", { query: text, commit: !live }).then(() => { if (!live) loadHistory(); }, () => {});
       if (!live) navigate("search", { q: text }, { replace: true });
     };
     if (live) timer.current = window.setTimeout(go, 380);

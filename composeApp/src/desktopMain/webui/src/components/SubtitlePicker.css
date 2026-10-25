@@ -1,0 +1,165 @@
+/* "Pick subtitles for this file": a window over the sources sheet. */
+
+.sp-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 75;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.sp-layer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgb(4 4 8 / .5);
+  animation: scrim-in 260ms var(--ease-soft) backwards;
+}
+
+.sp {
+  width: min(720px, 100%);
+  height: min(760px, 100%);
+  border-radius: 30px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: rgb(14 14 20 / .78);
+}
+
+.sp-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 24px 24px 14px;
+}
+.sp-titles { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.sp-kicker { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-12); font-weight: 700; color: var(--accent); }
+.sp-kicker svg { width: 14px; height: 14px; }
+.sp-titles h2 { font-size: var(--fs-20); font-weight: 750; letter-spacing: -.01em; }
+.sp-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  margin-top: 4px;
+  font-size: var(--fs-12);
+  font-weight: 600;
+  color: var(--ink-2);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.sp-file svg { flex: none; width: 14px; height: 14px; color: var(--ink-3); }
+.sp-file span { overflow: hidden; text-overflow: ellipsis; }
+
+.sp-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 0 24px 14px; }
+.sp-search {
+  flex: 1 1 260px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 6px 0 16px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / .07);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .09);
+  transition: box-shadow var(--t-fast) ease, background-color var(--t-fast) ease;
+}
+.sp-search:focus-within { background: rgb(255 255 255 / .1); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .3); }
+.sp-search > svg { flex: none; width: 16px; height: 16px; color: var(--ink-3); }
+.sp-search input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: none; color: var(--ink); font: inherit; font-size: var(--fs-14); }
+.sp-search input::placeholder { color: var(--ink-3); }
+.sp-search-clear { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: var(--ink-3); }
+.sp-search-clear:hover { color: var(--ink); background: rgb(255 255 255 / .1); }
+.sp-search-clear svg { width: 14px; height: 14px; }
+.sp-count { margin-left: 6px; font-size: 11px; font-weight: 700; opacity: .6; }
+
+.sp-list { flex: 1; overflow-y: auto; padding: 2px 14px 14px; overscroll-behavior: contain; }
+.sp-status { display: flex; align-items: center; gap: 8px; padding: 6px 10px 12px; font-size: var(--fs-13); color: var(--ink-2); }
+.sp-status svg { width: 16px; height: 16px; }
+.sp-skel { display: grid; grid-template-columns: 52px 1fr; gap: 14px; padding: 10px; }
+.sp-skel .skel:first-child { height: 52px; border-radius: 14px; }
+.sp-skel .skel:last-child { height: 18px; margin-top: 8px; width: 72%; }
+
+.sp-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 14px;
+  padding: 10px;
+  border-radius: 18px;
+  text-align: left;
+  transition: background-color var(--t-fast) ease, transform var(--t-fast) var(--ease-soft);
+}
+.sp-row:hover:not(:disabled), .sp-row:focus-visible { background: rgb(255 255 255 / .08); outline: none; }
+.sp-row:focus-visible { box-shadow: inset 0 0 0 1px rgb(255 255 255 / .35); }
+.sp-row:active:not(:disabled) { transform: scale(.985); }
+.sp-row:disabled { cursor: default; }
+.sp-row[aria-busy="true"] { background: rgb(var(--accent-rgb) / .18); }
+.sp-row.is-best { background: rgb(255 255 255 / .05); }
+
+/* Match score: green for the exact release, blue for the same source, grey otherwise. */
+.sp-match {
+  height: 52px;
+  border-radius: 14px;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  padding-top: 15px;
+  gap: 1px;
+  background: rgb(255 255 255 / .06);
+  color: var(--ink-2);
+}
+.sp-match strong { font-size: var(--fs-16); font-weight: 800; font-variant-numeric: tabular-nums; }
+.sp-match small { font-size: 11px; font-weight: 700; opacity: .7; }
+.sp-match.is-exact { background: rgb(48 209 88 / .18); color: #7ef0a0; }
+.sp-match.is-close { background: rgb(10 132 255 / .2); color: #8cc4ff; }
+
+.sp-body { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.sp-release { font-size: var(--fs-14); font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: var(--fs-12); color: var(--ink-3); }
+.sp-best, .sp-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+.sp-best { background: #fff; color: #0a0a0c; }
+.sp-best svg { width: 12px; height: 12px; }
+.sp-label { background: rgb(255 255 255 / .09); color: var(--ink-2); }
+.sp-go { display: grid; place-items: center; color: var(--ink-2); }
+.sp-go svg { width: 18px; height: 18px; }
+
+.sp-empty { padding: 48px 24px; text-align: center; }
+.sp-empty h3 { font-size: var(--fs-16); font-weight: 750; }
+.sp-empty p { margin: 8px auto 0; max-width: 46ch; font-size: var(--fs-13); line-height: 1.5; color: var(--ink-2); text-wrap: pretty; }
+
+.sp-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px 18px;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .07);
+}
+.sp-hint { flex: 1; text-align: center; font-size: var(--fs-12); color: var(--ink-3); }
+.sp-hint kbd {
+  display: inline-block;
+  min-width: 22px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  font: inherit;
+  font-weight: 700;
+  color: var(--ink-2);
+  background: rgb(255 255 255 / .08);
+  box-shadow: inset 0 -1px 0 rgb(255 255 255 / .1);
+}
+.sp .btn-glass { -webkit-backdrop-filter: none; backdrop-filter: none; background: rgb(255 255 255 / .1); }
+.sp .btn-glass:hover { background: rgb(255 255 255 / .17); }
+.sp-m + .sp-m::before { content: "·"; margin-right: 8px; color: var(--ink-3); opacity: .7; }
+.sp-meta { column-gap: 8px; }

@@ -52,3 +52,35 @@
 .search-hero-compact .search-go { height: 40px; }
 
 .search-recent { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Recent searches: the chip opens the search; its small x forgets it. */
+.recent-chip { position: relative; display: inline-flex; }
+.recent-chip .recent-go { padding-right: 34px; }
+.recent-x {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  margin-top: -12px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--ink-3);
+  transition: background-color var(--t-fast) ease, color var(--t-fast) ease;
+}
+/* A 32px hit target around the 24px dot. */
+.recent-x::before { content: ""; position: absolute; inset: -4px; }
+.recent-x svg { width: 13px; height: 13px; }
+.recent-x:hover, .recent-x:focus-visible { background: rgb(255 255 255 / .16); color: var(--ink); }
+.recent-x:active { transform: scale(.92); }
+.recent-clear {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: var(--fs-13);
+  font-weight: 600;
+  color: var(--ink-3);
+  transition: color var(--t-fast) ease, background-color var(--t-fast) ease;
+}
+.recent-clear:hover, .recent-clear:focus-visible { color: var(--ink); background: rgb(255 255 255 / .07); }

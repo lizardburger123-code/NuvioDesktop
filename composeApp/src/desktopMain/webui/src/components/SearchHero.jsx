@@ -1,19 +1,37 @@
 import { useEffect, useRef, useState } from "react";
-import { LuArrowRight, LuHistory, LuSearch } from "react-icons/lu";
+import { LuArrowRight, LuHistory, LuSearch, LuX } from "react-icons/lu";
 import GlassSurface from "../reactbits/GlassSurface/GlassSurface.jsx";
-import { call } from "../bridge.js";
 import { navigate } from "../lib/router.js";
+import { EASE, reduceMotion } from "../lib/motion.js";
+import { clearHistory, removeHistory, useSearchHistory } from "../lib/searchHistory.js";
 import "./SearchHero.css";
 
 /** The big frosted search field with the recent searches under it. */
 export default function SearchHero({ autoFocus = false, initial = "", onSubmit, compact = false }) {
   const [query, setQuery] = useState(initial);
-  const [history, setHistory] = useState([]);
+  const history = useSearchHistory().slice(0, 6);
   const inputRef = useRef(null);
+  const recentRef = useRef(null);
 
-  useEffect(() => {
-    call("search.history").then(list => setHistory(Array.isArray(list) ? list.slice(0, 6) : []), () => {});
-  }, []);
+  // A removed search folds away before the list closes the gap.
+  const forget = (event, item) => {
+    event.stopPropagation();
+    const chip = event.currentTarget.closest(".recent-chip");
+    if (!chip || reduceMotion()) { removeHistory(item); return; }
+    chip.animate(
+      [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "scale(.85)" }],
+      { duration: 160, easing: EASE.exit, fill: "forwards" },
+    ).onfinish = () => removeHistory(item);
+  };
+  const forgetAll = () => {
+    const chips = recentRef.current ? [...recentRef.current.querySelectorAll(".recent-chip")] : [];
+    if (!chips.length || reduceMotion()) { clearHistory(); return; }
+    const last = chips.map((chip, i) => chip.animate(
+      [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translate3d(0, 4px, 0) scale(.9)" }],
+      { duration: 180, delay: i * 25, easing: EASE.exit, fill: "forwards" },
+    )).pop();
+    last.onfinish = () => clearHistory();
+  };
   useEffect(() => { if (autoFocus) inputRef.current?.focus(); }, [autoFocus]);
   useEffect(() => { setQuery(initial); }, [initial]);
 
@@ -62,13 +80,19 @@ export default function SearchHero({ autoFocus = false, initial = "", onSubmit, 
         </form>
       </GlassSurface>
       {history.length ? (
-        <div className="search-recent" aria-label="Recent searches">
+        <div ref={recentRef} className="search-recent" aria-label="Recent searches">
           {history.map(item => (
-            <button key={item} className="chip" onClick={() => { setQuery(item); submit(item); }}>
-              <LuHistory aria-hidden="true" />
-              <span dir="auto">{item}</span>
-            </button>
+            <span key={item} className="recent-chip">
+              <button className="chip recent-go" onClick={() => { setQuery(item); submit(item); }}>
+                <LuHistory aria-hidden="true" />
+                <span dir="auto">{item}</span>
+              </button>
+              <button className="recent-x" onClick={event => forget(event, item)} aria-label={`Remove ${item} from recent searches`} title="Remove">
+                <LuX />
+              </button>
+            </span>
           ))}
+          <button className="recent-clear" onClick={forgetAll}>Clear</button>
         </div>
       ) : null}
     </div>

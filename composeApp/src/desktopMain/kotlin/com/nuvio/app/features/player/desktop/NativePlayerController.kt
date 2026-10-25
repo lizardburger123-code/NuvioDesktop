@@ -37,6 +37,7 @@ import com.nuvio.app.core.ui.AppPresenceState
 import com.nuvio.app.core.ui.PresenceSnapshot
 import com.nuvio.app.shell.ShellSubtitleStore
 import com.nuvio.app.shell.SubtitleQuery
+import com.nuvio.app.shell.ShellSubtitlePicker
 import com.nuvio.app.shell.SubtitleSearchService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -1211,7 +1212,9 @@ internal class NativePlayerController(
             year = playing?.releaseInfo?.let { Regex("\\d{4}").find(it)?.value?.toIntOrNull() },
             season = playing?.seasonNumber,
             episode = playing?.episodeNumber,
-            releaseHint = playing?.streamTitle?.takeIf { it.isNotBlank() } ?: controlsState.streamTitle,
+            // The file name says which release this is; the stream title is the addon's formatting.
+            releaseHint = playing?.sourceFilename?.takeIf { it.isNotBlank() }
+                ?: playing?.streamTitle?.takeIf { it.isNotBlank() } ?: controlsState.streamTitle,
             languages = languages,
         )
         subtitleSearchJob?.cancel()
@@ -1249,6 +1252,17 @@ internal class NativePlayerController(
             SwingUtilities.invokeLater {
                 outcome.onSuccess { path ->
                     DesktopSubtitleSearchUi.loaded(index)
+                    // Remembered like any subtitle pick, so resuming this title loads it again.
+                    (AppPresenceState.current.value as? PresenceSnapshot.Player)?.let { playing ->
+                        val parent = playing.parentMetaId ?: playing.contentId
+                        val video = playing.videoId
+                        if (!parent.isNullOrBlank() && !video.isNullOrBlank()) {
+                            ShellSubtitlePicker.remember(
+                                ShellSubtitlePicker.Target(parent, video, playing.seasonNumber, playing.episodeNumber),
+                                path.toString(), result.language, result.release, result.providerName,
+                            )
+                        }
+                    }
                     // Same path as an addon subtitle: shown at once, then auto-synced when that's on.
                     startAutoSync(path.toString(), force = false)
                     DesktopAutoSyncNotice.post("${result.providerName} subtitles loaded")
@@ -2175,6 +2189,8 @@ private fun StringBuilder.appendSubtitleSearchJson() {
         appendJsonField("downloads", item.downloads)
         append(',')
         appendJsonField("hi", item.hearingImpaired)
+        append(',')
+        appendJsonField("match", (item.match * 100).toInt())
         append('}')
     }
     append(']')

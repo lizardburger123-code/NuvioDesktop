@@ -7,6 +7,7 @@ import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
 import { useApp } from "../AppContext.jsx";
 import { episodeCode, parseStream, qualityRank } from "../lib/format.js";
+import SubtitlePicker from "../components/SubtitlePicker.jsx";
 import "./Sources.css";
 
 const QUALITIES = ["All", "4K", "1080p", "720p"];
@@ -21,6 +22,14 @@ export default function Sources({ meta, video, onClose }) {
   const [fullFrameOnly, setFullFrameOnly] = useState(() => { try { return localStorage.getItem("nuvio.fullFrame") === "1"; } catch { return false; } });
   const [showRemoved, setShowRemoved] = useState(false);
   const [starting, setStarting] = useState(null);
+  // The "which subtitles?" window for the source just picked (when that setting is on).
+  const [picker, setPicker] = useState(null);
+  const askSubtitles = useRef(true);
+  const pickerOpen = useRef(false);
+  pickerOpen.current = Boolean(picker);
+  useEffect(() => {
+    call("settings.subtitles.get").then(s => { askSubtitles.current = s?.askBeforePlay !== false; }, () => {});
+  }, []);
   const topic = useTopic("streams", { key: null, loading: true, groups: [] });
   const state = topic.key === video.videoId ? topic : { loading: true, groups: [] };
 
@@ -34,7 +43,8 @@ export default function Sources({ meta, video, onClose }) {
   useEffect(() => holdAmbient(), []);
 
   useEffect(() => {
-    const onKey = event => { if (event.key === "Escape") { event.stopPropagation(); close(); } };
+    // While the subtitle window is open, Escape belongs to it.
+    const onKey = event => { if (event.key === "Escape" && !pickerOpen.current) { event.stopPropagation(); close(); } };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -92,20 +102,25 @@ export default function Sources({ meta, video, onClose }) {
     exit.onfinish = onClose;
   };
 
-  const play = async stream => {
+  const playParams = stream => ({
+    type: meta.type, metaId: meta.id, metaType: meta.type, videoId: video.videoId,
+    season: video.season ?? null, episode: video.episode ?? null, episodeTitle: video.title || null,
+    thumbnail: video.thumbnail || null, title: meta.name, logo: meta.logo || null, poster: meta.poster || null,
+    background: meta.background || null, description: meta.description || null, streamKey: stream.key,
+  });
+
+  const start = async (stream, subtitle) => {
     setStarting(stream.key);
     try {
-      await call("play", {
-        type: meta.type, metaId: meta.id, metaType: meta.type, videoId: video.videoId,
-        season: video.season ?? null, episode: video.episode ?? null, episodeTitle: video.title || null,
-        thumbnail: video.thumbnail || null, title: meta.name, logo: meta.logo || null, poster: meta.poster || null,
-        background: meta.background || null, description: meta.description || null, streamKey: stream.key,
-      });
-    } catch (error) {
-      toast(error.message, { tone: "error" });
+      await call("play", subtitle === undefined ? playParams(stream) : { ...playParams(stream), subtitle }, { timeoutMs: 60000 });
     } finally {
       window.setTimeout(() => setStarting(null), 1500);
     }
+  };
+
+  const play = stream => {
+    if (askSubtitles.current) { setPicker(stream); return; }
+    start(stream).catch(error => toast(error.message, { tone: "error" }));
   };
 
   const best = () => {
@@ -114,6 +129,7 @@ export default function Sources({ meta, video, onClose }) {
   };
 
   return createPortal(
+    <>
     <div className={`sources-layer${closing ? " is-closing" : ""}`} data-modal-open onClick={close}>
       <aside ref={panelRef} className="sources glass-dark" onClick={event => event.stopPropagation()} aria-label="Sources">
         <header className="sources-head">
@@ -199,7 +215,15 @@ export default function Sources({ meta, video, onClose }) {
           ) : null}
         </div>
       </aside>
-    </div>,
+    </div>
+      {picker ? (
+        <SubtitlePicker
+          request={{ type: meta.type, metaId: meta.id, metaType: meta.type, videoId: video.videoId, season: video.season ?? null, episode: video.episode ?? null, title: meta.name, streamKey: picker.key }}
+          onPlay={key => start(picker, key)}
+          onClose={() => setPicker(null)}
+        />
+      ) : null}
+    </>,
     document.body,
   );
 }

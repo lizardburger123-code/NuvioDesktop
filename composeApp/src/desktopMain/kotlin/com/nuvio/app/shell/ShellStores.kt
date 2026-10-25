@@ -128,6 +128,8 @@ internal data class ShellSubtitlePrefs(
     val splitLines: Boolean = true,
     val languages: List<String> = listOf("ar", "en"),
     val keys: SubtitleProviderKeys = SubtitleProviderKeys(),
+    /** Show the "which subtitles?" window after picking a source. */
+    val askBeforePlay: Boolean = true,
 )
 
 /** Subtitle choices that the classic settings don't have: font, line splitting, search sources. */

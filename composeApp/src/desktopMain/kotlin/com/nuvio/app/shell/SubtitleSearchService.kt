@@ -50,6 +50,8 @@ internal data class SubtitleResult(
     val downloads: Long = 0,
     val hearingImpaired: Boolean = false,
     val score: Double = 0.0,
+    /** 0..1: how closely the release name fits the playing file (see [SubtitleReleaseMatch]). */
+    val match: Double = 0.0,
 )
 
 /**
@@ -67,7 +69,8 @@ internal object SubtitleSearchService {
             .followRedirects(true)
             .build()
     }
-    private val cacheDir: Path by lazy { DesktopStorage.cacheDir.resolve("subtitle-search").also { Files.createDirectories(it) } }
+    // Kept with the app data (not the cache) so a subtitle chosen for a title is still there on resume.
+    private val cacheDir: Path by lazy { DesktopStorage.rootDir.resolve("subtitles").also { Files.createDirectories(it) } }
 
     @Volatile private var openSubtitlesToken: Pair<String, String>? = null // token to base url
 
@@ -98,7 +101,11 @@ internal object SubtitleSearchService {
         }
         val all = jobs.flatten()
         val wanted = query.languages.ifEmpty { listOf("ar", "en") }
-        all.map { it.copy(score = rank(it, wanted, query.releaseHint)) }
+        val file = SubtitleReleaseMatch.parse(query.releaseHint)
+        all.map { result ->
+            val match = if (query.releaseHint.isNullOrBlank()) 0.0 else SubtitleReleaseMatch.score(file, result.release, query.season, query.episode)
+            result.copy(match = match, score = rank(result, wanted, match))
+        }
             .sortedByDescending { it.score }
             .distinctBy { "${it.provider}:${it.id}" }
             .take(80)
@@ -149,18 +156,13 @@ internal object SubtitleSearchService {
 
     // ---- Ranking -------------------------------------------------------------------------------
 
-    private fun tokens(text: String?): Set<String> =
-        text.orEmpty().lowercase(Locale.ROOT).split(Regex("[^a-z0-9]+")).filter { it.length > 1 }.toSet()
-
-    private fun rank(result: SubtitleResult, wanted: List<String>, releaseHint: String?): Double {
+    /** Language order first, then how well the release fits the file, then popularity. */
+    internal fun rank(result: SubtitleResult, wanted: List<String>, match: Double): Double {
         val languageIndex = wanted.indexOf(result.language).takeIf { it >= 0 } ?: wanted.size
         val languageScore = (wanted.size - languageIndex) * 100.0
-        val hint = tokens(releaseHint)
-        val release = tokens(result.release)
-        val overlap = if (hint.isEmpty() || release.isEmpty()) 0.0 else hint.intersect(release).size.toDouble() / hint.size
         val popularity = kotlin.math.ln(1.0 + result.downloads) / 4.0
         val hiPenalty = if (result.hearingImpaired) 1.5 else 0.0
-        return languageScore + overlap * 30.0 + popularity - hiPenalty
+        return languageScore + match * 40.0 + popularity - hiPenalty
     }
 
     // ---- Providers -----------------------------------------------------------------------------
@@ -406,7 +408,7 @@ internal object SubtitleSearchService {
             ?: error("The download didn't contain a subtitle file.")
     }
 
-    private fun normalizeLanguage(value: String?): String {
+    internal fun normalizeLanguage(value: String?): String {
         val v = value.orEmpty().trim().lowercase(Locale.ROOT)
         return when {
             v.isEmpty() -> "und"

@@ -348,9 +348,16 @@ function Subtitles() {
           </span>
           <Toggle checked={value.autoSync !== false} onChange={autoSync => update({ autoSync })} label="Sync automatically" />
         </div>
+        <div className="toggle-row">
+          <span>
+            Choose subtitles before playing
+            <small>After you pick a source, a window lists subtitles ranked by how well they fit that file. Your pick (and its delay) comes back when you continue watching.</small>
+          </span>
+          <Toggle checked={value.askBeforePlay !== false} onChange={askBeforePlay => update({ askBeforePlay })} label="Choose subtitles before playing" />
+        </div>
       </Panel>
 
-      <Panel title="Search sources" description="Manual search in the player (Subtitles › Search) looks through these sites. Each needs your own free API key; keys stay on this PC.">
+      <Panel title="Search sources" description="The subtitle window before playing and the player's Subtitles › Search look through these sites. Each needs your own free API key; keys stay on this PC.">
         <div className="providers">
           {PROVIDERS.map(provider => (
             <div key={provider.id} className="provider">
