@@ -46,6 +46,7 @@ import com.nuvio.app.features.streams.YouTubeStreamResolver
 import com.nuvio.app.features.watchprogress.WatchProgressRepository
 import com.nuvio.app.navigation.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
@@ -245,7 +246,7 @@ internal fun StreamDestination(
         val launchId = PlayerLaunchStore.put(playerLaunch)
         StreamsRepository.cancelLoading()
         navController.navigate(PlayerRoute(launchId = launchId, title = playerLaunch.title)) {
-            if (replaceStreamRoute) {
+            if (replaceStreamRoute || launch.preselectedStream != null) {
                 popUpTo<StreamRoute> { inclusive = true }
             }
         }
@@ -746,13 +747,71 @@ internal fun StreamDestination(
         StreamsRepository.cancelLoading()
         navController.navigate(
             PlayerRoute(launchId = launchId, title = playerLaunch.title)
-        )
+        ) {
+            // A source picked in the desktop shell never showed this route's list, so back from
+            // the player returns to the shell, not to an empty stream screen.
+            if (launch.preselectedStream != null) {
+                popUpTo<StreamRoute> { inclusive = true }
+            }
+        }
     }
 
     LaunchedEffect(reuseNavigated) {
         if (reuseNavigated) {
             StreamsRepository.setOverlayVisible(false)
         }
+    }
+
+    val preselectedStream = launch.preselectedStream
+    var preselectedHandled by remember(route.launchId) { mutableStateOf(false) }
+    if (preselectedStream != null) {
+        LaunchedEffect(route.launchId) {
+            if (preselectedHandled) return@LaunchedEffect
+            preselectedHandled = true
+            openSelectedStream(
+                stream = preselectedStream,
+                resolvedResumePositionMs = launch.resumePositionMs,
+                resolvedResumeProgressFraction = launch.resumeProgressFraction,
+                forceExternal = false,
+                forceInternal = false,
+            )
+            // Resolving (debrid, server, YouTube) runs async; if it ends without reaching the
+            // player (a stale link, an error toast), go back to the shell instead of leaving an
+            // empty stream screen up.
+            kotlinx.coroutines.delay(300)
+            androidx.compose.runtime.snapshotFlow { resolvingDebridStream || resolvingYouTubeStream || preparingServerStream }
+                .first { busy -> !busy }
+            kotlinx.coroutines.delay(1_200)
+            if (navController.currentRoute == route) onBack()
+        }
+        StreamLoadingScreen(
+            launch = launch,
+            state = StreamsUiState(),
+            showStatus = playerSettings.showPlayerLoadingStatus,
+            resolvingDebridStream = resolvingDebridStream,
+            resolvingYouTubeStream = resolvingYouTubeStream,
+            onBack = onBack,
+            preparingPlayback = preparingServerStream,
+        )
+        pendingP2pStreamOpen?.let { pending ->
+            P2pConsentDialog(
+                onEnableP2p = {
+                    P2pSettingsRepository.setP2pEnabled(true)
+                    pendingP2pStreamOpen = null
+                    openP2pStream(
+                        stream = pending.stream,
+                        resolvedResumePositionMs = pending.resumePositionMs,
+                        resolvedResumeProgressFraction = pending.resumeProgressFraction,
+                        replaceStreamRoute = true,
+                    )
+                },
+                onDismiss = {
+                    pendingP2pStreamOpen = null
+                    onBack()
+                },
+            )
+        }
+        return
     }
 
     val partyState by PartyRepository.state.collectAsStateWithLifecycle()

@@ -3073,3 +3073,576 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_applySubtitleStyle
         stripSdh == JNI_TRUE
     );
 }
+
+// ================================================================================================
+// App shell (Nuvio fork): the desktop interface as a WebView2 page laid over the main window.
+//
+// The page lives in a child window of the top-level Compose frame, on its own UI thread, and
+// stays alive while the player is open (it is only hidden), so returning from playback is
+// instant and keeps the page's navigation and scroll state. Messages are strings both ways:
+// the page posts JSON text, Kotlin answers with PostWebMessageAsString.
+// ================================================================================================
+namespace {
+
+constexpr wchar_t kShellMessageWindowClass[] = L"NuvioShellMessageWindow";
+constexpr wchar_t kShellContainerWindowClass[] = L"NuvioShellContainerWindow";
+constexpr UINT WM_NUVIO_SHELL_TASK = WM_APP + 0x4E51;
+
+LRESULT CALLBACK shellMessageWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
+LRESULT CALLBACK shellContainerWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
+
+void registerShellWindowClasses() {
+    static std::once_flag once;
+    std::call_once(once, []() {
+        WNDCLASSEXW messageClass = {};
+        messageClass.cbSize = sizeof(messageClass);
+        messageClass.lpfnWndProc = shellMessageWindowProc;
+        messageClass.hInstance = gModule;
+        messageClass.lpszClassName = kShellMessageWindowClass;
+        RegisterClassExW(&messageClass);
+
+        WNDCLASSEXW containerClass = {};
+        containerClass.cbSize = sizeof(containerClass);
+        containerClass.lpfnWndProc = shellContainerWindowProc;
+        containerClass.hInstance = gModule;
+        containerClass.hbrBackground = CreateSolidBrush(RGB(7, 7, 11));
+        containerClass.lpszClassName = kShellContainerWindowClass;
+        RegisterClassExW(&containerClass);
+    });
+}
+
+class WindowsAppShell : public std::enable_shared_from_this<WindowsAppShell> {
+public:
+    struct StartState {
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool complete = false;
+        std::string failure;
+    };
+
+    ~WindowsAppShell() = default;
+
+    void start(HWND host, const std::string &url, JavaVM *vm, jobject sink, jmethodID method) {
+        hostHwnd = host;
+        pageUrl = toWide(url);
+        javaVm = vm;
+        sinkRef = sink;
+        sinkMethod = method;
+        auto state = std::make_shared<StartState>();
+        auto self = shared_from_this();
+        uiThread = std::thread([self, state]() { self->runUiThread(state); });
+        std::unique_lock<std::mutex> lock(state->mutex);
+        state->cv.wait_for(lock, std::chrono::seconds(10), [&]() { return state->complete; });
+        if (!state->complete) throw std::runtime_error("App shell UI thread did not start.");
+        if (!state->failure.empty()) throw std::runtime_error(state->failure);
+    }
+
+    void setVisible(bool visible) {
+        auto self = shared_from_this();
+        postTask([self, visible]() { self->applyVisible(visible); });
+    }
+
+    void layout() {
+        auto self = shared_from_this();
+        postTask([self]() { self->applyLayout(); });
+    }
+
+    void focus() {
+        auto self = shared_from_this();
+        postTask([self]() {
+            if (self->controller && self->visible) self->controller->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
+        });
+    }
+
+    void post(std::wstring message) {
+        auto self = shared_from_this();
+        postTask([self, message = std::move(message)]() {
+            if (self->webView && self->pageLoaded) {
+                self->webView->PostWebMessageAsString(message.c_str());
+            } else {
+                self->pendingMessages.push_back(message);
+            }
+        });
+    }
+
+    void dispose() {
+        if (shuttingDown.exchange(true)) return;
+        HWND target = messageHwnd;
+        if (target) PostMessageW(target, WM_NUVIO_SHELL_TASK, 1, 0);
+        if (uiThread.joinable()) {
+            if (GetCurrentThreadId() == uiThreadId) uiThread.detach();
+            else uiThread.join();
+        }
+        releaseSink();
+    }
+
+    void processTasks(bool quit) {
+        std::deque<std::function<void()>> tasks;
+        {
+            std::lock_guard<std::mutex> lock(taskMutex);
+            tasks.swap(this->tasks);
+        }
+        if (!quit) {
+            for (auto &task : tasks) task();
+            return;
+        }
+        cleanup();
+        PostQuitMessage(0);
+    }
+
+    void onContainerResized(LONG width, LONG height) {
+        if (controller && width > 0 && height > 0) {
+            RECT bounds = {0, 0, width, height};
+            controller->put_Bounds(bounds);
+        }
+    }
+
+    void sendToKotlin(const std::wstring &message) {
+        if (!sinkRef || !sinkMethod || !javaVm) return;
+        JNIEnv *env = nullptr;
+        bool attached = false;
+        jint status = javaVm->GetEnv((void **)&env, JNI_VERSION_1_6);
+        if (status == JNI_EDETACHED) {
+            if (javaVm->AttachCurrentThreadAsDaemon((void **)&env, nullptr) != JNI_OK) return;
+            attached = true;
+        } else if (status != JNI_OK) {
+            return;
+        }
+        jstring text = env->NewString(reinterpret_cast<const jchar *>(message.data()), (jsize)message.size());
+        env->CallVoidMethod(sinkRef, sinkMethod, text);
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        if (text) env->DeleteLocalRef(text);
+        (void)attached; // a daemon-attached UI thread stays attached for its lifetime
+    }
+
+private:
+    HWND hostHwnd = nullptr;
+    HWND containerHwnd = nullptr;
+    HWND messageHwnd = nullptr;
+    DWORD uiThreadId = 0;
+    std::thread uiThread;
+    bool didOleInitialize = false;
+    bool visible = false;
+    bool pageLoaded = false;
+    std::atomic_bool shuttingDown = false;
+    std::wstring pageUrl;
+    std::wstring allowedUrl;
+    std::vector<std::wstring> pendingMessages;
+
+    ComPtr<ICoreWebView2Environment> environment;
+    ComPtr<ICoreWebView2Controller> controller;
+    ComPtr<ICoreWebView2> webView;
+
+    std::mutex taskMutex;
+    std::deque<std::function<void()>> tasks;
+
+    JavaVM *javaVm = nullptr;
+    jobject sinkRef = nullptr;
+    jmethodID sinkMethod = nullptr;
+
+    void postTask(std::function<void()> task) {
+        if (shuttingDown.load()) return;
+        {
+            std::lock_guard<std::mutex> lock(taskMutex);
+            tasks.push_back(std::move(task));
+        }
+        HWND target = messageHwnd;
+        if (target) PostMessageW(target, WM_NUVIO_SHELL_TASK, 0, 0);
+    }
+
+    void releaseSink() {
+        if (!sinkRef || !javaVm) return;
+        JNIEnv *env = nullptr;
+        bool attached = false;
+        jint status = javaVm->GetEnv((void **)&env, JNI_VERSION_1_6);
+        if (status == JNI_EDETACHED && javaVm->AttachCurrentThread((void **)&env, nullptr) == JNI_OK) attached = true;
+        if (env) env->DeleteGlobalRef(sinkRef);
+        sinkRef = nullptr;
+        if (attached) javaVm->DetachCurrentThread();
+    }
+
+    void runUiThread(std::shared_ptr<StartState> state) {
+        std::string failure;
+        try {
+            registerShellWindowClasses();
+            uiThreadId = GetCurrentThreadId();
+            HRESULT ole = OleInitialize(nullptr);
+            didOleInitialize = SUCCEEDED(ole);
+            if (FAILED(ole)) throw std::runtime_error(hresultMessage("OleInitialize", ole));
+
+            messageHwnd = CreateWindowExW(0, kShellMessageWindowClass, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, gModule, this);
+            if (!messageHwnd) throw std::runtime_error("Unable to create the app shell message window.");
+
+            RECT bounds = {};
+            GetClientRect(hostHwnd, &bounds);
+            containerHwnd = CreateWindowExW(
+                0, kShellContainerWindowClass, L"",
+                WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
+                0, 0, std::max<LONG>(1, bounds.right - bounds.left), std::max<LONG>(1, bounds.bottom - bounds.top),
+                hostHwnd, nullptr, gModule, this
+            );
+            if (!containerHwnd) throw std::runtime_error("Unable to create the app shell container window.");
+            startWebView();
+        } catch (const std::exception &error) {
+            failure = error.what();
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            state->failure = failure;
+            state->complete = true;
+        }
+        state->cv.notify_one();
+        if (!failure.empty()) {
+            cleanup();
+            return;
+        }
+
+        MSG msg = {};
+        while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+        if (javaVm) javaVm->DetachCurrentThread();
+    }
+
+    void startWebView() {
+        std::wstring userDataDir = webViewUserDataDirectory();
+        auto weakSelf = weak_from_this();
+        HRESULT result = CreateCoreWebView2EnvironmentWithOptions(
+            nullptr, userDataDir.c_str(), nullptr,
+            Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
+                [weakSelf](HRESULT envResult, ICoreWebView2Environment *createdEnvironment) -> HRESULT {
+                    auto self = weakSelf.lock();
+                    if (!self || self->shuttingDown.load()) return S_OK;
+                    if (FAILED(envResult) || !createdEnvironment) {
+                        self->sendToKotlin(L"{\"event\":\"failed\",\"reason\":\"environment\"}");
+                        return S_OK;
+                    }
+                    self->environment = createdEnvironment;
+                    createdEnvironment->CreateCoreWebView2Controller(
+                        self->containerHwnd,
+                        Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
+                            [weakSelf](HRESULT controllerResult, ICoreWebView2Controller *created) -> HRESULT {
+                                auto self = weakSelf.lock();
+                                if (!self || self->shuttingDown.load()) return S_OK;
+                                if (FAILED(controllerResult) || !created) {
+                                    self->sendToKotlin(L"{\"event\":\"failed\",\"reason\":\"controller\"}");
+                                    return S_OK;
+                                }
+                                self->onControllerCreated(created);
+                                return S_OK;
+                            }
+                        ).Get()
+                    );
+                    return S_OK;
+                }
+            ).Get()
+        );
+        if (FAILED(result)) throw std::runtime_error(hresultMessage("CreateCoreWebView2EnvironmentWithOptions", result));
+    }
+
+    void onControllerCreated(ICoreWebView2Controller *created) {
+        controller = created;
+        created->get_CoreWebView2(&webView);
+        if (!webView) {
+            sendToKotlin(L"{\"event\":\"failed\",\"reason\":\"webview\"}");
+            return;
+        }
+        ComPtr<ICoreWebView2Controller2> controller2;
+        if (SUCCEEDED(created->QueryInterface(IID_PPV_ARGS(&controller2))) && controller2) {
+            COREWEBVIEW2_COLOR ground = {255, 7, 7, 11};
+            controller2->put_DefaultBackgroundColor(ground);
+        }
+        ComPtr<ICoreWebView2Settings> settings;
+        if (SUCCEEDED(webView->get_Settings(&settings)) && settings) {
+            settings->put_IsStatusBarEnabled(FALSE);
+            settings->put_IsZoomControlEnabled(FALSE);
+            settings->put_AreDefaultContextMenusEnabled(FALSE);
+            wchar_t devtools[8] = {};
+            settings->put_AreDevToolsEnabled(GetEnvironmentVariableW(L"NUVIO_SHELL_DEVTOOLS", devtools, 8) > 0 ? TRUE : FALSE);
+            ComPtr<ICoreWebView2Settings3> settings3;
+            if (SUCCEEDED(settings.As(&settings3)) && settings3) {
+                // Keeps Ctrl+C / Ctrl+V; turns off reload, find, print and the like.
+                settings3->put_AreBrowserAcceleratorKeysEnabled(FALSE);
+            }
+        }
+
+        auto weakSelf = weak_from_this();
+        EventRegistrationToken token = {};
+        webView->add_WebMessageReceived(
+            Callback<ICoreWebView2WebMessageReceivedEventHandler>(
+                [weakSelf](ICoreWebView2 *, ICoreWebView2WebMessageReceivedEventArgs *args) -> HRESULT {
+                    auto self = weakSelf.lock();
+                    if (!self || self->shuttingDown.load() || !args) return S_OK;
+                    LPWSTR text = nullptr;
+                    if (SUCCEEDED(args->TryGetWebMessageAsString(&text)) && text) {
+                        std::wstring message(text);
+                        CoTaskMemFree(text);
+                        self->sendToKotlin(message);
+                    }
+                    return S_OK;
+                }
+            ).Get(),
+            &token
+        );
+        webView->add_NavigationStarting(
+            Callback<ICoreWebView2NavigationStartingEventHandler>(
+                [weakSelf](ICoreWebView2 *, ICoreWebView2NavigationStartingEventArgs *args) -> HRESULT {
+                    auto self = weakSelf.lock();
+                    if (!self || !args) return S_OK;
+                    LPWSTR uri = nullptr;
+                    if (SUCCEEDED(args->get_Uri(&uri)) && uri) {
+                        std::wstring target(uri);
+                        CoTaskMemFree(uri);
+                        // Only the shell page itself may load here (a dropped file would replace it).
+                        // The first navigation is ours; WebView2 reports it normalised, so remember
+                        // that form and allow reloads of it (with or without query/fragment).
+                        std::wstring base = target.substr(0, target.find_first_of(L"?#"));
+                        if (self->allowedUrl.empty()) {
+                            self->allowedUrl = base;
+                        } else if (_wcsicmp(base.c_str(), self->allowedUrl.c_str()) != 0) {
+                            args->put_Cancel(TRUE);
+                        }
+                    }
+                    return S_OK;
+                }
+            ).Get(),
+            &token
+        );
+        webView->add_NavigationCompleted(
+            Callback<ICoreWebView2NavigationCompletedEventHandler>(
+                [weakSelf](ICoreWebView2 *, ICoreWebView2NavigationCompletedEventArgs *args) -> HRESULT {
+                    auto self = weakSelf.lock();
+                    if (!self) return S_OK;
+                    BOOL ok = FALSE;
+                    if (args) args->get_IsSuccess(&ok);
+                    self->pageLoaded = ok == TRUE;
+                    if (self->pageLoaded) {
+                        for (auto &message : self->pendingMessages) self->webView->PostWebMessageAsString(message.c_str());
+                        self->pendingMessages.clear();
+                        self->sendToKotlin(L"{\"event\":\"loaded\"}");
+                    } else {
+                        self->sendToKotlin(L"{\"event\":\"failed\",\"reason\":\"navigation\"}");
+                    }
+                    return S_OK;
+                }
+            ).Get(),
+            &token
+        );
+        webView->add_NewWindowRequested(
+            Callback<ICoreWebView2NewWindowRequestedEventHandler>(
+                [](ICoreWebView2 *, ICoreWebView2NewWindowRequestedEventArgs *args) -> HRESULT {
+                    if (args) args->put_Handled(TRUE);
+                    return S_OK;
+                }
+            ).Get(),
+            &token
+        );
+        webView->add_ProcessFailed(
+            Callback<ICoreWebView2ProcessFailedEventHandler>(
+                [weakSelf](ICoreWebView2 *, ICoreWebView2ProcessFailedEventArgs *args) -> HRESULT {
+                    auto self = weakSelf.lock();
+                    if (!self || self->shuttingDown.load()) return S_OK;
+                    COREWEBVIEW2_PROCESS_FAILED_KIND kind = COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED;
+                    if (args) args->get_ProcessFailedKind(&kind);
+                    if (kind == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED ||
+                        kind == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE) {
+                        self->pageLoaded = false;
+                        if (self->webView) self->webView->Reload();
+                    } else {
+                        self->sendToKotlin(L"{\"event\":\"failed\",\"reason\":\"process\"}");
+                    }
+                    return S_OK;
+                }
+            ).Get(),
+            &token
+        );
+        controller->add_AcceleratorKeyPressed(
+            Callback<ICoreWebView2AcceleratorKeyPressedEventHandler>(
+                [weakSelf](ICoreWebView2Controller *, ICoreWebView2AcceleratorKeyPressedEventArgs *args) -> HRESULT {
+                    auto self = weakSelf.lock();
+                    if (!self || !args) return S_OK;
+                    COREWEBVIEW2_KEY_EVENT_KIND kind = COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN;
+                    UINT key = 0;
+                    args->get_KeyEventKind(&kind);
+                    args->get_VirtualKey(&key);
+                    if (key == VK_F11 && (kind == COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN || kind == COREWEBVIEW2_KEY_EVENT_KIND_SYSTEM_KEY_DOWN)) {
+                        args->put_Handled(TRUE);
+                        self->sendToKotlin(L"{\"event\":\"toggleFullscreen\"}");
+                    }
+                    return S_OK;
+                }
+            ).Get(),
+            &token
+        );
+
+        applyLayout();
+        controller->put_IsVisible(visible ? TRUE : FALSE);
+        webView->Navigate(pageUrl.c_str());
+        sendToKotlin(L"{\"event\":\"created\"}");
+    }
+
+    void applyLayout() {
+        if (!hostHwnd || !containerHwnd) return;
+        RECT bounds = {};
+        GetClientRect(hostHwnd, &bounds);
+        LONG width = std::max<LONG>(1, bounds.right - bounds.left);
+        LONG height = std::max<LONG>(1, bounds.bottom - bounds.top);
+        SetWindowPos(containerHwnd, HWND_TOP, 0, 0, width, height, SWP_NOACTIVATE | (visible ? SWP_SHOWWINDOW : 0));
+        onContainerResized(width, height);
+    }
+
+    void applyVisible(bool show) {
+        visible = show;
+        if (!containerHwnd) return;
+        if (show) {
+            applyLayout();
+            ShowWindow(containerHwnd, SW_SHOWNA);
+            if (controller) {
+                controller->put_IsVisible(TRUE);
+                controller->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
+            }
+        } else {
+            if (controller) controller->put_IsVisible(FALSE);
+            ShowWindow(containerHwnd, SW_HIDE);
+        }
+    }
+
+    void cleanup() {
+        if (controller) {
+            controller->Close();
+            controller.Reset();
+        }
+        webView.Reset();
+        environment.Reset();
+        if (containerHwnd) {
+            DestroyWindow(containerHwnd);
+            containerHwnd = nullptr;
+        }
+        if (messageHwnd) {
+            HWND hwnd = messageHwnd;
+            messageHwnd = nullptr;
+            DestroyWindow(hwnd);
+        }
+        if (didOleInitialize) {
+            OleUninitialize();
+            didOleInitialize = false;
+        }
+    }
+};
+
+LRESULT CALLBACK shellMessageWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    if (message == WM_NCCREATE) {
+        auto *create = reinterpret_cast<CREATESTRUCTW *>(lParam);
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(create->lpCreateParams));
+        return TRUE;
+    }
+    auto *shell = reinterpret_cast<WindowsAppShell *>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+    if (message == WM_NUVIO_SHELL_TASK) {
+        if (shell) shell->processTasks(wParam == 1);
+        return 0;
+    }
+    if (message == WM_NCDESTROY) {
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+        return 0;
+    }
+    return DefWindowProcW(hwnd, message, wParam, lParam);
+}
+
+LRESULT CALLBACK shellContainerWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    if (message == WM_NCCREATE) {
+        auto *create = reinterpret_cast<CREATESTRUCTW *>(lParam);
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(create->lpCreateParams));
+        return TRUE;
+    }
+    auto *shell = reinterpret_cast<WindowsAppShell *>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+    switch (message) {
+        case WM_SIZE:
+            if (shell) shell->onContainerResized(LOWORD(lParam), HIWORD(lParam));
+            return 0;
+        case WM_ERASEBKGND: {
+            RECT rect = {};
+            GetClientRect(hwnd, &rect);
+            HBRUSH brush = CreateSolidBrush(RGB(7, 7, 11));
+            FillRect((HDC)wParam, &rect, brush);
+            DeleteObject(brush);
+            return 1;
+        }
+        case WM_NCDESTROY:
+            SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+            return 0;
+        default:
+            return DefWindowProcW(hwnd, message, wParam, lParam);
+    }
+}
+
+std::shared_ptr<WindowsAppShell> shellFromHandle(jlong handle) {
+    if (handle == 0) return nullptr;
+    auto *holder = reinterpret_cast<std::shared_ptr<WindowsAppShell> *>(handle);
+    return holder ? *holder : nullptr;
+}
+
+} // namespace
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_nuvio_app_shell_NativeAppShellBridge_createShell(JNIEnv *env, jobject, jlong hostHwnd, jstring pageUrl, jobject sink) {
+    if (!sink) {
+        throwJavaError(env, "App shell needs a message sink.");
+        return 0;
+    }
+    JavaVM *vm = nullptr;
+    env->GetJavaVM(&vm);
+    jclass sinkClass = env->GetObjectClass(sink);
+    jmethodID method = env->GetMethodID(sinkClass, "onShellMessage", "(Ljava/lang/String;)V");
+    env->DeleteLocalRef(sinkClass);
+    if (!method) {
+        throwJavaError(env, "App shell sink is missing onShellMessage(String).");
+        return 0;
+    }
+    jobject sinkRef = env->NewGlobalRef(sink);
+    auto shell = std::make_shared<WindowsAppShell>();
+    try {
+        shell->start((HWND)(intptr_t)hostHwnd, jstringToUtf8(env, pageUrl), vm, sinkRef, method);
+    } catch (const std::exception &error) {
+        shell->dispose();
+        throwJavaError(env, error.what());
+        return 0;
+    }
+    return (jlong)(intptr_t) new std::shared_ptr<WindowsAppShell>(shell);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_shell_NativeAppShellBridge_setShellVisible(JNIEnv *, jobject, jlong handle, jboolean visible) {
+    if (auto shell = shellFromHandle(handle)) shell->setVisible(visible == JNI_TRUE);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_shell_NativeAppShellBridge_layoutShell(JNIEnv *, jobject, jlong handle) {
+    if (auto shell = shellFromHandle(handle)) shell->layout();
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_shell_NativeAppShellBridge_focusShell(JNIEnv *, jobject, jlong handle) {
+    if (auto shell = shellFromHandle(handle)) shell->focus();
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_shell_NativeAppShellBridge_postShellMessage(JNIEnv *env, jobject, jlong handle, jstring message) {
+    auto shell = shellFromHandle(handle);
+    if (!shell || !message) return;
+    jsize length = env->GetStringLength(message);
+    const jchar *chars = env->GetStringChars(message, nullptr);
+    if (!chars) return;
+    std::wstring text(reinterpret_cast<const wchar_t *>(chars), (size_t)length);
+    env->ReleaseStringChars(message, chars);
+    shell->post(std::move(text));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_shell_NativeAppShellBridge_disposeShell(JNIEnv *, jobject, jlong handle) {
+    if (handle == 0) return;
+    auto *holder = reinterpret_cast<std::shared_ptr<WindowsAppShell> *>(handle);
+    if (holder && *holder) (*holder)->dispose();
+    delete holder;
+}

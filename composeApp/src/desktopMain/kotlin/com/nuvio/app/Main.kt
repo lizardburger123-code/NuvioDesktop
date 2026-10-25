@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.awt.SwingWindow
 import androidx.compose.ui.configureSwingGlobalsForCompose
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -19,6 +20,8 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import androidx.compose.ui.unit.dp
 import com.nuvio.app.core.deeplink.handleAppUrl
+import com.nuvio.app.core.shell.LocalAppShellOverride
+import com.nuvio.app.shell.DesktopAppShell
 import com.nuvio.app.core.diagnostics.SentryInitializer
 import com.nuvio.app.core.ui.NuvioTheme
 import com.nuvio.app.core.ui.ProvideDesktopWindowInsets
@@ -215,8 +218,18 @@ fun main(args: Array<String>) {
             }
 
             if (smokePlayerUrl == null) {
+                // Windows: the rebuilt web interface replaces the classic tabs (classic stays as fallback).
+                val appShell = remember(window) {
+                    if (DesktopHostOs.current == DesktopHostOs.WINDOWS && System.getenv("NUVIO_CLASSIC_UI") == null) {
+                        DesktopAppShell(window)
+                    } else {
+                        null
+                    }
+                }
                 ProvideDesktopWindowInsets(isFullscreen = windowState.placement == WindowPlacement.Fullscreen) {
-                    MiddleClickAutoscroll { App() }
+                    CompositionLocalProvider(LocalAppShellOverride provides appShell) {
+                        MiddleClickAutoscroll { App() }
+                    }
                 }
             } else {
                 // The player surface reads LocalNuvioPlatformDensity, which only

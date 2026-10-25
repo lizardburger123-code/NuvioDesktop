@@ -1,0 +1,6 @@
+.search-top { padding: 36px var(--gutter) 8px; display: flex; flex-direction: column; gap: 18px; }
+.search-group { padding: 34px var(--gutter) 0; }
+.search-group > h2 { display: flex; align-items: baseline; gap: 10px; margin-bottom: 16px; }
+.search-count { font-size: var(--fs-13); color: var(--ink-3); font-weight: 650; }
+.search-grid { display: flex; flex-wrap: wrap; gap: 26px 18px; }
+.search-none { padding: 44px var(--gutter); display: flex; flex-direction: column; gap: 8px; max-width: 70ch; }

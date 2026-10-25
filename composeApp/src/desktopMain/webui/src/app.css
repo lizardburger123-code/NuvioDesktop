@@ -1,0 +1,11 @@
+.boot { position: fixed; inset: 0; background: var(--ground); }
+.boot-error {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 var(--gutter);
+}
+.screen-host { position: relative; z-index: 1; }

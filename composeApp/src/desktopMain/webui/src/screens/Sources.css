@@ -1,0 +1,116 @@
+.sources-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: flex-end;
+  background: linear-gradient(90deg, rgb(0 0 0 / 0) 30%, rgb(0 0 0 / .45));
+}
+
+.sources {
+  width: min(600px, 100vw - 48px);
+  height: calc(100vh - 24px);
+  margin: 12px;
+  border-radius: 30px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sources-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 24px 24px 12px;
+}
+.sources-titles { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sources-kicker { font-size: var(--fs-12); font-weight: 700; color: var(--accent); }
+.sources-title { font-size: var(--fs-20); font-weight: 750; }
+.sources-sub { font-size: var(--fs-13); color: var(--ink-2); font-weight: 600; }
+
+.sources-filters { display: flex; align-items: center; gap: 8px; padding: 6px 24px 14px; }
+.sources-spacer { flex: 1; }
+.sources-filters .btn-primary:disabled { opacity: .4; cursor: default; }
+
+.sources-list { flex: 1; overflow-y: auto; padding: 0 14px 20px; }
+
+.sources-group { margin-top: 10px; }
+.sources-group-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 10px; font-size: var(--fs-13); font-weight: 750; color: var(--ink-2);
+}
+.sources-group-head svg { width: 16px; height: 16px; }
+.sources-note { padding: 4px 10px 10px; font-size: var(--fs-13); color: var(--ink-3); }
+
+.source-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr) 40px;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 10px 10px 10px;
+  border-radius: 18px;
+  text-align: left;
+  transition: background-color var(--t-fast) ease, transform var(--t-fast) var(--ease-soft);
+}
+.source-row:hover:not(:disabled) { background: rgb(255 255 255 / .08); }
+.source-row:active:not(:disabled) { transform: scale(.985); }
+.source-row:disabled { cursor: default; }
+.source-row[aria-busy="true"] { background: rgb(var(--accent-rgb) / .18); }
+
+.source-q {
+  height: 54px;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  background: rgb(255 255 255 / .08);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .08);
+}
+.source-q strong { font-size: var(--fs-14); font-weight: 800; letter-spacing: -0.01em; }
+.source-q small { font-size: 10px; font-weight: 800; color: var(--ink-2); letter-spacing: .04em; }
+.source-q.q-4k { background: linear-gradient(150deg, var(--g2), var(--g3)); box-shadow: none; }
+.source-q.q-4k small { color: rgb(255 255 255 / .85); }
+
+.source-body { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.source-release {
+  font-size: var(--fs-13);
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.source-tags { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.source-tag, .source-cached, .source-size {
+  height: 21px; padding: 0 8px; border-radius: 999px; display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 700; color: var(--ink-2); background: rgb(255 255 255 / .07);
+}
+.source-cached { color: #0d1f12; background: #7ee2a8; }
+.source-cached svg { width: 11px; height: 11px; }
+.source-size { background: none; padding: 0 2px; color: var(--ink-3); }
+
+.source-go {
+  width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center;
+  background: #fff; color: #0a0a0c; opacity: 0; transform: scale(.8);
+  transition: opacity var(--t-fast) ease, transform var(--t-med) var(--ease-out);
+}
+.source-go svg { width: 16px; height: 16px; fill: currentColor; }
+.source-row:hover .source-go, .source-row:focus-visible .source-go, .source-row[aria-busy="true"] .source-go { opacity: 1; transform: scale(1); }
+.source-row[aria-busy="true"] .source-go svg { fill: none; }
+
+.source-skel { grid-template-columns: 62px 1fr; }
+.source-skel .skel:first-child { height: 54px; border-radius: 14px; }
+.source-skel .skel:last-child { height: 34px; border-radius: 8px; }
+
+.sources-empty { margin: 18px 10px; padding: 22px; border-radius: 20px; background: rgb(255 255 255 / .05); display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.sources-empty h3 { font-size: var(--fs-16); }
+.sources-empty p { font-size: var(--fs-13); color: var(--ink-2); }
+
+.spin { animation: spin 900ms linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }

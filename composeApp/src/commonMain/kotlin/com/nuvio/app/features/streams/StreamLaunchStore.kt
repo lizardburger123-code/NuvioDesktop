@@ -19,6 +19,8 @@ data class StreamLaunch(
     val resumeProgressFraction: Float? = null,
     val manualSelection: Boolean = false,
     val startFromBeginning: Boolean = false,
+    /** A source already chosen elsewhere (the desktop shell's source list): open it directly. */
+    val preselectedStream: StreamItem? = null,
 )
 
 object StreamLaunchStore {

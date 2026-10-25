@@ -1,0 +1,136 @@
+.details-hero {
+  min-height: calc(100vh - 210px);
+  padding: clamp(40px, 10vh, 120px) var(--gutter) 40px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-start;
+  gap: 14px;
+  max-width: 900px;
+}
+
+.details-logo {
+  max-width: min(520px, 80%);
+  max-height: 150px;
+  object-fit: contain;
+  object-position: left bottom;
+  filter: drop-shadow(0 6px 28px rgb(0 0 0 / .55));
+  margin-bottom: 10px;
+}
+
+.details-title {
+  font-size: var(--fs-44);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.02;
+  max-width: 16ch;
+  text-shadow: 0 4px 30px rgb(0 0 0 / .45);
+}
+
+.details-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: var(--fs-14);
+  font-weight: 650;
+}
+.details-meta > span:not(.details-imdb) {
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  background: rgb(255 255 255 / .1);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+.details-imdb {
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #f5c518;
+  color: #111;
+  font-weight: 800;
+}
+.details-imdb svg { width: 13px; height: 13px; fill: currentColor; }
+
+.details-genres { font-size: var(--fs-14); color: var(--ink-2); font-weight: 600; }
+
+.details-desc {
+  max-width: 62ch;
+  font-size: var(--fs-16);
+  line-height: 1.55;
+  color: rgb(255 255 255 / .86);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-shadow: 0 2px 18px rgb(0 0 0 / .5);
+}
+
+.details-actions { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.details-play { height: 52px; padding: 0 26px 0 22px; font-size: var(--fs-16); }
+.details-play svg.fill { fill: currentColor; width: 18px; height: 18px; }
+.details-play-sub { font-size: var(--fs-13); font-weight: 600; color: rgb(10 10 12 / .6); }
+.details-actions .btn-glass { height: 52px; }
+.details-actions .btn-icon { width: 52px; }
+.details-actions .is-on { background: var(--accent); color: var(--on-accent); }
+
+.details-episodes { margin-top: 18px; }
+.details-seasons {
+  margin: 0 var(--gutter);
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  max-width: calc(100% - var(--gutter) * 2);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.details-seasons button {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font-size: var(--fs-13);
+  font-weight: 650;
+  color: var(--ink-2);
+  white-space: nowrap;
+  transition: background-color var(--t-fast) ease, color var(--t-fast) ease;
+}
+.details-seasons button:hover { color: var(--ink); }
+.details-seasons button[aria-selected="true"] { background: #fff; color: #0a0a0c; }
+.details-episodes .row { margin-top: 22px; }
+
+.person { width: 112px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.person img, .person-mono {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1), 0 10px 26px rgb(0 0 0 / .35);
+  margin-bottom: 4px;
+}
+.person-mono { display: grid; place-items: center; font-weight: 800; font-size: var(--fs-20); background: linear-gradient(135deg, var(--g1), var(--g2)); }
+.person-name { font-size: var(--fs-13); font-weight: 650; line-height: 1.25; }
+.person-role { font-size: var(--fs-12); color: var(--ink-3); line-height: 1.25; }
+
+.details-facts {
+  margin: 48px var(--gutter) 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+  padding: 22px 24px;
+  border-radius: var(--r-l);
+  background: rgb(255 255 255 / .045);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .06);
+}
+.details-fact { display: flex; flex-direction: column; gap: 4px; }
+.details-fact span { font-size: var(--fs-12); color: var(--ink-3); font-weight: 600; }
+.details-fact strong { font-size: var(--fs-14); font-weight: 650; }
+
+.details-error { margin: 0 var(--gutter); color: #ffb4b4; }

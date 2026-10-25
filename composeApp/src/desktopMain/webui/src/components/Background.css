@@ -1,0 +1,73 @@
+.scene {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--ground);
+  overflow: hidden;
+}
+
+.scene-grain {
+  position: absolute;
+  inset: 0;
+  opacity: .9;
+}
+
+.scene.has-wall .scene-grain {
+  opacity: .55;
+}
+
+.scene-walls {
+  position: absolute;
+  inset: 0;
+  transition: transform 900ms var(--ease-out), filter 600ms ease;
+  filter: blur(var(--wall-blur));
+}
+
+.scene-wall {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 30%;
+  will-change: opacity, transform;
+}
+
+.scene-wall:not(:last-child) {
+  opacity: 1;
+}
+
+/* The user's colours tint the picture: a soft-light wash keeps the image's detail while
+   pulling it toward the palette, and a dim layer keeps text readable. */
+.scene-wash {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(115deg, rgb(var(--g1-rgb) / .78) 0%, rgb(var(--g2-rgb) / .42) 48%, rgb(var(--g3-rgb) / .34) 100%);
+  mix-blend-mode: soft-light;
+}
+
+.scene.has-wall .scene-wash::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgb(4 4 8 / var(--wall-dim));
+}
+
+.scene-fade {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgb(7 7 11 / .55) 0%, rgb(7 7 11 / .12) 45%, rgb(7 7 11 / 0) 70%),
+    linear-gradient(180deg, rgb(7 7 11 / .28) 0%, rgb(7 7 11 / 0) 18%, rgb(7 7 11 / 0) 45%, rgb(7 7 11 / .82) 78%, var(--ground) 100%);
+  transition: background-color 600ms ease;
+}
+
+.scene-scrolled .scene-walls {
+  transform: translateY(-6vh) scale(1.02);
+}
+
+.scene-scrolled .scene-fade {
+  background-color: rgb(7 7 11 / .55);
+}

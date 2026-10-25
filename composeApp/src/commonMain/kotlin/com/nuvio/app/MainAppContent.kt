@@ -981,6 +981,7 @@ internal fun MainAppContent(
             resumeProgressFraction: Float?,
             manualSelection: Boolean,
             startFromBeginning: Boolean,
+            preselectedStream: com.nuvio.app.features.streams.StreamItem? = null,
         ) {
             val targetResumePositionMs = if (startFromBeginning) 0L else (resumePositionMs ?: 0L)
             val targetResumeProgressFraction = if (startFromBeginning) null else resumeProgressFraction
@@ -1055,6 +1056,7 @@ internal fun MainAppContent(
                     resumeProgressFraction = targetResumeProgressFraction,
                     manualSelection = manualSelection,
                     startFromBeginning = startFromBeginning,
+                    preselectedStream = preselectedStream,
                 ),
             )
             navController.navigate(
@@ -1383,185 +1385,224 @@ internal fun MainAppContent(
                     sharedTransitionScope = this@SharedTransitionLayout,
                     entryProvider = entryProvider<NavKey> {
                 entry<TabsRoute> {
-                    MainTabsDestination(
-                        selectedTab = selectedTab,
-                        initialHomeReady = initialHomeReady,
-                        rootRouteActive = currentRoute is TabsRoute,
-                        useTabletFloatingTabBar = useTabletFloatingTabBar,
-                        useNativeNavigation = useNativeNavigation,
-                        useNativeTabBar = useNativeTabBar,
-                        liquidGlassNativeTabBarSupported = liquidGlassNativeTabBarSupported,
-                        liquidGlassNativeTabBarEnabled = liquidGlassNativeTabBarEnabled,
-                        desktopNavigationLayout = desktopNavigationLayout,
-                        requests = AppTabRequests(
-                            homeScrollToTopRequests = homeScrollToTopRequests,
-                            searchScrollToTopRequests = searchScrollToTopRequests,
-                            libraryScrollToTopRequests = libraryScrollToTopRequests,
-                            settingsRootActionRequests = settingsRootActionRequests,
-                        ),
-                        state = AppTabState(
-                            searchListState = searchListState,
-                            homeContentGeneration = appContentGeneration,
-                            profileId = profileState.activeProfile?.profileIndex,
-                            searchFocusRequestCount = searchFocusRequestCount,
-                            tabsRouteActiveState = rememberUpdatedState(currentRoute is TabsRoute),
-                            libraryDisintegrationRequest = libraryDisintegrationRequests.current,
-                            continueWatchingDisintegrationRequest = continueWatchingDisintegrationRequests.current,
-                            requestedSettingsPageName = requestedSettingsPageName,
-                        ),
-                        actions = { isTabletLayout ->
-                            AppTabActions(
-                                onCatalogClick = onCatalogClick,
-                                onPosterClick = navController::openPreview,
-                                onPosterLongClick = { meta ->
-                                    openPosterActions(PosterActionTarget(preview = meta))
-                                },
-                                onLibraryPosterClick = { item ->
-                                    navController.navigate(
-                                        DetailRoute(type = item.type, id = item.id, title = item.name),
-                                    )
-                                },
-                                onLibraryPosterLongClick = { item, section ->
-                                    openPosterActions(
-                                        PosterActionTarget(
-                                            preview = item.toMetaPreview(),
-                                            libraryItem = item,
-                                            libraryListKey = section.type,
-                                        ),
-                                    )
-                                },
-                                onLibrarySectionViewAllClick = onLibrarySectionViewAllClick,
-                                onCloudFilePlay = { item, file ->
-                                    coroutineScope.launch {
-                                        val resumeItem = WatchProgressRepository
-                                            .progressForVideo(
-                                                videoId = item.playbackVideoId(file),
-                                                parentMetaId = item.id,
-                                            )
-                                            ?.takeIf { it.isResumable }
-                                            ?.toContinueWatchingItem()
-                                        if (
-                                            !launchCloudLibraryFile(
-                                                item = item,
-                                                file = file,
-                                                resumePositionMs = resumeItem?.resumePositionMs,
-                                                resumeProgressFraction = resumeItem?.resumeProgressFraction,
-                                            )
-                                        ) {
-                                            NuvioToastController.show(cloudLibraryPlayFailedText)
-                                        }
-                                    }
-                                },
-                                onConnectCloudClick = {
-                                    if (useNativeNavigation && !isTabletLayout) {
-                                        activateTab(AppScreenTab.Settings)
+                    val classicTabs: @Composable () -> Unit = {
+                        MainTabsDestination(
+                            selectedTab = selectedTab,
+                            initialHomeReady = initialHomeReady,
+                            rootRouteActive = currentRoute is TabsRoute,
+                            useTabletFloatingTabBar = useTabletFloatingTabBar,
+                            useNativeNavigation = useNativeNavigation,
+                            useNativeTabBar = useNativeTabBar,
+                            liquidGlassNativeTabBarSupported = liquidGlassNativeTabBarSupported,
+                            liquidGlassNativeTabBarEnabled = liquidGlassNativeTabBarEnabled,
+                            desktopNavigationLayout = desktopNavigationLayout,
+                            requests = AppTabRequests(
+                                homeScrollToTopRequests = homeScrollToTopRequests,
+                                searchScrollToTopRequests = searchScrollToTopRequests,
+                                libraryScrollToTopRequests = libraryScrollToTopRequests,
+                                settingsRootActionRequests = settingsRootActionRequests,
+                            ),
+                            state = AppTabState(
+                                searchListState = searchListState,
+                                homeContentGeneration = appContentGeneration,
+                                profileId = profileState.activeProfile?.profileIndex,
+                                searchFocusRequestCount = searchFocusRequestCount,
+                                tabsRouteActiveState = rememberUpdatedState(currentRoute is TabsRoute),
+                                libraryDisintegrationRequest = libraryDisintegrationRequests.current,
+                                continueWatchingDisintegrationRequest = continueWatchingDisintegrationRequests.current,
+                                requestedSettingsPageName = requestedSettingsPageName,
+                            ),
+                            actions = { isTabletLayout ->
+                                AppTabActions(
+                                    onCatalogClick = onCatalogClick,
+                                    onPosterClick = navController::openPreview,
+                                    onPosterLongClick = { meta ->
+                                        openPosterActions(PosterActionTarget(preview = meta))
+                                    },
+                                    onLibraryPosterClick = { item ->
                                         navController.navigate(
-                                            SettingsPageRoute(
-                                                pageName = "Debrid",
-                                                title = debridSettingsTitle,
+                                            DetailRoute(type = item.type, id = item.id, title = item.name),
+                                        )
+                                    },
+                                    onLibraryPosterLongClick = { item, section ->
+                                        openPosterActions(
+                                            PosterActionTarget(
+                                                preview = item.toMetaPreview(),
+                                                libraryItem = item,
+                                                libraryListKey = section.type,
+                                            ),
+                                        )
+                                    },
+                                    onLibrarySectionViewAllClick = onLibrarySectionViewAllClick,
+                                    onCloudFilePlay = { item, file ->
+                                        coroutineScope.launch {
+                                            val resumeItem = WatchProgressRepository
+                                                .progressForVideo(
+                                                    videoId = item.playbackVideoId(file),
+                                                    parentMetaId = item.id,
+                                                )
+                                                ?.takeIf { it.isResumable }
+                                                ?.toContinueWatchingItem()
+                                            if (
+                                                !launchCloudLibraryFile(
+                                                    item = item,
+                                                    file = file,
+                                                    resumePositionMs = resumeItem?.resumePositionMs,
+                                                    resumeProgressFraction = resumeItem?.resumeProgressFraction,
+                                                )
+                                            ) {
+                                                NuvioToastController.show(cloudLibraryPlayFailedText)
+                                            }
+                                        }
+                                    },
+                                    onConnectCloudClick = {
+                                        if (useNativeNavigation && !isTabletLayout) {
+                                            activateTab(AppScreenTab.Settings)
+                                            navController.navigate(
+                                                SettingsPageRoute(
+                                                    pageName = "Debrid",
+                                                    title = debridSettingsTitle,
+                                                )
+                                            )
+                                        } else {
+                                            requestedSettingsPageName = "Debrid"
+                                            activateTab(AppScreenTab.Settings)
+                                        }
+                                    },
+                                    onDownloadsClick = { navController.navigate(DownloadsRoute(downloadsTitle)) },
+                                    onContinueWatchingClick = onContinueWatchingClick,
+                                    onContinueWatchingLongPress = onContinueWatchingLongPress,
+                                    onSwitchProfile = onSwitchProfile,
+                                    onSettingsPageClick = if (useNativeNavigation && !isTabletLayout) {
+                                        { pageName, title ->
+                                            navController.navigate(SettingsPageRoute(pageName, title))
+                                        }
+                                    } else {
+                                        null
+                                    },
+                                    onHomescreenSettingsClick = { navController.navigate(HomescreenSettingsRoute(homescreenSettingsTitle)) },
+                                    onMetaScreenSettingsClick = { navController.navigate(MetaScreenSettingsRoute(metaScreenSettingsTitle)) },
+                                    onContinueWatchingSettingsClick = { navController.navigate(ContinueWatchingSettingsRoute(continueWatchingSettingsTitle)) },
+                                    onAddonsSettingsClick = { navController.navigate(AddonsSettingsRoute(addonsSettingsTitle)) },
+                                    onPluginsSettingsClick = {
+                                        if (AppFeaturePolicy.pluginsEnabled) {
+                                            navController.navigate(PluginsSettingsRoute(pluginsSettingsTitle))
+                                        }
+                                    },
+                                    onAccountSettingsClick = { navController.navigate(AccountSettingsRoute(accountSettingsTitle)) },
+                                    onSupportersContributorsSettingsClick = {
+                                        if (AppFeaturePolicy.supportersContributorsPageEnabled) {
+                                            navController.navigate(SupportersContributorsSettingsRoute(supportersSettingsTitle))
+                                        }
+                                    },
+                                    onLicensesAttributionsSettingsClick = {
+                                        navController.navigate(LicensesAttributionsSettingsRoute(licensesSettingsTitle))
+                                    },
+                                    onCheckForUpdatesClick = if (AppFeaturePolicy.inAppUpdaterEnabled) {
+                                        {
+                                            appUpdaterController.checkForUpdates(
+                                                force = true,
+                                                showNoUpdateFeedback = true,
+                                            )
+                                        }
+                                    } else {
+                                        null
+                                    },
+                                    onTestUpdateBannerClick = if (
+                                        AppFeaturePolicy.inAppUpdaterEnabled && AppUpdaterPlatform.isDebugBuild
+                                    ) {
+                                        appUpdaterController::showDebugTestUpdate
+                                    } else {
+                                        null
+                                    },
+                                    onCollectionsSettingsClick = { navController.navigate(CollectionsRoute(collectionsTitle)) },
+                                    onWatchPartySettingsClick = { navController.navigate(PartyRoute(title = watchPartyTitle)) },
+                                    onFolderClick = { collectionId, folderId ->
+                                        val folderTitle = CollectionRepository.collections.value
+                                            .firstOrNull { it.id == collectionId }
+                                            ?.folders
+                                            ?.firstOrNull { it.id == folderId }
+                                            ?.title
+                                            .orEmpty()
+                                        navController.navigate(
+                                            FolderDetailRoute(
+                                                collectionId = collectionId,
+                                                folderId = folderId,
+                                                title = folderTitle.ifBlank { collectionsTitle },
                                             )
                                         )
-                                    } else {
-                                        requestedSettingsPageName = "Debrid"
-                                        activateTab(AppScreenTab.Settings)
-                                    }
-                                },
-                                onDownloadsClick = { navController.navigate(DownloadsRoute(downloadsTitle)) },
-                                onContinueWatchingClick = onContinueWatchingClick,
-                                onContinueWatchingLongPress = onContinueWatchingLongPress,
-                                onSwitchProfile = onSwitchProfile,
-                                onSettingsPageClick = if (useNativeNavigation && !isTabletLayout) {
-                                    { pageName, title ->
-                                        navController.navigate(SettingsPageRoute(pageName, title))
-                                    }
+                                    },
+                                    onRequestedSettingsPageConsumed = {
+                                        requestedSettingsPageName = null
+                                    },
+                                    onInitialHomeContentRendered = { initialHomeReady = true },
+                                )
+                            },
+                            onBack = {
+                                if (selectedTab != AppScreenTab.Home) {
+                                    activateTab(AppScreenTab.Home)
                                 } else {
-                                    null
-                                },
-                                onHomescreenSettingsClick = { navController.navigate(HomescreenSettingsRoute(homescreenSettingsTitle)) },
-                                onMetaScreenSettingsClick = { navController.navigate(MetaScreenSettingsRoute(metaScreenSettingsTitle)) },
-                                onContinueWatchingSettingsClick = { navController.navigate(ContinueWatchingSettingsRoute(continueWatchingSettingsTitle)) },
-                                onAddonsSettingsClick = { navController.navigate(AddonsSettingsRoute(addonsSettingsTitle)) },
-                                onPluginsSettingsClick = {
-                                    if (AppFeaturePolicy.pluginsEnabled) {
-                                        navController.navigate(PluginsSettingsRoute(pluginsSettingsTitle))
+                                    showExitConfirmation = !showExitConfirmation
+                                }
+                            },
+                            onTabSelected = ::handleRootTabClick,
+                            onProfileSelected = { profile ->
+                                profileSwitchLoading = true
+                                NativeTabBridge.publishTabBarVisible(false)
+                                activateTab(AppScreenTab.Home)
+                                coroutineScope.launch {
+                                    try {
+                                        ProfileRepository.switchToProfile(profile.profileIndex)
+                                        warmProfileBoundRepositories()
+                                        withContext(Dispatchers.Default) {
+                                            SyncManager.pullAllForProfile(profile.profileIndex)
+                                        }
+                                        delay(300)
+                                    } finally {
+                                        profileSwitchLoading = false
                                     }
-                                },
-                                onAccountSettingsClick = { navController.navigate(AccountSettingsRoute(accountSettingsTitle)) },
-                                onSupportersContributorsSettingsClick = {
-                                    if (AppFeaturePolicy.supportersContributorsPageEnabled) {
-                                        navController.navigate(SupportersContributorsSettingsRoute(supportersSettingsTitle))
-                                    }
-                                },
-                                onLicensesAttributionsSettingsClick = {
-                                    navController.navigate(LicensesAttributionsSettingsRoute(licensesSettingsTitle))
-                                },
-                                onCheckForUpdatesClick = if (AppFeaturePolicy.inAppUpdaterEnabled) {
-                                    {
-                                        appUpdaterController.checkForUpdates(
-                                            force = true,
-                                            showNoUpdateFeedback = true,
-                                        )
-                                    }
-                                } else {
-                                    null
-                                },
-                                onTestUpdateBannerClick = if (
-                                    AppFeaturePolicy.inAppUpdaterEnabled && AppUpdaterPlatform.isDebugBuild
-                                ) {
-                                    appUpdaterController::showDebugTestUpdate
-                                } else {
-                                    null
-                                },
-                                onCollectionsSettingsClick = { navController.navigate(CollectionsRoute(collectionsTitle)) },
-                                onWatchPartySettingsClick = { navController.navigate(PartyRoute(title = watchPartyTitle)) },
-                                onFolderClick = { collectionId, folderId ->
-                                    val folderTitle = CollectionRepository.collections.value
-                                        .firstOrNull { it.id == collectionId }
-                                        ?.folders
-                                        ?.firstOrNull { it.id == folderId }
-                                        ?.title
-                                        .orEmpty()
-                                    navController.navigate(
-                                        FolderDetailRoute(
-                                            collectionId = collectionId,
-                                            folderId = folderId,
-                                            title = folderTitle.ifBlank { collectionsTitle },
-                                        )
+                                }
+                            },
+                            onAddProfileRequested = onSwitchProfile,
+                        )
+                    }
+                    val shellOverride = com.nuvio.app.core.shell.LocalAppShellOverride.current
+                    if (shellOverride != null) {
+                        shellOverride.TabsContent(
+                            active = currentRoute is TabsRoute,
+                            actions = com.nuvio.app.core.shell.AppShellActions(
+                                launchPlayback = { request ->
+                                    launchPlaybackWithDownloadPreference(
+                                        type = request.type,
+                                        videoId = request.videoId,
+                                        parentMetaId = request.parentMetaId,
+                                        parentMetaType = request.parentMetaType,
+                                        title = request.title,
+                                        logo = request.logo,
+                                        poster = request.poster,
+                                        background = request.background,
+                                        seasonNumber = request.seasonNumber,
+                                        episodeNumber = request.episodeNumber,
+                                        episodeTitle = request.episodeTitle,
+                                        episodeThumbnail = request.episodeThumbnail,
+                                        pauseDescription = request.pauseDescription,
+                                        resumePositionMs = request.resumePositionMs,
+                                        resumeProgressFraction = request.resumeProgressFraction,
+                                        manualSelection = request.preselectedStream != null,
+                                        startFromBeginning = request.startFromBeginning,
+                                        preselectedStream = request.preselectedStream,
                                     )
                                 },
-                                onRequestedSettingsPageConsumed = {
-                                    requestedSettingsPageName = null
+                                openClassicTab = { tabName, settingsPageName ->
+                                    if (settingsPageName != null) requestedSettingsPageName = settingsPageName
+                                    activateTab(AppScreenTab.fromName(tabName))
                                 },
-                                onInitialHomeContentRendered = { initialHomeReady = true },
-                            )
-                        },
-                        onBack = {
-                            if (selectedTab != AppScreenTab.Home) {
-                                activateTab(AppScreenTab.Home)
-                            } else {
-                                showExitConfirmation = !showExitConfirmation
-                            }
-                        },
-                        onTabSelected = ::handleRootTabClick,
-                        onProfileSelected = { profile ->
-                            profileSwitchLoading = true
-                            NativeTabBridge.publishTabBarVisible(false)
-                            activateTab(AppScreenTab.Home)
-                            coroutineScope.launch {
-                                try {
-                                    ProfileRepository.switchToProfile(profile.profileIndex)
-                                    warmProfileBoundRepositories()
-                                    withContext(Dispatchers.Default) {
-                                        SyncManager.pullAllForProfile(profile.profileIndex)
-                                    }
-                                    delay(300)
-                                } finally {
-                                    profileSwitchLoading = false
-                                }
-                            }
-                        },
-                        onAddProfileRequested = onSwitchProfile,
-                    )
+                            ),
+                            classic = classicTabs,
+                        )
+                    } else {
+                        classicTabs()
+                    }
                 }
                 entry<DetailRoute> { route ->
                     DetailsDestination(

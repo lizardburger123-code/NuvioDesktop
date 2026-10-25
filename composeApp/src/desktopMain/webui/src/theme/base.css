@@ -1,0 +1,193 @@
+/* Nuvio desktop: design system. Dark ground, user gradient (--g1..--g3) and wallpaper behind
+   glass surfaces; colour tiles carry the content. One family (Plus Jakarta Sans) with IBM Plex
+   Sans Arabic for Arabic text. */
+
+@font-face { font-family: "Jakarta"; src: url("fonts/PlusJakartaSans.ttf") format("truetype"); font-weight: 200 800; font-display: block; }
+@font-face { font-family: "Plex Arabic"; src: url("fonts/IBMPlexSansArabic-Regular.ttf"); font-weight: 400; unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF; }
+@font-face { font-family: "Plex Arabic"; src: url("fonts/IBMPlexSansArabic-Medium.ttf"); font-weight: 500; unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF; }
+@font-face { font-family: "Plex Arabic"; src: url("fonts/IBMPlexSansArabic-SemiBold.ttf"); font-weight: 600; unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF; }
+@font-face { font-family: "Plex Arabic"; src: url("fonts/IBMPlexSansArabic-Bold.ttf"); font-weight: 700 800; unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF; }
+
+/* Subtitle fonts offered in Settings > Subtitles (also bundled with the player). */
+@font-face { font-family: "Cairo"; src: url("fonts/Cairo.ttf"); font-weight: 200 1000; }
+@font-face { font-family: "Tajawal"; src: url("fonts/Tajawal-Regular.ttf"); font-weight: 400; }
+@font-face { font-family: "Tajawal"; src: url("fonts/Tajawal-Bold.ttf"); font-weight: 700; }
+@font-face { font-family: "Tajawal"; src: url("fonts/Tajawal-ExtraBold.ttf"); font-weight: 800; }
+@font-face { font-family: "Almarai"; src: url("fonts/Almarai-Regular.ttf"); font-weight: 400; }
+@font-face { font-family: "Almarai"; src: url("fonts/Almarai-Bold.ttf"); font-weight: 700; }
+@font-face { font-family: "Almarai"; src: url("fonts/Almarai-ExtraBold.ttf"); font-weight: 800; }
+@font-face { font-family: "Noto Naskh Arabic"; src: url("fonts/NotoNaskhArabic.ttf"); font-weight: 400 700; }
+@font-face { font-family: "Noto Kufi Arabic"; src: url("fonts/NotoKufiArabic.ttf"); font-weight: 100 900; }
+@font-face { font-family: "Readex Pro"; src: url("fonts/ReadexPro.ttf"); font-weight: 160 700; }
+@font-face { font-family: "Amiri"; src: url("fonts/Amiri-Regular.ttf"); font-weight: 400; }
+@font-face { font-family: "Amiri"; src: url("fonts/Amiri-Bold.ttf"); font-weight: 700; }
+@font-face { font-family: "Changa"; src: url("fonts/Changa.ttf"); font-weight: 200 800; }
+@font-face { font-family: "IBM Plex Sans Arabic"; src: url("fonts/IBMPlexSansArabic-Regular.ttf"); font-weight: 400; }
+@font-face { font-family: "IBM Plex Sans Arabic"; src: url("fonts/IBMPlexSansArabic-Bold.ttf"); font-weight: 700; }
+
+:root {
+  --g1: #1d2b64; --g2: #6b3fa0; --g3: #e0607e;
+  --g1-rgb: 29 43 100; --g2-rgb: 107 63 160; --g3-rgb: 224 96 126;
+  --accent: #a98be0; --accent-rgb: 169 139 224; --on-accent: #0a0a0c;
+
+  --ground: #07070b;
+  --ink: #ffffff;
+  --ink-2: rgb(235 235 245 / .7);
+  --ink-3: rgb(235 235 245 / .52);
+  --line: rgb(255 255 255 / .1);
+
+  --glass: rgb(255 255 255 / .07);
+  --glass-hi: rgb(255 255 255 / .12);
+  --glass-press: rgb(255 255 255 / .18);
+  --glass-edge: inset 0 0 0 1px rgb(255 255 255 / .1), inset 0 1px 0 rgb(255 255 255 / .12);
+  --lift: 0 24px 60px rgb(0 0 0 / .4), 0 4px 14px rgb(0 0 0 / .25);
+  --blur: blur(28px) saturate(1.6);
+
+  --r-xl: 28px; --r-l: 22px; --r-m: 16px; --r-s: 12px; --r-xs: 8px;
+  --gutter: clamp(24px, 3.2vw, 56px);
+  --fs-12: 12px; --fs-13: 13px; --fs-14: 14px; --fs-16: 16px; --fs-20: 20px; --fs-28: 28px; --fs-44: 44px;
+
+  --ease-out: cubic-bezier(.2, .9, .25, 1);
+  --ease-soft: cubic-bezier(.2, 0, 0, 1);
+  --t-fast: 140ms; --t-med: 240ms;
+
+  --wall-dim: .35; --wall-blur: 0px;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; background: var(--ground); color: var(--ink); }
+html { scrollbar-gutter: stable; }
+body {
+  font-family: "Jakarta", "Plex Arabic", "Segoe UI", system-ui, sans-serif;
+  font-size: var(--fs-14);
+  line-height: 1.45;
+  word-spacing: .04em;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+img { display: block; max-width: 100%; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; border: 0; background: none; padding: 0; }
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+::selection { background: rgb(var(--accent-rgb) / .45); }
+h1, h2, h3, p { margin: 0; }
+h1, h2, h3 { text-wrap: balance; letter-spacing: -0.01em; }
+p { text-wrap: pretty; }
+.num { font-variant-numeric: tabular-nums; }
+[dir="rtl"], .ar { font-family: "Plex Arabic", "Jakarta", sans-serif; }
+
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-thumb { background: rgb(255 255 255 / .14); border-radius: 999px; border: 3px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background-color: rgb(255 255 255 / .26); }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ---- Glass ------------------------------------------------------------------------------- */
+.glass {
+  background: linear-gradient(180deg, rgb(255 255 255 / .1), rgb(255 255 255 / .045));
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  box-shadow: var(--glass-edge), var(--lift);
+}
+.glass-flat {
+  background: rgb(255 255 255 / .06);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  box-shadow: var(--glass-edge);
+}
+.glass-dark {
+  background: rgb(14 14 20 / .62);
+  -webkit-backdrop-filter: blur(36px) saturate(1.5);
+  backdrop-filter: blur(36px) saturate(1.5);
+  box-shadow: var(--glass-edge), var(--lift);
+}
+
+/* ---- Buttons ----------------------------------------------------------------------------- */
+.btn {
+  height: 44px;
+  padding: 0 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border-radius: 999px;
+  font-size: var(--fs-14);
+  font-weight: 650;
+  white-space: nowrap;
+  transition: transform var(--t-fast) var(--ease-soft), background-color var(--t-fast) ease, color var(--t-fast) ease, box-shadow var(--t-fast) ease;
+}
+.btn:active { transform: scale(.96); }
+.btn svg { width: 18px; height: 18px; flex: none; }
+.btn-primary { background: #fff; color: #0a0a0c; }
+.btn-primary:hover { background: rgb(255 255 255 / .88); }
+.btn-accent { background: var(--accent); color: var(--on-accent); }
+.btn-glass { background: var(--glass-hi); color: var(--ink); box-shadow: var(--glass-edge); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
+.btn-glass:hover { background: rgb(255 255 255 / .18); }
+.btn-ghost { color: var(--ink-2); padding: 0 14px; }
+.btn-ghost:hover { color: var(--ink); background: var(--glass); }
+.btn-sm { height: 34px; padding: 0 14px; font-size: var(--fs-13); }
+.btn-sm svg { width: 16px; height: 16px; }
+.btn-icon { width: 44px; padding: 0; }
+.btn-icon.btn-sm { width: 34px; }
+
+/* ---- Chips ------------------------------------------------------------------------------- */
+.chip {
+  height: 32px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: 999px;
+  font-size: var(--fs-13);
+  font-weight: 550;
+  color: var(--ink-2);
+  background: rgb(255 255 255 / .07);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .08);
+  transition: background-color var(--t-fast) ease, color var(--t-fast) ease, transform var(--t-fast) var(--ease-soft);
+  white-space: nowrap;
+}
+.chip svg { width: 14px; height: 14px; opacity: .8; }
+.chip:hover { background: rgb(255 255 255 / .13); color: var(--ink); }
+.chip:active { transform: scale(.96); }
+.chip[aria-pressed="true"], .chip.on { background: #fff; color: #0a0a0c; box-shadow: none; }
+.chip[aria-pressed="true"] svg, .chip.on svg { opacity: 1; }
+
+/* ---- Text styles ------------------------------------------------------------------------- */
+.t-title { font-size: var(--fs-20); font-weight: 700; letter-spacing: -0.01em; }
+.t-page { font-size: var(--fs-28); font-weight: 750; letter-spacing: -0.02em; }
+.t-meta { font-size: var(--fs-13); color: var(--ink-2); }
+.t-faint { color: var(--ink-3); }
+
+/* ---- Skeleton (flat, no shimmer) --------------------------------------------------------- */
+.skel { background: rgb(255 255 255 / .06); border-radius: var(--r-m); }
+
+/* ---- Segmented control ------------------------------------------------------------------- */
+.seg { display: inline-flex; gap: 4px; padding: 4px; border-radius: 999px; }
+.seg button {
+  height: 34px; padding: 0 16px; border-radius: 999px; font-size: var(--fs-13); font-weight: 600; color: var(--ink-2);
+  transition: background-color var(--t-fast) ease, color var(--t-fast) ease;
+}
+.seg button:hover { color: var(--ink); }
+.seg button[aria-pressed="true"] { background: #fff; color: #0a0a0c; }
+
+/* ---- Inputs ------------------------------------------------------------------------------ */
+.field {
+  height: 44px; width: 100%; padding: 0 16px; border-radius: var(--r-s);
+  background: rgb(0 0 0 / .28); border: 1px solid rgb(255 255 255 / .12); color: var(--ink);
+  transition: border-color var(--t-fast) ease, background-color var(--t-fast) ease;
+}
+.field::placeholder { color: var(--ink-3); }
+.field:focus { border-color: rgb(var(--accent-rgb) / .8); background: rgb(0 0 0 / .4); }
+
+.switch { position: relative; width: 46px; height: 28px; border-radius: 999px; background: rgb(255 255 255 / .16); transition: background-color var(--t-med) var(--ease-soft); flex: none; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 2px 6px rgb(0 0 0 / .3); transition: transform var(--t-med) var(--ease-out); }
+.switch[aria-checked="true"] { background: var(--accent); }
+.switch[aria-checked="true"]::after { transform: translateX(18px); }
+
+.range { width: 100%; accent-color: var(--accent); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 1ms !important; animation-duration: 1ms !important; }
+}
