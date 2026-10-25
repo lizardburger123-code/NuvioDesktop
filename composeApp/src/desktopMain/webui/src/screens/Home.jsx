@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
 import { useApp } from "../AppContext.jsx";
@@ -7,6 +7,7 @@ import Row from "../components/Row.jsx";
 import { ContinueCard, PosterCard, SkeletonPosters } from "../components/Cards.jsx";
 import { ResumeTile, SpotlightTile, UpNextTile, WatchLaterTile } from "../components/Tiles.jsx";
 import { navigate } from "../lib/router.js";
+import { EASE, reduceMotion } from "../lib/motion.js";
 import "./Home.css";
 
 export default function Home() {
@@ -18,6 +19,23 @@ export default function Home() {
 
   useEffect(() => { call("home.subscribe").catch(() => {}); }, []);
 
+  // Launch: as the intro lifts away, the dashboard rises into place in reading order
+  // (transform only, so the glass keeps blurring the real backdrop the whole time).
+  const rootRef = useRef(null);
+  useEffect(() => {
+    const onIntroOut = () => {
+      const root = rootRef.current;
+      if (!root || reduceMotion()) return;
+      const parts = [root.querySelector(".home-hero"), ...root.querySelectorAll(".home-tiles > *"), ...[...root.querySelectorAll(".row")].slice(0, 2)].filter(Boolean);
+      parts.forEach((part, i) => part.animate(
+        [{ transform: "translate3d(0, 34px, 0) scale(.985)" }, { transform: "none" }],
+        { duration: 1100, delay: 40 + i * 55, easing: EASE.out, fill: "backwards" },
+      ));
+    };
+    window.addEventListener("nuvio:intro-out", onIntroOut, { once: true });
+    return () => window.removeEventListener("nuvio:intro-out", onIntroOut);
+  }, []);
+
   const playFromSpotlight = item => navigate("details", { type: item.type, id: item.id, name: item.name, autoplay: true });
   const cardProps = item => ({
     item,
@@ -27,7 +45,7 @@ export default function Home() {
   });
 
   return (
-    <main className="screen home">
+    <main ref={rootRef} className="screen home">
       <h1 className="sr-only">Home</h1>
       <section className="home-hero">
         <SearchHero />

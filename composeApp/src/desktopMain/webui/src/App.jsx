@@ -204,6 +204,8 @@ function Intro({ ready }) {
     if (!ready || done) return undefined;
     const wait = Math.max(0, 1300 - (performance.now() - shown.current));
     const timer = window.setTimeout(() => {
+      // Hand off to the first screen: it rises into place as the wordmark lifts away.
+      window.dispatchEvent(new Event("nuvio:intro-out"));
       gsap.to(ref.current, {
         opacity: 0, scale: 1.04, filter: "blur(8px)", duration: 0.7, ease: "power2.inOut",
         onComplete: () => setDone(true),
