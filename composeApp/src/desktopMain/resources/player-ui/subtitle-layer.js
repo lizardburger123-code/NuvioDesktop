@@ -42,7 +42,22 @@
       const closes = body.split(close).length - 1;
       return closes > opens;
     });
-    return needs ? `${openers}${body}${before}${after}`.trim() : line;
+    if (needs) return `${openers}${body}${before}${after}`.trim();
+    // "محمد( كان يسرق من القمة(." : both brackets flipped for left-to-right players.
+    // Move the trailing one to the front and turn the extra openers in the body into closers.
+    let fixed = body;
+    for (const open of openers) {
+      const close = OPENERS[open];
+      let extra = (fixed.split(open).length - 1) + 1 - (fixed.split(close).length - 1);
+      while (extra >= 2) {
+        const at = fixed.lastIndexOf(open);
+        if (at < 0) break;
+        fixed = fixed.slice(0, at) + close + fixed.slice(at + 1);
+        extra -= 2;
+      }
+      if (extra !== 0) return line;
+    }
+    return `${openers}${fixed}${before}${after}`.trim();
   };
 
   const arabicLine = raw => {

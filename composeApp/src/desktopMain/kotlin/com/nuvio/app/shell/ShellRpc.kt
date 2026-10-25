@@ -238,12 +238,14 @@ internal class ShellRpc(private val host: ShellHost) {
         val active = state.activeProfile ?: state.profiles.firstOrNull { it.profileIndex == activeIndex }
         WatchLaterStore.ensureLoaded()
         val avatar = active?.let { profile ->
-            kotlinx.coroutines.withTimeoutOrNull(3_000) {
+            kotlinx.coroutines.withTimeoutOrNull(4_000) {
                 runCatching {
-                    if (com.nuvio.app.features.profiles.AvatarRepository.avatars.value.isEmpty() && profile.avatarId != null) {
-                        com.nuvio.app.features.profiles.AvatarRepository.fetchAvatars()
-                    }
-                    com.nuvio.app.features.profiles.AvatarRepository.shareableImageUrl(profile)
+                    val repo = com.nuvio.app.features.profiles.AvatarRepository
+                    if (repo.avatars.value.isEmpty() && profile.avatarId != null) repo.fetchAvatars()
+                    val item = profile.avatarId?.let { id -> repo.avatars.value.firstOrNull { it.id == id } }
+                    com.nuvio.app.features.profiles.profileAvatarImageUrl(profile, item)
+                        ?.takeIf { it.startsWith("http") || it.startsWith("data:") }
+                        ?: item?.localImageUrl?.let { local -> if (local.startsWith("/") || local.matches(Regex("^[A-Za-z]:.*"))) java.io.File(local).toURI().toString() else local }
                 }.getOrNull()
             }
         }

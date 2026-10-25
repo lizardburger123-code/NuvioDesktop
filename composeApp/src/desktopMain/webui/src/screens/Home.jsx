@@ -3,7 +3,6 @@ import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
 import { useApp } from "../AppContext.jsx";
 import SearchHero from "../components/SearchHero.jsx";
-import Dock from "../components/Dock.jsx";
 import Row from "../components/Row.jsx";
 import { ContinueCard, PosterCard, SkeletonPosters } from "../components/Cards.jsx";
 import { ResumeTile, SpotlightTile, UpNextTile, WatchLaterTile } from "../components/Tiles.jsx";
@@ -32,7 +31,6 @@ export default function Home() {
       <h1 className="sr-only">Home</h1>
       <section className="home-hero">
         <SearchHero />
-        <Dock counts={{ later: watchLater.length }} />
       </section>
 
       <section className="home-tiles tiles" aria-label="Dashboard">
