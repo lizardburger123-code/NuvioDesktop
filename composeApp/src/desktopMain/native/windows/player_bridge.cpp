@@ -11,6 +11,7 @@
 #include <jni.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -1960,10 +1961,203 @@ private:
         pushSubtitleText(text);
     }
 
+    // ---- Frosted glass ------------------------------------------------------------------------
+    //
+    // The controls page is a transparent WebView over mpv's window, so CSS backdrop-filter can't
+    // blur the video. Instead mpv blurs the video itself under the panels: a user shader on the
+    // OUTPUT hook (quarter-resolution Gaussian, composited with rounded-rect masks). The shader is
+    // generated with the panel rects as constants and removed entirely when no panel is open, so
+    // normal playback pays nothing.
+    std::string glassKey;
+    bool glassActive = false;
+
+    static std::string glassNumber(double value) {
+        char buffer[32];
+        std::snprintf(buffer, sizeof(buffer), "%.5f", value);
+        return buffer;
+    }
+
+    static std::string buildGlassShader(const std::vector<std::array<double, 5>> &rects) {
+        const size_t count = rects.size();
+        std::string rectList;
+        std::string radiusList;
+        for (size_t i = 0; i < count; ++i) {
+            if (i) {
+                rectList += ", ";
+                radiusList += ", ";
+            }
+            rectList += "vec4(" + glassNumber(rects[i][0]) + ", " + glassNumber(rects[i][1]) + ", " +
+                glassNumber(rects[i][2]) + ", " + glassNumber(rects[i][3]) + ")";
+            radiusList += glassNumber(rects[i][4]);
+        }
+        const std::string n = std::to_string(count);
+        const std::string common =
+            "#define GLASS_COUNT " + n + "\n"
+            "const vec4 GLASS_RECT[GLASS_COUNT] = vec4[GLASS_COUNT](" + rectList + ");\n"
+            "const float GLASS_RADIUS[GLASS_COUNT] = float[GLASS_COUNT](" + radiusList + ");\n"
+            "bool glass_near(vec2 p) {\n"
+            "    for (int i = 0; i < GLASS_COUNT; i++) {\n"
+            "        vec4 r = GLASS_RECT[i];\n"
+            "        if (p.x > r.x - 0.06 && p.x < r.x + r.z + 0.06 && p.y > r.y - 0.08 && p.y < r.y + r.w + 0.08) return true;\n"
+            "    }\n"
+            "    return false;\n"
+            "}\n";
+        std::string shader;
+        // Pass 1: 4x4 box downsample (four bilinear taps), only near the panels.
+        shader +=
+            "//!HOOK OUTPUT\n"
+            "//!BIND HOOKED\n"
+            "//!SAVE NUVIOGLASSA\n"
+            "//!WIDTH HOOKED.w 4 /\n"
+            "//!HEIGHT HOOKED.h 4 /\n"
+            "//!DESC Nuvio glass downsample\n" + common +
+            "vec4 hook() {\n"
+            "    vec2 p = HOOKED_pos;\n"
+            "    if (!glass_near(p)) return vec4(0.0);\n"
+            "    vec2 d = HOOKED_pt;\n"
+            "    return 0.25 * (HOOKED_tex(p + vec2(-d.x, -d.y)) + HOOKED_tex(p + vec2(d.x, -d.y)) +\n"
+            "                   HOOKED_tex(p + vec2(-d.x, d.y)) + HOOKED_tex(p + vec2(d.x, d.y)));\n"
+            "}\n\n";
+        const std::string kernel =
+            "const float GO[4] = float[4](0.0, 1.4117647, 3.2941176, 5.1764706);\n"
+            "const float GW[4] = float[4](0.1964825501, 0.2969069646, 0.0944703979, 0.0103813624);\n";
+        // Pass 2 and 3: separable 13-tap Gaussian at quarter resolution (spread 1.6x).
+        shader +=
+            "//!HOOK OUTPUT\n"
+            "//!BIND NUVIOGLASSA\n"
+            "//!SAVE NUVIOGLASSB\n"
+            "//!WIDTH HOOKED.w 4 /\n"
+            "//!HEIGHT HOOKED.h 4 /\n"
+            "//!DESC Nuvio glass blur x\n" + common + kernel +
+            "vec4 hook() {\n"
+            "    vec2 p = NUVIOGLASSA_pos;\n"
+            "    if (!glass_near(p)) return vec4(0.0);\n"
+            "    vec4 c = NUVIOGLASSA_tex(p) * GW[0];\n"
+            "    for (int i = 1; i < 4; i++) {\n"
+            "        vec2 o = vec2(GO[i] * 1.6 * NUVIOGLASSA_pt.x, 0.0);\n"
+            "        c += (NUVIOGLASSA_tex(p + o) + NUVIOGLASSA_tex(p - o)) * GW[i];\n"
+            "    }\n"
+            "    return c;\n"
+            "}\n\n";
+        shader +=
+            "//!HOOK OUTPUT\n"
+            "//!BIND NUVIOGLASSB\n"
+            "//!SAVE NUVIOGLASSC\n"
+            "//!WIDTH HOOKED.w 4 /\n"
+            "//!HEIGHT HOOKED.h 4 /\n"
+            "//!DESC Nuvio glass blur y\n" + common + kernel +
+            "vec4 hook() {\n"
+            "    vec2 p = NUVIOGLASSB_pos;\n"
+            "    if (!glass_near(p)) return vec4(0.0);\n"
+            "    vec4 c = NUVIOGLASSB_tex(p) * GW[0];\n"
+            "    for (int i = 1; i < 4; i++) {\n"
+            "        vec2 o = vec2(0.0, GO[i] * 1.6 * NUVIOGLASSB_pt.y);\n"
+            "        c += (NUVIOGLASSB_tex(p + o) + NUVIOGLASSB_tex(p - o)) * GW[i];\n"
+            "    }\n"
+            "    return c;\n"
+            "}\n\n";
+        // Pass 4: rounded-rect masks, a little vibrancy, composited over the picture.
+        shader +=
+            "//!HOOK OUTPUT\n"
+            "//!BIND HOOKED\n"
+            "//!BIND NUVIOGLASSC\n"
+            "//!DESC Nuvio glass composite\n" + common +
+            "vec4 hook() {\n"
+            "    vec4 base = HOOKED_texOff(vec2(0.0));\n"
+            "    vec2 px = HOOKED_pos * HOOKED_size;\n"
+            "    float cover = 0.0;\n"
+            "    for (int i = 0; i < GLASS_COUNT; i++) {\n"
+            "        vec4 r = GLASS_RECT[i];\n"
+            "        vec2 h = 0.5 * r.zw * HOOKED_size;\n"
+            "        vec2 c = r.xy * HOOKED_size + h;\n"
+            "        float rad = min(GLASS_RADIUS[i] * HOOKED_size.y, min(h.x, h.y));\n"
+            "        vec2 q = abs(px - c) - h + rad;\n"
+            "        float dist = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - rad;\n"
+            "        cover = max(cover, clamp(0.5 - dist, 0.0, 1.0));\n"
+            "    }\n"
+            "    if (cover <= 0.0) return base;\n"
+            "    vec3 g = NUVIOGLASSC_tex(HOOKED_pos).rgb;\n"
+            "    float l = dot(g, vec3(0.2126, 0.7152, 0.0722));\n"
+            "    g = clamp(mix(vec3(l), g, 1.45), 0.0, 1.0);\n"
+            "    return vec4(mix(base.rgb, g, cover), base.a);\n"
+            "}\n";
+        return shader;
+    }
+
+    static std::wstring glassShaderDirectory() {
+        static std::once_flag cleaned;
+        std::wstring directory = localAppDataDirectory(L"Cache\\glass");
+        std::call_once(cleaned, [&directory]() {
+            WIN32_FIND_DATAW entry;
+            HANDLE find = FindFirstFileW((directory + L"\\glass-*.glsl").c_str(), &entry);
+            if (find == INVALID_HANDLE_VALUE) return;
+            do {
+                DeleteFileW((directory + L"\\" + entry.cFileName).c_str());
+            } while (FindNextFileW(find, &entry));
+            FindClose(find);
+        });
+        return directory;
+    }
+
+    void applyGlassRects(const std::string &spec) {
+        if (spec == glassKey) return;
+        glassKey = spec;
+        std::vector<std::array<double, 5>> rects;
+        std::stringstream all(spec);
+        std::string item;
+        while (std::getline(all, item, ';') && rects.size() < 6) {
+            std::array<double, 5> rect{};
+            std::stringstream parts(item);
+            std::string number;
+            size_t index = 0;
+            while (std::getline(parts, number, ',') && index < 5) {
+                try {
+                    rect[index++] = std::stod(number);
+                } catch (...) {
+                    index = 99;
+                    break;
+                }
+            }
+            if (index != 5) continue;
+            for (auto &value : rect) value = std::max(-1.0, std::min(2.0, value));
+            if (rect[2] <= 0.002 || rect[3] <= 0.002) continue;
+            rects.push_back(rect);
+        }
+        if (rects.empty()) {
+            if (glassActive) setStringProperty("glsl-shaders", "");
+            glassActive = false;
+            return;
+        }
+        try {
+            const std::string source = buildGlassShader(rects);
+            char name[64];
+            std::snprintf(name, sizeof(name), "\\glass-%016llx.glsl", (unsigned long long)std::hash<std::string>{}(source));
+            const std::wstring path = glassShaderDirectory() + toWide(name);
+            if (GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES) {
+                HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+                if (file == INVALID_HANDLE_VALUE) return;
+                DWORD written = 0;
+                WriteFile(file, source.data(), (DWORD)source.size(), &written, nullptr);
+                CloseHandle(file);
+                if (written != source.size()) return;
+            }
+            setStringProperty("glsl-shaders", toUtf8(path));
+            glassActive = true;
+        } catch (...) {
+            // No cache folder: panels keep their plain tinted look.
+        }
+    }
+
     void handleWebMessage(const std::wstring &messageJson) {
         std::string type = extractJsonString(messageJson, L"type");
         if (type.empty()) return;
         double value = extractJsonNumber(messageJson, L"value", 0.0);
+
+        if (type == "glassRects") {
+            // Panels the page wants frosted, as "x,y,w,h,r;..." normalised to the visible picture.
+            applyGlassRects(extractJsonString(messageJson, L"rects"));
+            return;
+        }
 
         if (type == "subtitleOverlayMode") {
             // 1 = page draws text subtitles itself, so hide mpv's; 0 = mpv draws (bitmap subs).

@@ -5,12 +5,13 @@
  * controls.js. Motion lives in vision.js (GSAP).
  *
  * Note: the video is drawn by mpv underneath this transparent WebView, so backdrop-filter cannot
- * frost it. The material is a tinted surface with a light edge instead of a blur.
+ * frost it. glass-sync.js reports the panel rects and mpv blurs the video under them (a user
+ * shader), so the material here is only the tint and edge that sit on top of that blur.
  */
 
 :root {
-  --v-mat: rgba(24, 24, 28, .72);
-  --v-mat-raised: rgba(44, 44, 50, .9);
+  --v-mat: rgba(22, 22, 28, .5);
+  --v-mat-raised: rgba(40, 40, 48, .78);
   --v-mat-hover: rgba(255, 255, 255, .1);
   --v-mat-press: rgba(255, 255, 255, .16);
   --v-edge: inset 0 0 0 .5px rgba(255, 255, 255, .14), inset 0 1px 0 rgba(255, 255, 255, .08);

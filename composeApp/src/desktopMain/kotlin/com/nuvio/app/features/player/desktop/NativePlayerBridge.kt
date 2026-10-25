@@ -313,6 +313,7 @@ internal object NativePlayerBridge {
             "subtitle-layer.js" to readResourceBytes("/player-ui/subtitle-layer.js"),
             "subtitle-layer.css" to readResourceBytes("/player-ui/subtitle-layer.css"),
             "subtitle-search.js" to readResourceBytes("/player-ui/subtitle-search.js"),
+            "glass-sync.js" to readResourceBytes("/player-ui/glass-sync.js"),
             "subtitle-fonts.css" to readResourceBytes("/player-ui/subtitle-fonts.css"),
             "vision.css" to readResourceBytes("/player-ui/vision.css"),
             "vision.js" to readResourceBytes("/player-ui/vision.js"),

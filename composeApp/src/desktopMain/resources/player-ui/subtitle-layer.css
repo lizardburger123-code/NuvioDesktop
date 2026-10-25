@@ -114,6 +114,7 @@
 
 /* Font picker and one-sentence-per-line toggle in the style panel. */
 .sub-font-grid {
+  align-self: stretch;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
   gap: 6px;
@@ -158,6 +159,7 @@
 }
 
 .sub-split-row {
+  align-self: stretch;
   display: flex;
   align-items: center;
   justify-content: space-between;
