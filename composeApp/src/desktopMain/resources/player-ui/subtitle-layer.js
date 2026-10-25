@@ -23,7 +23,9 @@
   const CLICK_SLOP_PX = 6;
   const TWEEN_MS = 420;
 
-  const BIDI_CONTROLS = /[‎‏‪-‮⁦-⁩]/g;
+  // Direction marks and invisible format characters. U+061C (Arabic letter mark) and zero-width
+  // spaces are common in Arabic files; left in, they hide a bracket at the line edge from the fixes below.
+  const BIDI_CONTROLS = /[\u061C\u200B\u200E\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g;
   const RTL_SCRIPT = /[֐-ࣿ]/;
   const ARABIC = /[؀-ۿ]/;
   const ARABIC_EDGE_PUNCTUATION = /[.…!?؟،,:;]$/;
