@@ -77,8 +77,9 @@
     const at = rest.indexOf(inner[0]);
     // Name first: "(اليس نيكولز( تعرضت للخنق" -> the inner bracket is glued to the word before it,
     // so it closes the name: "(اليس نيكولز) تعرضت للخنق".
-    const gluedBefore = at > 0 && !/\s/.test(rest[at - 1]);
-    const gluedAfter = at < rest.length - 1 && !/\s/.test(rest[at + 1]);
+    // Glued means touching a letter or digit; spaces and punctuation ("،", ".") don't count.
+    const gluedBefore = at > 0 && /[\p{L}\p{N}]/u.test(rest[at - 1]);
+    const gluedAfter = at < rest.length - 1 && /[\p{L}\p{N}]/u.test(rest[at + 1]);
     if (gluedBefore && !gluedAfter) return `${pair[0]}${rest.slice(0, at)}${pair[1]}${rest.slice(at + 1)}${punct}`;
     const body = (rest.slice(0, at) + pair[0] + rest.slice(at + 1).replace(/^\s+/, "")).trimEnd();
     const tail = body.match(/[.…!?؟،,:;]*$/)[0];
