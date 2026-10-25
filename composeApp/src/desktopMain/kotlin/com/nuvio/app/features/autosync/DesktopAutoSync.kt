@@ -328,7 +328,7 @@ internal object DesktopAutoSync {
                     }
                     buffer.toByteArray()
                 }
-                decode(bytes, languageHint)
+                decode(bytes ?: return@use null, languageHint)
             }
         }.getOrNull()
     }
