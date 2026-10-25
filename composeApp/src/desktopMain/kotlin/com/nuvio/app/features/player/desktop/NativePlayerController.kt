@@ -29,6 +29,16 @@ import com.nuvio.app.features.player.SubtitleStyleState
 import com.nuvio.app.features.player.SubtitleTrack
 import com.nuvio.app.features.player.inferForcedSubtitleTrack
 import com.nuvio.app.features.player.toStorageHexString
+import com.nuvio.app.features.autosync.AutoSyncPlayerController
+import com.nuvio.app.features.autosync.AutoSyncPreferencesRepository
+import com.nuvio.app.features.autosync.AutoSyncSubtitleCandidate
+import com.nuvio.app.features.autosync.DesktopAutoSync
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
@@ -64,7 +74,7 @@ internal class NativePlayerController(
     private val createWaitTimeoutMs: Long = 5_000L,
     private val releaseTimeoutMs: Long = 10_000L,
     private val onCreateWaitCompleted: () -> Unit = {},
-) : PlayerEngineController {
+) : PlayerEngineController, AutoSyncPlayerController {
     private companion object {
         val json = Json { ignoreUnknownKeys = true }
         val log = Logger.withTag("NativePlayerControls")
@@ -574,6 +584,7 @@ internal class NativePlayerController(
                 val layout = DesktopSubtitleLayoutStorage.load()
                 DesktopSubtitleLayoutStorage.savePosition(layout.x, value.toFloat())
             }
+            "subtitleAutoSyncRun" -> runAutoSyncNow()
             "subtitleResetPosition" -> {
                 DesktopSubtitleLayoutStorage.resetPosition()
                 updateControls(controlsState)
@@ -735,6 +746,7 @@ internal class NativePlayerController(
         synchronized(lifecycleLock) {
             releaseRequested = true
         }
+        cancelAutoSync()
         host.resetCursorVisibility()
         invalidateForRelease()
         val callback = ReleaseCallback(onReleased, onReleaseFailed)
@@ -1052,7 +1064,112 @@ internal class NativePlayerController(
         NativePlayerBridge.selectAudioTrack(current, trackId)
     }
 
+    // ---- AutoSync (desktop) ------------------------------------------------
+
+    private val autoSyncScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var autoSyncJob: Job? = null
+    @Volatile
+    private var autoSyncToken = 0L
+    @Volatile
+    private var autoSyncCandidates: List<AutoSyncSubtitleCandidate> = emptyList()
+    @Volatile
+    private var lastAddonSubtitleUrl: String? = null
+    @Volatile
+    private var autoSyncAppliedListener: ((subtitleUrl: String, delayMs: Int) -> Unit)? = null
+
+    private fun cancelAutoSync() {
+        autoSyncToken++
+        autoSyncJob?.cancel()
+        autoSyncJob = null
+    }
+
+    override fun cancelForManualSubtitleDelay() = cancelAutoSync()
+
+    override fun setAutoSyncSubtitleCandidates(candidates: List<AutoSyncSubtitleCandidate>) {
+        autoSyncCandidates = candidates.distinctBy { it.url }
+    }
+
+    override fun setSubtitleUriWithAutoSync(url: String) = startAutoSync(url, force = false)
+
+    override fun setSubtitleUriWithSelectedAutoSync(url: String) = startAutoSync(url, force = false)
+
+    /** "Auto-sync now" in the player: runs on the current addon subtitle even if the setting is off. */
+    private fun runAutoSyncNow() {
+        val url = lastAddonSubtitleUrl
+        if (url == null) {
+            postAutoSyncNotice("Select an addon subtitle first")
+            return
+        }
+        postAutoSyncNotice("Auto-syncing subtitles…")
+        startAutoSync(url, force = true)
+    }
+
+    override fun setAutoSyncAppliedListener(listener: ((subtitleUrl: String, delayMs: Int) -> Unit)?) {
+        autoSyncAppliedListener = listener
+    }
+
+    /** Shows the original subtitle right away, then swaps in a retimed copy when one is found. */
+    private fun startAutoSync(url: String, force: Boolean) {
+        cancelAutoSync()
+        val token = autoSyncToken
+        setSubtitleUri(url)
+        AutoSyncPreferencesRepository.ensureLoaded()
+        if (!force && !AutoSyncPreferencesRepository.preferredSubtitleAutoSyncOnStart.value) return
+        val source = pendingSource ?: return
+        if (!source.sourceUrl.startsWith("http://", true) && !source.sourceUrl.startsWith("https://", true)) {
+            if (force) postAutoSyncNotice("Auto-sync works for streamed videos only")
+            return
+        }
+        val candidates = autoSyncCandidates
+        val language = candidates.firstOrNull { it.url == url }?.language
+        val tolerance = AutoSyncPreferencesRepository.syncToleranceMs.value
+        autoSyncJob = autoSyncScope.launch {
+            val result = try {
+                DesktopAutoSync.run(
+                    streamUrl = source.sourceUrl,
+                    streamHeaders = source.headerLines.toHeaderMap(),
+                    selectedUrl = url,
+                    selectedLanguage = language,
+                    candidates = candidates,
+                    toleranceMs = tolerance,
+                )
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (error: Throwable) {
+                log.w(error) { "autosync failed" }
+                DesktopAutoSync.Result.NoMatch
+            }
+            SwingUtilities.invokeLater {
+                if (token != autoSyncToken) return@invokeLater
+                when (result) {
+                    is DesktopAutoSync.Result.Applied -> {
+                        handle.takeIf { it != 0L }?.let { current ->
+                            NativePlayerBridge.clearExternalSubtitles(current)
+                            NativePlayerBridge.addSubtitleUrl(current, result.filePath)
+                        }
+                        setSubtitleDelayMs(0)
+                        autoSyncAppliedListener?.invoke(result.subtitleUrl, 0)
+                        postAutoSyncNotice("Subtitles synced to the video (${result.summary})")
+                    }
+                    is DesktopAutoSync.Result.AlreadySynced ->
+                        postAutoSyncNotice("Subtitles already match the video")
+                    DesktopAutoSync.Result.NoReference ->
+                        postAutoSyncNotice("Auto-sync: this video has no timing reference")
+                    DesktopAutoSync.Result.NoMatch ->
+                        postAutoSyncNotice("Auto-sync couldn't match these subtitles")
+                }
+            }
+        }
+    }
+
+    private fun postAutoSyncNotice(message: String) {
+        DesktopAutoSyncNotice.post(message)
+        updateControls(controlsState)
+    }
+
     override fun selectSubtitleTrack(index: Int) {
+        cancelAutoSync()
+        lastAddonSubtitleUrl = null
         val current = handle.takeIf { it != 0L } ?: return
         if (index < 0) {
             log.d { "selectSubtitleTrack off handle=$current" }
@@ -1070,6 +1187,7 @@ internal class NativePlayerController(
     }
 
     override fun setSubtitleUri(url: String) {
+        lastAddonSubtitleUrl = url
         log.d { "setSubtitleUri ${url.toPlaybackLogKey()} handle=$handle" }
         handle.takeIf { it != 0L }?.let { current ->
             NativePlayerBridge.clearExternalSubtitles(current)
@@ -1078,11 +1196,15 @@ internal class NativePlayerController(
     }
 
     override fun clearExternalSubtitle() {
+        cancelAutoSync()
+        lastAddonSubtitleUrl = null
         log.d { "clearExternalSubtitle handle=$handle" }
         handle.takeIf { it != 0L }?.let(NativePlayerBridge::clearExternalSubtitles)
     }
 
     override fun clearExternalSubtitleAndSelect(trackIndex: Int) {
+        cancelAutoSync()
+        lastAddonSubtitleUrl = null
         val current = handle.takeIf { it != 0L } ?: return
         val trackId = if (trackIndex < 0) {
             -1
@@ -1900,6 +2022,10 @@ private fun StringBuilder.appendSubtitleStyleJson(style: SubtitleStyleState) {
     val layout = DesktopSubtitleLayoutStorage.load()
     append(',')
     appendJsonField("align", layout.align)
+    append(',')
+    appendJsonField("autoSyncNotice", DesktopAutoSyncNotice.message)
+    append(',')
+    appendJsonField("autoSyncNoticeId", DesktopAutoSyncNotice.id)
     layout.x?.let {
         append(',')
         append("\"x\":").append(it)

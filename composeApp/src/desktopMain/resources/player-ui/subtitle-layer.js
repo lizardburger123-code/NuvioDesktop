@@ -203,8 +203,18 @@
     render();
   });
 
+  let lastNoticeId = null;
   wrap("playerControls", () => {
     const style = (typeof state !== "undefined" && state.subtitleStyle) || {};
+    const noticeId = Number(style.autoSyncNoticeId) || 0;
+    if (lastNoticeId === null) {
+      lastNoticeId = noticeId;
+    } else if (noticeId !== lastNoticeId) {
+      lastNoticeId = noticeId;
+      if (style.autoSyncNotice && typeof showPlayerToast === "function") {
+        showPlayerToast(style.autoSyncNotice, { icon: "icon-subs", durationMs: 3200 });
+      }
+    }
     if (!dragging) {
       const incoming = clampLayout({ align: style.align, x: style.x, y: style.y });
       const alignChanged = incoming.align !== layout.align;

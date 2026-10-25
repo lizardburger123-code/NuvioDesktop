@@ -2950,6 +2950,13 @@ autoSyncCapture.addEventListener("click", event => {
   event.stopPropagation();
   send("subtitleAutoSyncCapture", 0);
 });
+const autoSyncRunNow = document.getElementById("autoSyncRunNow");
+if (autoSyncRunNow) {
+  autoSyncRunNow.addEventListener("click", event => {
+    event.stopPropagation();
+    send("subtitleAutoSyncRun", 0);
+  });
+}
 customSubtitleStyleToggle.addEventListener("click", event => {
   event.stopPropagation();
   if (pendingCustomSubtitleStyling !== null) return;
@@ -3933,14 +3940,14 @@ document.addEventListener("keydown", event => {
     }
     return;
   }
-  if (event.code === "KeyG") {
+  if (event.code === "KeyG" || event.code === "KeyH") {
     event.preventDefault();
-    send("subtitleDelayDelta", -100);
-    return;
-  }
-  if (event.code === "KeyH") {
-    event.preventDefault();
-    send("subtitleDelayDelta", 100);
+    const step = (event.shiftKey ? 1000 : 100) * (event.code === "KeyG" ? -1 : 1);
+    const nextDelay = Math.max(-60000, Math.min(60000, (Number(state.subtitleDelayMs) || 0) + step));
+    state = { ...state, subtitleDelayMs: nextDelay };
+    send("subtitleDelayDelta", step);
+    showPlayerToast(`Subtitle delay ${formatDelay(nextDelay)}`, { icon: "icon-subs" });
+    if (activeModal === "subtitles") renderSubtitleStylePanel();
     return;
   }
   if (event.code === "KeyM") {
