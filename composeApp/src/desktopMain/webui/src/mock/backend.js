@@ -165,10 +165,17 @@ export const createMockBackend = deliver => {
     push("home", { loading: false, hero: [trendingSeries[4], library[3], anime[5], trendingMovies[9]], sections }, 260);
   };
 
+  const avatarCatalog = ["Nova", "Echo", "Ember", "Moss", "Tide", "Iris", "Quartz", "Dune", "Volt", "Lumen", "Sable", "Coral"].map((name, i) => {
+    const hues = [262, 200, 18, 140, 190, 300, 220, 36, 90, 50, 0, 340];
+    const h = hues[i];
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><defs><radialGradient id="g" cx="35%" cy="30%"><stop offset="0" stop-color="hsl(${h} 90% 72%)"/><stop offset="1" stop-color="hsl(${(h + 40) % 360} 70% 32%)"/></radialGradient></defs><rect width="96" height="96" fill="url(#g)"/><circle cx="48" cy="40" r="17" fill="rgba(255,255,255,.85)"/><path d="M18 92c4-20 18-30 30-30s26 10 30 30" fill="rgba(255,255,255,.85)"/></svg>`;
+    return { id: `av${i}`, name, url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, category: i < 8 ? "character" : "abstract", color: `hsl(${h} 60% 45%)`, member: i > 9 };
+  });
+
   const handlers = {
     "app.bootstrap": () => ({
       profile: { id: 1, name: "ren amamiya lol", avatar: null },
-      profiles: [{ id: 1, name: "ren amamiya lol" }],
+      profiles: [{ id: 1, name: "ren amamiya lol" }, { id: 2, name: "Sara", color: "#b0476f" }, { id: 3, name: "Kids", color: "#2f8f6b", pin: true }],
       version: "0.1.1008-fork (preview)",
       appearance,
       native: false,
@@ -243,6 +250,23 @@ export const createMockBackend = deliver => {
     "app.useClassic": () => true,
     "addons.configure": () => true,
     "profiles.switch": () => true,
+    "profile.avatars": () => avatarCatalog,
+    "profile.setAvatar": ({ avatarId, url, upload }) => {
+      const picked = avatarCatalog.find(a => a.id === avatarId);
+      return { avatar: upload || url || picked?.url || null, color: picked?.color || "#6b3fa0", local: Boolean(upload) };
+    },
+    "profile.stats": () => {
+      const minutes = [42, 0, 96, 130, 48, 0, 74];
+      const letters = ["M", "T", "W", "T", "F", "S", "S"];
+      const today = (new Date().getDay() + 6) % 7;
+      return {
+        inProgress: continueWatching.length,
+        finishedThisMonth: 9,
+        weekMinutes: minutes.reduce((a, b) => a + b, 0),
+        streak: 3,
+        days: minutes.map((m, i) => ({ label: letters[(today + 1 + i) % 7], minutes: m, today: i === 6 })),
+      };
+    },
     "continue.remove": ({ id }) => {
       const index = continueWatching.findIndex(entry => entry.id === id);
       if (index >= 0) continueWatching.splice(index, 1);

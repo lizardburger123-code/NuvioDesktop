@@ -217,6 +217,13 @@ internal class ShellRpc(private val host: ShellHost) {
             host.openUrl(manifestUrl.replace("/manifest.json", "/configure"))
             JsonPrimitive(true)
         }
+        "profile.avatars" -> ShellProfiles.catalog()
+        "profile.setAvatar" -> ShellProfiles.setAvatar(
+            avatarId = params.string("avatarId"),
+            url = params.string("url"),
+            upload = params.string("upload"),
+        )
+        "profile.stats" -> ShellProfiles.stats()
         "profiles.switch" -> {
             val target = params.int("id") ?: error("Missing profile.")
             val profile = ProfileRepository.state.value.profiles.firstOrNull { it.profileIndex == target }
@@ -237,17 +244,9 @@ internal class ShellRpc(private val host: ShellHost) {
         val activeIndex = ProfileRepository.activeProfileId
         val active = state.activeProfile ?: state.profiles.firstOrNull { it.profileIndex == activeIndex }
         WatchLaterStore.ensureLoaded()
-        val avatar = active?.let { profile ->
-            kotlinx.coroutines.withTimeoutOrNull(4_000) {
-                runCatching {
-                    val repo = com.nuvio.app.features.profiles.AvatarRepository
-                    if (repo.avatars.value.isEmpty() && profile.avatarId != null) repo.fetchAvatars()
-                    val item = profile.avatarId?.let { id -> repo.avatars.value.firstOrNull { it.id == id } }
-                    com.nuvio.app.features.profiles.profileAvatarImageUrl(profile, item)
-                        ?.takeIf { it.startsWith("http") || it.startsWith("data:") }
-                        ?: item?.localImageUrl?.let { local -> if (local.startsWith("/") || local.matches(Regex("^[A-Za-z]:.*"))) java.io.File(local).toURI().toString() else local }
-                }.getOrNull()
-            }
+        val avatar = active?.let { profile -> runCatching { ShellProfiles.avatarFor(profile) }.getOrNull() }
+        val avatars = state.profiles.associate { profile ->
+            profile.profileIndex to (if (profile.profileIndex == active?.profileIndex) avatar else runCatching { ShellProfiles.avatarFor(profile) }.getOrNull())
         }
         return buildJsonObject {
             put("profile", buildJsonObject {
@@ -263,10 +262,7 @@ internal class ShellRpc(private val host: ShellHost) {
                         put("name", profile.name)
                         put("pin", profile.pinEnabled)
                         put("color", profile.avatarColorHex)
-                        val item = profile.avatarId?.let { id -> com.nuvio.app.features.profiles.AvatarRepository.avatars.value.firstOrNull { it.id == id } }
-                        val url = if (profile.profileIndex == active?.profileIndex) avatar
-                            else runCatching { com.nuvio.app.features.profiles.profileAvatarImageUrl(profile, item) }.getOrNull()?.takeIf { it.startsWith("http") }
-                        url?.let { put("avatar", it) }
+                        avatars[profile.profileIndex]?.let { put("avatar", it) }
                     })
                 }
             })
@@ -521,6 +517,7 @@ internal class ShellRpc(private val host: ShellHost) {
             put("dim", value.dim)
             put("blur", value.blur)
             put("animate", value.animate)
+            put("blurArt", value.blurArt)
         }
     }
 
@@ -530,6 +527,7 @@ internal class ShellRpc(private val host: ShellHost) {
         params.double("dim")?.let { value = value.copy(dim = it.coerceIn(0.0, 0.9)) }
         params.double("blur")?.let { value = value.copy(blur = it.coerceIn(0.0, 40.0)) }
         params.bool("animate")?.let { value = value.copy(animate = it) }
+        params.bool("blurArt")?.let { value = value.copy(blurArt = it) }
         (params["wallpaper"] as? JsonObject)?.let { wallpaper ->
             wallpaper.string("mode")?.takeIf { it in setOf("featured", "custom", "none") }?.let { value = value.copy(wallpaperMode = it) }
             if (wallpaper.containsKey("image")) {

@@ -6,7 +6,13 @@ import { clockTime } from "../lib/format.js";
 import { NAV_ITEMS } from "../lib/nav.js";
 import GradientText from "../reactbits/GradientText/GradientText.jsx";
 import { useApp } from "../AppContext.jsx";
+import ProfileCard, { Avatar } from "./ProfileCard.jsx";
 import "./TopBar.css";
+
+export { initials } from "./ProfileCard.jsx";
+
+/** Open the profile card from anywhere (Settings uses it): detail { view: "picture" }. */
+export const PROFILE_CARD = "nuvio:profile-card";
 
 const useNow = () => {
   const [now, setNow] = useState(() => new Date());
@@ -17,8 +23,6 @@ const useNow = () => {
   }, []);
   return now;
 };
-
-export const initials = name => String(name || "?").trim().split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase();
 
 const SECTIONS = NAV_ITEMS.filter(item => item.inTopBar).map(item => ({
   ...item,
@@ -147,8 +151,18 @@ export default function TopBar({ route, stack, profile, compact }) {
   const colors = appearance?.colors?.length ? ["#ffffff", ...appearance.colors, "#ffffff"] : ["#ffffff", "#b497cf", "#ffffff"];
   const day = now.toLocaleDateString([], { weekday: "long" });
   const date = now.toLocaleDateString([], { month: "long", day: "numeric" });
-  const showBack = route.name !== "home" && canGoBack();
+  const showBack = canGoBack();
   const section = activeSection(stack);
+  const profileRef = useRef(null);
+  const [card, setCard] = useState(null);
+  const [closeRequest, setCloseRequest] = useState(0);
+  const toggleCard = () => (card ? setCloseRequest(n => n + 1) : setCard({ view: "main" }));
+
+  useEffect(() => {
+    const open = event => setCard({ view: event.detail?.view || "main" });
+    window.addEventListener(PROFILE_CARD, open);
+    return () => window.removeEventListener(PROFILE_CARD, open);
+  }, []);
 
   return (
     <header className={`topbar${compact ? " topbar-compact" : ""}${showBack ? " has-back" : ""}`}>
@@ -174,19 +188,27 @@ export default function TopBar({ route, stack, profile, compact }) {
           <LuSearch />
         </button>
         <span className="topbar-clock num">{clockTime(now)}</span>
-        <button className="topbar-profile" onClick={() => goSection("settings", { section: "profile" })} title="Profile">
-          <span className="topbar-hi">Hi, {String(profile?.name || "there").split(" ")[0]}</span>
+        <button
+          ref={profileRef}
+          className={`topbar-profile${card ? " is-open" : ""}`}
+          onClick={toggleCard}
+          aria-haspopup="dialog"
+          aria-expanded={Boolean(card)}
+          title="Profile"
+        >
+          <span className="topbar-hi" dir="auto">Hi, {String(profile?.name || "there").split(" ")[0]}</span>
           <Avatar profile={profile} />
         </button>
       </div>
+      {card ? (
+        <ProfileCard
+          key={card.view}
+          anchorRef={profileRef}
+          initialView={card.view}
+          closeRequest={closeRequest}
+          onClose={() => { setCard(null); setCloseRequest(0); }}
+        />
+      ) : null}
     </header>
   );
-}
-
-function Avatar({ profile }) {
-  const [failed, setFailed] = useState(false);
-  if (profile?.avatar && !failed) {
-    return <img className="avatar avatar-img" src={profile.avatar} alt="" onError={() => setFailed(true)} />;
-  }
-  return <span className="avatar" style={profile?.color ? { background: profile.color } : undefined}>{initials(profile?.name)}</span>;
 }

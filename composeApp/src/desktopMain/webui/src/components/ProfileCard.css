@@ -1,0 +1,271 @@
+/* Profile card: hangs under the profile pill. Dark glass, an aurora in the user's own gradient
+   drifting behind the avatar, this week's viewing, quick picture change. */
+
+.profile-pop {
+  position: fixed;
+  z-index: 70;
+  width: 368px;
+  max-height: calc(100vh - var(--topbar-h) - 24px);
+  overflow: hidden auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  border-radius: 28px;
+  padding: 20px;
+  isolation: isolate;
+  background: rgb(14 14 20 / .72);
+}
+.profile-pop .btn-glass {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background: rgb(255 255 255 / .08);
+}
+.profile-pop .btn-glass:hover { background: rgb(255 255 255 / .15); }
+
+/* ---- Aurora ---------------------------------------------------------------------------------- */
+.pc-aurora {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 190px;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+/* Soft by construction (radial gradients, no blur filter), so drifting them is a plain
+   compositor move rather than a re-filter every frame. */
+.pc-blob {
+  position: absolute;
+  width: 300px;
+  height: 260px;
+  border-radius: 50%;
+  opacity: .75;
+}
+.pc-blob-1 { background: radial-gradient(closest-side, rgb(var(--g1-rgb) / .95), rgb(var(--g1-rgb) / 0)); left: -110px; top: -130px; }
+.pc-blob-2 { background: radial-gradient(closest-side, rgb(var(--g2-rgb) / .9), rgb(var(--g2-rgb) / 0)); left: 50px; top: -150px; }
+.pc-blob-3 { background: radial-gradient(closest-side, rgb(var(--g3-rgb) / .8), rgb(var(--g3-rgb) / 0)); right: -120px; top: -120px; }
+.pc-aurora.is-live .pc-blob-1 { animation: pc-drift-a 13s ease-in-out infinite alternate; }
+.pc-aurora.is-live .pc-blob-2 { animation: pc-drift-b 17s ease-in-out infinite alternate; }
+.pc-aurora.is-live .pc-blob-3 { animation: pc-drift-c 11s ease-in-out infinite alternate; }
+@keyframes pc-drift-a { to { transform: translate3d(70px, 26px, 0) scale(1.15); } }
+@keyframes pc-drift-b { to { transform: translate3d(-60px, 34px, 0) scale(.9); } }
+@keyframes pc-drift-c { to { transform: translate3d(-40px, 18px, 0) scale(1.2); } }
+@media (prefers-reduced-motion: reduce) { .pc-aurora .pc-blob { animation: none !important; } }
+
+.pc-view { display: flex; flex-direction: column; gap: 18px; }
+
+/* ---- Identity -------------------------------------------------------------------------------- */
+.pc-id { display: flex; align-items: center; gap: 16px; padding-top: 4px; }
+.pc-avatar {
+  position: relative;
+  flex: none;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  /* Ring in the user's gradient, a hair of dark between ring and picture. */
+  background: conic-gradient(from 210deg, var(--g1), var(--g2), var(--g3), var(--g1));
+  transition: transform var(--t-fast, 160ms) ease;
+}
+.pc-avatar::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: rgb(14 14 20);
+}
+.pc-avatar .avatar { position: relative; box-shadow: none; }
+.pc-avatar:active { transform: scale(.96); }
+.pc-avatar-edit {
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / .5);
+  color: #fff;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+.pc-avatar-edit svg { width: 22px; height: 22px; }
+.pc-avatar:hover .pc-avatar-edit,
+.pc-avatar:focus-visible .pc-avatar-edit { opacity: 1; }
+
+.pc-who { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.pc-who h3 {
+  margin: 0;
+  font-size: var(--fs-20);
+  font-weight: 750;
+  letter-spacing: -.01em;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+.pc-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: var(--fs-13); color: var(--ink-2); }
+.pc-streak {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: var(--fs-12);
+  font-weight: 700;
+  color: #ffd7a8;
+  background: rgb(255 140 50 / .16);
+}
+.pc-streak svg { width: 13px; height: 13px; color: #ff9d4a; }
+
+/* ---- Numbers --------------------------------------------------------------------------------- */
+.pc-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.pc-stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 12px 11px;
+  border-radius: 16px;
+  background: rgb(255 255 255 / .05);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .06);
+}
+.pc-stats strong { font-size: var(--fs-20); font-weight: 750; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.pc-stats span { font-size: 11.5px; line-height: 1.25; color: var(--ink-3); }
+
+/* ---- This week ------------------------------------------------------------------------------- */
+.pc-week {
+  height: 92px;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+  align-items: end;
+}
+.pc-week-empty { border-radius: 16px; }
+.pc-bar { height: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.pc-bar-track {
+  flex: 1;
+  width: 100%;
+  max-width: 26px;
+  display: flex;
+  align-items: flex-end;
+  border-radius: 8px;
+  background: rgb(255 255 255 / .04);
+}
+.pc-bar-fill {
+  display: block;
+  width: 100%;
+  border-radius: 8px;
+  background: rgb(255 255 255 / .28);
+  transform-origin: 50% 100%;
+  transition: background-color 160ms ease;
+}
+.pc-bar:hover .pc-bar-fill { background: rgb(255 255 255 / .5); }
+.pc-bar.is-today .pc-bar-fill { background: linear-gradient(to top, var(--g2), var(--g3)); }
+.pc-bar-label { font-size: 11px; font-weight: 650; color: var(--ink-3); }
+.pc-bar.is-today .pc-bar-label { color: var(--ink); }
+
+/* ---- Switch ---------------------------------------------------------------------------------- */
+.pc-label { display: block; margin-bottom: 8px; font-size: var(--fs-12); font-weight: 650; color: var(--ink-3); }
+.pc-switch-row { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 -6px; padding: 0 6px; }
+.pc-other {
+  position: relative;
+  flex: none;
+  width: 70px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 4px;
+  border-radius: 16px;
+  font-size: var(--fs-12);
+  font-weight: 600;
+  color: var(--ink-2);
+  transition: background-color 160ms ease, color 160ms ease;
+}
+.pc-other span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-other:hover:not(:disabled) { background: rgb(255 255 255 / .07); color: var(--ink); }
+.pc-other:active:not(:disabled) { transform: scale(.96); }
+.pc-other:disabled { opacity: .5; cursor: default; }
+.pc-lock { position: absolute; top: 6px; right: 10px; width: 13px; height: 13px; color: var(--ink-2); }
+
+/* ---- Actions --------------------------------------------------------------------------------- */
+.pc-actions { display: flex; gap: 8px; padding-top: 2px; }
+.pc-actions .btn:not(.btn-icon) { flex: 1; }
+
+/* ---- Picture view ---------------------------------------------------------------------------- */
+.pc-sub-head { display: flex; align-items: center; gap: 12px; }
+.pc-sub-head h3 { margin: 0; font-size: var(--fs-16); font-weight: 700; }
+
+.pc-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.pc-pick {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  overflow: hidden;
+  background: rgb(255 255 255 / .06);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1);
+  transition: transform 180ms var(--ease-out, ease), box-shadow 180ms ease;
+}
+.pc-pick img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pc-pick:hover:not(:disabled) { transform: scale(1.06); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .25), 0 8px 22px rgb(0 0 0 / .35); }
+.pc-pick:active:not(:disabled) { transform: scale(.96); }
+.pc-pick[aria-selected="true"] { box-shadow: 0 0 0 2px rgb(14 14 20), 0 0 0 4px #fff; }
+.pc-pick:disabled { cursor: progress; }
+.pc-pick-on, .pc-pick-busy {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / .4);
+  color: #fff;
+}
+.pc-pick-on svg { width: 22px; height: 22px; }
+.pc-pick-busy::after, .pc-spin {
+  content: "";
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgb(255 255 255 / .3);
+  border-top-color: #fff;
+  animation: pc-spin 700ms linear infinite;
+}
+.pc-spin { display: inline-block; width: 14px; height: 14px; }
+@keyframes pc-spin { to { transform: rotate(1turn); } }
+
+.pc-own { display: flex; flex-direction: column; gap: 10px; }
+.pc-own > .btn { align-self: flex-start; }
+.pc-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 42px;
+  padding: 0 4px 0 14px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / .06);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .08);
+  transition: box-shadow 160ms ease;
+}
+.pc-link:focus-within { box-shadow: inset 0 0 0 1px rgb(255 255 255 / .3); }
+.pc-link > svg { flex: none; width: 16px; height: 16px; color: var(--ink-3); }
+.pc-link-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--fs-13);
+}
+.pc-link-input::placeholder { color: var(--ink-3); }
+.pc-link .btn { height: 34px; }
+
+.pc-note {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--fs-12);
+  line-height: 1.45;
+  color: var(--ink-3);
+  text-wrap: pretty;
+}
+.pc-note svg { flex: none; width: 14px; height: 14px; margin-top: 1px; }
+.pc-grid .pc-note { grid-column: 1 / -1; }

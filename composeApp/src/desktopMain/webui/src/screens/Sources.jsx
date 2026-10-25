@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { DURATION, EASE, reduceMotion, useSegmentPill } from "../lib/motion.js";
+import { holdAmbient } from "../lib/hold.js";
 import { LuLoaderCircle, LuMaximize, LuPlay, LuRefreshCw, LuX, LuZap } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
@@ -29,6 +30,8 @@ export default function Sources({ meta, video, onClose }) {
   }).catch(error => toast(error.message, { tone: "error" }));
 
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [video.videoId]);
+  // A full-screen glass sheet: ambient motion behind it would make it re-blur every frame.
+  useEffect(() => holdAmbient(), []);
 
   useEffect(() => {
     const onKey = event => { if (event.key === "Escape") { event.stopPropagation(); close(); } };

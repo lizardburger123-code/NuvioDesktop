@@ -545,8 +545,11 @@ const Grainient = ({
     function wake() {
       if (!raf && visible && !document.hidden && !held) raf = requestAnimationFrame(frame);
     }
-    const onTransition = event => {
-      held = Boolean(event.detail);
+    // Held while screens transition and while a glass overlay is open (see lib/hold.js).
+    let heldTransition = false;
+    let heldOverlay = false;
+    const onHold = () => {
+      held = heldTransition || heldOverlay;
       if (held) {
         cancelAnimationFrame(raf);
         raf = 0;
@@ -555,6 +558,8 @@ const Grainient = ({
         wake();
       }
     };
+    const onTransition = event => { heldTransition = Boolean(event.detail); onHold(); };
+    const onOverlay = event => { heldOverlay = Boolean(event.detail); onHold(); };
 
     const locate = event => {
       const rect = container.getBoundingClientRect();
@@ -613,6 +618,7 @@ const Grainient = ({
     document.documentElement.addEventListener('pointerleave', onPointerLeave);
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('nuvio:transition', onTransition);
+    window.addEventListener('nuvio:overlay', onOverlay);
     resize();
     wakeRef.current = wake;
 
@@ -626,6 +632,7 @@ const Grainient = ({
       document.documentElement.removeEventListener('pointerleave', onPointerLeave);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('nuvio:transition', onTransition);
+      window.removeEventListener('nuvio:overlay', onOverlay);
       gl.deleteTexture(target);
       gl.deleteFramebuffer(buffer);
       gl.deleteVertexArray(vao);

@@ -57,10 +57,14 @@ export default function Background({ appearance, featured, art, scrolled }) {
     );
   }, [layers]);
 
+  // The wallpaper blur is for the wallpaper. A title's own artwork stays sharp unless the user
+  // asked for it to be blurred too.
+  const blurred = Number.parseFloat(appearance?.blur) > 0 && (!art || appearance?.blurArt === true);
+
   const grainColors = useMemo(() => ["#06060a", colors[0], colors[1], colors[2], "#06060a"], [colors]);
 
   return (
-    <div className={`scene${scrolled ? " scene-scrolled" : ""}${wallpaper ? " has-wall" : ""}${Number.parseFloat(appearance?.blur) > 0 ? " has-blur" : ""}`} aria-hidden="true">
+    <div className={`scene${scrolled ? " scene-scrolled" : ""}${wallpaper ? " has-wall" : ""}${art ? " has-art" : ""}${blurred ? " has-blur" : ""}`} aria-hidden="true">
       <div className="scene-grain">
         <Grainient
           colors={grainColors}

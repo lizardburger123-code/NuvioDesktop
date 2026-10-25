@@ -104,7 +104,8 @@ export default function GradientText({
       const s = settingsRef.current;
       const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
       last = now;
-      const paused = reduce || (s.pauseOnHover && state.inside);
+      // Nuvio: an open glass overlay holds the drift (see lib/hold.js).
+      const paused = reduce || (s.pauseOnHover && state.inside) || document.documentElement.hasAttribute('data-overlay');
       if (!paused) state.time += dt;
       const target = s.followPointer && state.inside ? 1 : 0;
       state.pull += (target - state.pull) * (1 - Math.exp(-dt * 6));
@@ -157,6 +158,8 @@ export default function GradientText({
       if (state.visible) wake();
     });
     observer.observe(root);
+    const onOverlay = event => { if (!event.detail) wake(); };
+    window.addEventListener('nuvio:overlay', onOverlay);
     root.addEventListener('pointerenter', onEnter);
     root.addEventListener('pointermove', onMove);
     root.addEventListener('pointerleave', onLeave);
@@ -167,6 +170,7 @@ export default function GradientText({
       alive = false;
       cancelAnimationFrame(raf);
       observer.disconnect();
+      window.removeEventListener('nuvio:overlay', onOverlay);
       root.removeEventListener('pointerenter', onEnter);
       root.removeEventListener('pointermove', onMove);
       root.removeEventListener('pointerleave', onLeave);

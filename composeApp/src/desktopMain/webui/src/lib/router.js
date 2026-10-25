@@ -23,8 +23,10 @@ const same = (a, b) => a.name === b.name && JSON.stringify(a.params || {}) === J
 
 let seq = 1;
 let navId = 0;
+// stack is the history, oldest first (like a browser); future holds pages you went back from.
 let state = {
   stack: [{ name: "home", params: {}, key: 1, scroll: 0 }],
+  future: [],
   sections: null,
   nav: { id: 0, kind: "none", dir: 0 },
 };
@@ -40,6 +42,7 @@ const subscribe = fn => {
 export const useRouter = () => useSyncExternalStore(subscribe, () => state);
 export const useStack = () => useRouter().stack;
 export const canGoBack = () => state.stack.length > 1;
+export const canGoForward = () => state.future.length > 0;
 
 const top = () => state.stack[state.stack.length - 1];
 const saveScroll = () => { top().scroll = window.scrollY; };
@@ -59,6 +62,8 @@ export const aliveEntries = router => {
   const map = new Map();
   router.sections.forEach(entry => map.set(entry.key, entry));
   router.stack.slice(-1 - KEEP_UNDER).forEach(entry => map.set(entry.key, entry));
+  // The page you just went back from stays ready, so Forward is instant too.
+  router.future.slice(0, 1).forEach(entry => map.set(entry.key, entry));
   return [...map.values()].sort((a, b) => a.key - b.key);
 };
 
@@ -156,7 +161,8 @@ export const navigate = (name, params = {}, { replace = false } = {}) => {
     // Same screen, new params (search query, settings page, library tab): no remount, no transition.
     const updated = { ...current, params };
     commit({
-      stack: [...state.stack.slice(0, -1), updated],
+      stack: state.stack.map(entry => (entry === current ? updated : entry)),
+      future: state.future,
       sections: state.sections.map(entry => (entry === current ? updated : entry)),
       nav: { id: navId, kind: "replace", dir: 0 },
     });
@@ -168,12 +174,24 @@ export const navigate = (name, params = {}, { replace = false } = {}) => {
   const stack = replace ? [...state.stack.slice(0, -1), entry] : [...state.stack, entry].slice(-40);
   commit({
     stack,
+    future: [],
     sections: state.sections,
     nav: { id: navId, kind: replace ? "section" : "forward", dir: 0, card: entry.card },
   });
 };
 
-/** Jump to a top-level section. A section you visited before comes back exactly as you left it. */
+const MAX_HISTORY = 40;
+const directionBetween = (fromStack, toEntry) => {
+  const from = NAV_ORDER.indexOf(activeSection(fromStack));
+  const to = NAV_ORDER.indexOf(sectionId(toEntry));
+  return from >= 0 && to >= 0 ? Math.sign(to - from) : 0;
+};
+const isSection = entry => entry && (entry.name === "search" || NAV_ORDER.includes(sectionId(entry)));
+
+/**
+ * Jump to a top-level section. It goes on the history like any page (so Back returns to where
+ * you were), and a section you visited before comes back exactly as you left it.
+ */
 export const goSection = (name, params = {}) => {
   const target = { name, params };
   if (same(top(), target)) {
@@ -182,8 +200,6 @@ export const goSection = (name, params = {}) => {
   }
   saveScroll();
   const home = state.sections[0];
-  const from = NAV_ORDER.indexOf(activeSection(state.stack));
-  const to = NAV_ORDER.indexOf(sectionId(target));
   let entry = name === "home" ? home : state.sections.find(e => same(e, target));
   if (!entry) {
     seq += 1;
@@ -193,21 +209,47 @@ export const goSection = (name, params = {}) => {
   const sections = [home, ...[...others, ...(entry === home ? [] : [entry])].slice(-KEEP_SECTIONS)];
   navId += 1;
   commit({
-    stack: entry === home ? [home] : [home, entry],
+    stack: [...state.stack, entry].slice(-MAX_HISTORY),
+    future: [],
     sections,
-    nav: { id: navId, kind: "section", dir: from >= 0 && to >= 0 ? Math.sign(to - from) : 0 },
+    nav: { id: navId, kind: "section", dir: directionBetween(state.stack, entry) },
   });
 };
 
+/** The previous page, whatever it was: a section, a title, search. */
 export const back = () => {
   if (state.stack.length <= 1) return false;
   const leaving = top();
-  if (state.sections.includes(leaving)) saveScroll();
+  saveScroll();
+  const stack = state.stack.slice(0, -1);
+  const arriving = stack[stack.length - 1];
+  navId += 1;
+  // Between two sections the screens slide like the tab pill; leaving a title it settles back.
+  const sideways = isSection(leaving) && isSection(arriving);
+  commit({
+    stack,
+    future: [leaving, ...state.future].slice(0, MAX_HISTORY),
+    sections: state.sections,
+    nav: sideways
+      ? { id: navId, kind: "section", dir: directionBetween(state.stack, arriving) }
+      : { id: navId, kind: "back", dir: -1, card: leaving.card || null },
+  });
+  return true;
+};
+
+/** Undo a Back (mouse forward button, Alt+Right). */
+export const forward = () => {
+  if (!state.future.length) return false;
+  saveScroll();
+  const [arriving, ...future] = state.future;
   navId += 1;
   commit({
-    stack: state.stack.slice(0, -1),
+    stack: [...state.stack, arriving].slice(-MAX_HISTORY),
+    future,
     sections: state.sections,
-    nav: { id: navId, kind: "back", dir: -1, card: leaving.card || null },
+    nav: isSection(arriving)
+      ? { id: navId, kind: "section", dir: directionBetween(state.stack, arriving) }
+      : { id: navId, kind: "forward", dir: 0, card: arriving.card || null },
   });
   return true;
 };

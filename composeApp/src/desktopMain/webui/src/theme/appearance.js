@@ -8,6 +8,7 @@ export const DEFAULT_APPEARANCE = {
   dim: 0.35,
   blur: 0,
   animate: true,
+  blurArt: false,
 };
 
 export const PRESETS = [

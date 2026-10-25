@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   LuCaptions, LuExternalLink, LuImage, LuKeyRound, LuLoaderCircle, LuPalette, LuPlay, LuPuzzle,
-  LuTrash2, LuUser, LuInfo, LuCheck, LuRefreshCw, LuMonitorPlay,
+  LuTrash2, LuUser, LuInfo, LuCheck, LuRefreshCw, LuMonitorPlay, LuCamera,
 } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useApp } from "../AppContext.jsx";
 import { PRESETS, applyAppearance, parseHex } from "../theme/appearance.js";
 import { navigate } from "../lib/router.js";
 import { useSegmentPill } from "../lib/motion.js";
-import { initials } from "../components/TopBar.jsx";
+import { PROFILE_CARD, initials } from "../components/TopBar.jsx";
 import "./Settings.css";
 
 const SECTIONS = [
@@ -202,6 +202,13 @@ function Appearance() {
           <input className="range" type="range" min="0" max="40" step="1" value={appearance.blur ?? 0} onChange={event => update({ blur: Number(event.target.value) })} />
           <span className="num slider-value">{appearance.blur ?? 0}px</span>
         </label>
+        <div className="toggle-row">
+          <span>
+            Blur title artwork too
+            <small>Off keeps a movie or series page sharp, the way the artwork was made.</small>
+          </span>
+          <Toggle checked={appearance.blurArt === true} onChange={value => update({ blurArt: value })} label="Blur title artwork too" />
+        </div>
       </Panel>
 
       <Panel title="Motion" description="The background gradient drifts slowly. Turn it off to keep the GPU free for 4K playback on slower machines.">
@@ -494,12 +501,17 @@ function Addons() {
 /* ---------------------------------------------------------------- Profile & About */
 
 function Profile() {
-  const { boot, toast } = useApp();
+  const { boot, profile: me, toast } = useApp();
+  const profiles = (boot.profiles || []).map(p => (p.id === me?.id ? { ...p, avatar: me.avatar, color: me.color || p.color } : p));
   return (
     <>
-      <Panel title="Who's watching" description="Each profile keeps its own progress, Watch later and settings.">
+      <Panel
+        title="Who's watching"
+        description="Each profile keeps its own progress, Watch later and settings."
+        aside={<button className="btn btn-glass btn-sm panel-aside-btn" onClick={() => window.dispatchEvent(new CustomEvent(PROFILE_CARD, { detail: { view: "picture" } }))}><LuCamera /> Change picture</button>}
+      >
         <div className="profiles">
-          {(boot.profiles || []).map(profile => (
+          {profiles.map(profile => (
             <button key={profile.id} className="profile-card" aria-pressed={profile.id === boot.profile?.id} onClick={() => profile.id !== boot.profile?.id && call("profiles.switch", { id: profile.id }).then(() => window.location.reload(), error => toast(error.message, { tone: "error" }))}>
               {profile.avatar
                 ? <img className="avatar avatar-lg avatar-img" src={profile.avatar} alt="" />

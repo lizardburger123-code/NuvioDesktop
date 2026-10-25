@@ -188,7 +188,9 @@ const SpotlightCard = ({
       paint(s);
       const moving = Math.abs(tx - state.x) > 0.1 || Math.abs(ty - state.y) > 0.1;
       const settled = !moving && state.presence === target && state.flare === press;
-      if (!settled || (s.ambient && state.visible && !reduce)) raf = requestAnimationFrame(tick);
+      // Nuvio: an open glass overlay holds the ambient drift (see lib/hold.js).
+      const held = document.documentElement.hasAttribute('data-overlay');
+      if (!settled || (s.ambient && state.visible && !reduce && !held)) raf = requestAnimationFrame(tick);
     };
 
     const wake = () => {
@@ -242,6 +244,8 @@ const SpotlightCard = ({
       if (state.visible) wake();
     });
     observer.observe(root);
+    const onOverlay = event => { if (!event.detail) wake(); };
+    window.addEventListener('nuvio:overlay', onOverlay);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onUp);
@@ -256,6 +260,7 @@ const SpotlightCard = ({
       alive = false;
       cancelAnimationFrame(raf);
       observer.disconnect();
+      window.removeEventListener('nuvio:overlay', onOverlay);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);

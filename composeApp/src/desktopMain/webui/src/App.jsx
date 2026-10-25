@@ -4,7 +4,7 @@ import { call, on } from "./bridge.js";
 import { useTopic } from "./store.js";
 import { AppProvider, useApp } from "./AppContext.jsx";
 import { applyAppearance } from "./theme/appearance.js";
-import { BEFORE_NAV, aliveEntries, back, goSection, useRouter } from "./lib/router.js";
+import { BEFORE_NAV, aliveEntries, back, forward, goSection, useRouter } from "./lib/router.js";
 import { playScreenEntrance } from "./lib/motion.js";
 import { ScreenActiveContext } from "./lib/screen.js";
 import Background from "./components/Background.jsx";
@@ -113,8 +113,14 @@ function Shell() {
         else back();
       }
       if (event.key === "Backspace" && !isTyping(event.target)) back();
+      if (event.altKey && event.key === "ArrowLeft") { event.preventDefault(); back(); }
+      if (event.altKey && event.key === "ArrowRight") { event.preventDefault(); forward(); }
     };
-    const onMouse = event => { if (event.button === 3) { event.preventDefault(); back(); } };
+    // Mouse side buttons: back and forward, like a browser.
+    const onMouse = event => {
+      if (event.button === 3) { event.preventDefault(); back(); }
+      if (event.button === 4) { event.preventDefault(); forward(); }
+    };
     window.addEventListener("keydown", onKey);
     window.addEventListener("mouseup", onMouse);
     const offBack = on("nav.back", () => back());

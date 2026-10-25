@@ -72,6 +72,8 @@ internal data class ShellAppearance(
     val dim: Double = 0.35,
     val blur: Double = 0.0,
     val animate: Boolean = true,
+    /** Title pages show their artwork sharp unless the user wants the wallpaper blur there too. */
+    val blurArt: Boolean = false,
 )
 
 /** Colours, wallpaper and motion of the shell. The custom wallpaper is a JPEG next to the prefs. */

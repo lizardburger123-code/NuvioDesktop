@@ -72,3 +72,11 @@
 .scene-scrolled .scene-fade {
   background-color: rgb(7 7 11 / .55);
 }
+
+/* A title's artwork is shown close to how it was made: less palette wash, lighter dim, and the
+   blur transitions off when you open a title (and back on when you leave). */
+.scene-walls { transition: transform 900ms var(--ease-out), filter 700ms var(--ease-soft); }
+.scene-wash { transition: opacity 700ms var(--ease-soft); }
+.scene.has-art .scene-wash { opacity: .3; }
+.scene.has-art .scene-grain { opacity: .3; }
+.scene.has-art.has-wall .scene-wash::after { background: rgb(4 4 8 / calc(var(--wall-dim) * .55)); }

@@ -9,6 +9,7 @@ export const useApp = () => useContext(AppContext);
 export function AppProvider({ boot, children }) {
   const [appearance, setAppearanceState] = useState(boot.appearance);
   const [art, setArt] = useState(null);
+  const [profile, setProfile] = useState(boot.profile);
   const [toasts, setToasts] = useState([]);
   const toastId = useRef(0);
   const watchLater = useTopic("watchLater", []);
@@ -65,9 +66,9 @@ export function AppProvider({ boot, children }) {
   }, [toast]);
 
   const value = useMemo(() => ({
-    boot, profile: boot.profile, appearance, setAppearance, art, setArt, toast, toasts,
+    boot, profile, setProfile, appearance, setAppearance, art, setArt, toast, toasts,
     watchLater, laterIds, toggleLater, openDetails, resume, removeContinue,
-  }), [boot, appearance, setAppearance, art, toast, toasts, watchLater, laterIds, toggleLater, openDetails, resume, removeContinue]);
+  }), [boot, profile, appearance, setAppearance, art, toast, toasts, watchLater, laterIds, toggleLater, openDetails, resume, removeContinue]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

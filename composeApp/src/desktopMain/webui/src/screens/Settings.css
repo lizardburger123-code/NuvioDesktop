@@ -162,3 +162,4 @@
   .panel { grid-template-columns: 1fr; gap: 16px; }
   .settings { grid-template-columns: 220px minmax(0, 1fr); }
 }
+.panel-aside-btn { margin-top: 14px; }
