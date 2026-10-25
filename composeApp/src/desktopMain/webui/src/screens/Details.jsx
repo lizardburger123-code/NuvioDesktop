@@ -25,7 +25,7 @@ export default function Details({ params }) {
   const heroRef = useRef(null);
   const active = useScreenActive();
 
-  useEffect(() => { call("details.load", { type, id }).catch(error => toast(error.message, { tone: "error" })); }, [type, id, toast]);
+  useEffect(() => { call("details.load", { type, id, name: params.name || "" }).catch(error => toast(error.message, { tone: "error" })); }, [type, id, toast]); // eslint-disable-line react-hooks/exhaustive-deps
   // The title's backdrop becomes the scene while this screen is the one on display.
   useEffect(() => {
     if (!active) return undefined;

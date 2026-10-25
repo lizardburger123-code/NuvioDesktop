@@ -36,6 +36,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -73,6 +75,10 @@ internal class ShellRpc(private val host: ShellHost) {
     private val json = Json { ignoreUnknownKeys = true }
 
     @Volatile private var detailsKey: Pair<String, String>? = null
+    /** A title whose own id no addon can describe, found again by name (see ShellMetaResolver). */
+    private data class DetailsAlt(val key: String = "", val id: String? = null, val running: Boolean = false)
+    private val detailsAlt = MutableStateFlow(DetailsAlt())
+    private var detailsFallback: Job? = null
     @Volatile private var streamsVideoId: String? = null
     @Volatile private var searchQuery: String = ""
     @Volatile private var streamIndex: Map<String, StreamItem> = emptyMap()
@@ -367,19 +373,26 @@ internal class ShellRpc(private val host: ShellHost) {
     private fun loadDetails(params: JsonObject): JsonElement {
         val type = params.string("type") ?: error("Missing type.")
         val id = params.string("id") ?: error("Missing id.")
+        val name = params.string("name").orEmpty()
         detailsKey = type to id
+        detailsFallback?.cancel()
+        detailsAlt.value = DetailsAlt(key = "$type:$id")
         WatchProgressRepository.ensureLoaded()
         WatchedRepository.ensureLoaded()
         watch(
             "details",
-            combine(MetaDetailsRepository.uiState, WatchProgressRepository.uiState, WatchLaterStore.items) { meta, progress, later -> Triple(meta, progress, later) },
-        ) { (state, progress, later) ->
+            combine(MetaDetailsRepository.uiState, WatchProgressRepository.uiState, WatchLaterStore.items, detailsAlt) { meta, progress, later, alt ->
+                DetailsInputs(meta, progress, later, alt)
+            },
+        ) { (state, progress, later, alt) ->
             val (wantedType, wantedId) = detailsKey ?: ("" to "")
-            val meta = state.meta?.takeIf { it.id == wantedId }
+            val altId = alt.id?.takeIf { alt.key == "$wantedType:$wantedId" }
+            val altRunning = alt.running && alt.key == "$wantedType:$wantedId"
+            val meta = state.meta?.takeIf { it.id == wantedId || (altId != null && it.id == altId) }
             buildJsonObject {
                 put("key", "$wantedType:$wantedId")
-                put("loading", meta == null && state.errorMessage == null)
-                state.errorMessage?.takeIf { meta == null }?.let { put("error", it) }
+                put("loading", meta == null && (state.errorMessage == null || altRunning))
+                state.errorMessage?.takeIf { meta == null && !altRunning }?.let { put("error", it) }
                 put("watchLater", later.any { it.id == wantedId })
                 if (meta == null) {
                     put("meta", JsonNull)
@@ -398,8 +411,38 @@ internal class ShellRpc(private val host: ShellHost) {
             }
         }
         MetaDetailsRepository.load(type, id)
+        // No addon can describe this id: find the same title by name, the way Search does.
+        detailsFallback = scope.launch {
+            val key = "$type:$id"
+            val settled = MetaDetailsRepository.uiState.first { state ->
+                !state.isLoading && (state.meta != null || state.errorMessage != null)
+            }
+            val loaded = settled.meta
+            if (loaded != null) {
+                // Loaded under another id (a TMDB id is looked up by its IMDb id): still this title.
+                if (loaded.id != id) detailsAlt.value = DetailsAlt(key = key, id = loaded.id)
+                return@launch
+            }
+            if (name.isBlank()) return@launch
+            detailsAlt.value = DetailsAlt(key = key, running = true)
+            val found = withContext(Dispatchers.Default) { runCatching { ShellMetaResolver.resolve(type, id, name) }.getOrNull() }
+            if (detailsKey != (type to id)) return@launch
+            log.i { "Details fallback for $key ($name): ${found ?: "nothing found"}" }
+            if (found == null) {
+                detailsAlt.value = DetailsAlt(key = key)
+                return@launch
+            }
+            detailsAlt.value = DetailsAlt(key = key, id = found.second, running = true)
+            MetaDetailsRepository.load(found.first, found.second)
+            val second = MetaDetailsRepository.uiState.first { state ->
+                !state.isLoading && (state.meta != null || state.errorMessage != null)
+            }
+            detailsAlt.value = DetailsAlt(key = key, id = second.meta?.id ?: found.second)
+        }
         return JsonPrimitive(true)
     }
+
+    private data class DetailsInputs<A, B, C>(val meta: A, val progress: B, val later: C, val alt: DetailsAlt)
 
     // ---- Streams and playback ---------------------------------------------------------------
 
