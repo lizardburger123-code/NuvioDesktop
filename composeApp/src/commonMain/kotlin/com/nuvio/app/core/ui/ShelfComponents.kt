@@ -580,6 +580,9 @@ internal fun Modifier.desktopPosterHoverScale(
                     .graphicsLayer {
                         scaleX = scale
                         scaleY = scale
+                        // Apple TV style: the card rises a little as it grows toward the viewer.
+                        val progress = ((scale - 1f) / (DesktopPosterHoverScale - 1f)).coerceIn(0f, 1f)
+                        translationY = -6.dp.toPx() * progress
                     }
                     .zIndex(1f)
             } else {

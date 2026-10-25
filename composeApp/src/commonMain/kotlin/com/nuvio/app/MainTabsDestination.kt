@@ -222,7 +222,7 @@ internal fun MainTabsDestination(
             },
         ) { innerPadding ->
             Box(modifier = Modifier.fillMaxSize()) {
-                val requiresNavBarHaze = if (useDesktopTopBar) {
+                val requiresNavBarHaze = if (useDesktopTopBar || useDesktopSidebar) {
                     true
                 } else if (isTabletLayout) {
                     useFloatingTopBar
@@ -266,6 +266,7 @@ internal fun MainTabsDestination(
                         hoverSource = sidebarHoverSource,
                         profileStackVisible = isProfileStackVisible,
                         onProfileStackVisibleChange = { isProfileStackVisible = it },
+                        hazeState = navBarHazeState,
                         modifier = Modifier.align(Alignment.CenterStart),
                     )
                 }

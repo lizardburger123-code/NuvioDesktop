@@ -214,6 +214,9 @@ object HomeRepository {
                 .flatMap { section -> section.items }
                 .distinctBy { item -> "${item.type}:${item.id}" }
                 .shuffled(heroRandom)
+                // A hero without wide artwork renders as text on an empty backdrop; keep the
+                // shuffle but put items that have a banner first.
+                .sortedByDescending { item -> !item.banner.isNullOrBlank() }
                 .take(HOME_HERO_ITEM_LIMIT)
         } else {
             emptyList()

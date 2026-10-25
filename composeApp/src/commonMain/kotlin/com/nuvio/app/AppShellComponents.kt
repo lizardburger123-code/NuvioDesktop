@@ -11,6 +11,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -113,10 +114,12 @@ import nuvio.composeapp.generated.resources.sidebar_search
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
-internal val DesktopSidebarCollapsedWidth = 68.dp
-internal val DesktopSidebarExpandedWidth = 192.dp
+internal val DesktopSidebarCollapsedWidth = 76.dp
+internal val DesktopSidebarExpandedWidth = 210.dp
 private val DesktopSidebarExpandedContentWidth = 156.dp
-private val DesktopSidebarItemHeight = 56.dp
+private val DesktopSidebarItemHeight = 54.dp
+private val DesktopSidebarInset = 10.dp
+private val DesktopSidebarPanelRadius = 24.dp
 private val DesktopSidebarIconSlotSize = 38.dp
 private val DesktopSidebarIconSize = NuvioTokens.Icon.lg
 private val DesktopSidebarProfileStackRowHeight = 44.dp
@@ -728,6 +731,7 @@ internal fun DesktopHoverSidebar(
     hoverSource: MutableInteractionSource = remember { MutableInteractionSource() },
     profileStackVisible: Boolean = false,
     onProfileStackVisibleChange: (Boolean) -> Unit = {},
+    hazeState: HazeState? = null,
     modifier: Modifier = Modifier,
 ) {
     val tokens = MaterialTheme.nuvio
@@ -743,15 +747,36 @@ internal fun DesktopHoverSidebar(
         onTabSelected(tab)
     }
 
-    Surface(
+    // Floating inset panel (macOS / visionOS sidebar): frosted over the content when Haze is
+    // available, with a faint top sheen and a hairline edge instead of a hard column.
+    val panelShape = RoundedCornerShape(DesktopSidebarPanelRadius)
+    Box(
         modifier = modifier
             .width(sidebarWidth)
             .fillMaxHeight()
             .hoverable(hoverSource)
-            .zIndex(NuvioTokens.Z.navigation),
-        color = tokens.colors.background,
-        contentColor = tokens.colors.textPrimary,
+            .zIndex(NuvioTokens.Z.navigation)
+            .padding(start = DesktopSidebarInset, top = DesktopSidebarInset, bottom = DesktopSidebarInset),
     ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(panelShape)
+                .then(
+                    if (hazeState != null) {
+                        Modifier.hazeEffect(state = hazeState) { blurRadius = 30.dp }
+                    } else {
+                        Modifier
+                    },
+                )
+                .background(tokens.colors.background.copy(alpha = if (hazeState != null) 0.58f else 0.94f))
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color.White.copy(alpha = 0.07f), Color.White.copy(alpha = 0.02f), Color.Transparent),
+                    ),
+                )
+                .border(0.5.dp, Color.White.copy(alpha = 0.12f), panelShape),
+        )
         BoxWithConstraints(
             modifier = Modifier.fillMaxSize(),
         ) {
@@ -895,7 +920,7 @@ private fun DesktopSidebarProfileTrigger(
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 9.dp),
+                .padding(start = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
@@ -947,27 +972,45 @@ private fun DesktopSidebarItem(
     icon: @Composable (Color) -> Unit,
 ) {
     val tokens = MaterialTheme.nuvio
-    val contentColor = if (selected) tokens.colors.textPrimary else tokens.colors.textMuted
-    val iconColor = if (selected) tokens.colors.onAccent else contentColor
+    val interactionSource = remember { MutableInteractionSource() }
+    val hovered by interactionSource.collectIsHoveredAsState()
+    val contentColor by animateColorAsState(
+        targetValue = if (selected || hovered) tokens.colors.textPrimary else tokens.colors.textMuted,
+        animationSpec = tween(140),
+        label = "desktop_sidebar_item_content",
+    )
+    val iconColor = contentColor
+    // visionOS-style selection: a lifted translucent capsule behind the whole row, not a slab of
+    // accent colour; hover gets a lighter version of the same capsule.
+    val rowColor by animateColorAsState(
+        targetValue = when {
+            selected -> Color.White.copy(alpha = 0.14f)
+            hovered -> Color.White.copy(alpha = 0.06f)
+            else -> Color.Transparent
+        },
+        animationSpec = tween(160),
+        label = "desktop_sidebar_item_row",
+    )
 
     Surface(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
             .height(DesktopSidebarItemHeight)
-            .padding(horizontal = 6.dp, vertical = 4.dp),
-        color = Color.Transparent,
-        shape = RoundedCornerShape(16.dp),
+            .padding(horizontal = 6.dp, vertical = 3.dp),
+        color = rowColor,
+        shape = RoundedCornerShape(DesktopSidebarPanelRadius - 6.dp),
+        interactionSource = interactionSource,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 9.dp),
+                .padding(start = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Surface(
                 modifier = Modifier.size(DesktopSidebarIconSlotSize),
-                color = if (selected) tokens.colors.accent else Color.Transparent,
+                color = Color.Transparent,
                 shape = RoundedCornerShape(14.dp),
             ) {
                 Box(
