@@ -60,8 +60,28 @@
     return `${openers}${fixed}${before}${after}`.trim();
   };
 
+  // The other left-to-right hack: the closing bracket of a name at the end of the line is stored at
+  // the start. ")والآن فكروا بشأن قتل السيدة (مارلو" -> "والآن فكروا بشأن قتل السيدة (مارلو)".
+  // Also "(نص (اسم": two openers, the first one really closes the second.
+  const PAIRS = [["(", ")"], ["[", "]"], ["{", "}"], ["«", "»"]];
+  const fixLeadingBracket = line => {
+    if (!ARABIC.test(line)) return line;
+    const match = line.match(/^([.…!?؟،,:;]*)\s*([()\[\]{}«»])\s*([\s\S]*\S)$/);
+    if (!match) return line;
+    const [, punct, edge, rest] = match;
+    const pair = PAIRS.find(p => p.includes(edge));
+    const inner = [...rest].filter(c => pair.includes(c));
+    if (inner.length !== 1) return line;
+    // "(مارلو) والآن" is already right.
+    if (edge === pair[0] && inner[0] === pair[1]) return line;
+    const at = rest.indexOf(inner[0]);
+    const body = (rest.slice(0, at) + pair[0] + rest.slice(at + 1).replace(/^\s+/, "")).trimEnd();
+    const tail = body.match(/[.…!?؟،,:;]*$/)[0];
+    return `${body.slice(0, body.length - tail.length).trimEnd()}${pair[1]}${tail}${punct}`;
+  };
+
   const arabicLine = raw => {
-    const line = fixBrackets(raw.replace(BIDI_CONTROLS, "").trim());
+    const line = fixLeadingBracket(fixBrackets(raw.replace(BIDI_CONTROLS, "").trim()));
     if (!ARABIC.test(line)) return line;
     const match = line.match(/^([.…!?؟،,:;]+)\s*([\s\S]*\S)$/);
     return match && !ARABIC_EDGE_PUNCTUATION.test(match[2]) ? match[2] + match[1] : line;
