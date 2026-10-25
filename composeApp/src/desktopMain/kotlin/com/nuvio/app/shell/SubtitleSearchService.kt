@@ -80,6 +80,12 @@ internal object SubtitleSearchService {
 
     // ---- Public API ----------------------------------------------------------------------------
 
+    /** Sources with a saved key (Podnapisi needs none and isn't counted). */
+    fun configuredSources(): Int {
+        val keys = ShellSubtitleStore.prefs.value.keys
+        return listOf(keys.opensubtitlesApiKey, keys.subdlApiKey, keys.subsourceApiKey).count { it.isNotBlank() }
+    }
+
     suspend fun search(query: SubtitleQuery): List<SubtitleResult> = withContext(Dispatchers.IO) {
         val keys = ShellSubtitleStore.prefs.value.keys
         val jobs = coroutineScope {

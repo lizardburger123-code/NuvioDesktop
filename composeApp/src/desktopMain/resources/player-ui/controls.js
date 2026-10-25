@@ -1203,12 +1203,17 @@ const subtitleSelectionOptions = () => normalizeItems(state.subtitleOptionItems)
   index: Number(item.index) || 0,
 }));
 
-const subtitleLanguages = () => normalizeItems(state.subtitleLanguageItems).map(item => ({
-  key: String(item.key || "__unknown__"),
-  count: Math.max(0, Number(item.count) || 0),
-  label: String(item.label || ""),
-  selected: Boolean(item.isSelected),
-}));
+const ONLINE_SUBTITLE_KEY = "__online__";
+const subtitleLanguages = () => [
+  ...normalizeItems(state.subtitleLanguageItems).map(item => ({
+    key: String(item.key || "__unknown__"),
+    count: Math.max(0, Number(item.count) || 0),
+    label: String(item.label || ""),
+    selected: Boolean(item.isSelected),
+  })),
+  // Manual search on OpenSubtitles, SubDL, SubSource and Podnapisi (subtitle-search.js).
+  { key: ONLINE_SUBTITLE_KEY, count: 0, label: "Search online", selected: false, online: true },
+];
 
 const selectedSubtitleOption = options => options.find(option => option.selected) ||
   options.find(option => option.id === String(state.selectedSubtitleOptionId || ""));
@@ -1227,7 +1232,7 @@ const resetSubtitleSelectionState = () => {
 const appendSubtitleLanguageRow = item => {
   const row = document.createElement("button");
   row.type = "button";
-  row.className = `track-row subtitle-language-row${item.key === activeSubtitleLanguageKey ? " selected" : ""}`;
+  row.className = `track-row subtitle-language-row${item.online ? " subtitle-online-row" : ""}${item.key === activeSubtitleLanguageKey ? " selected" : ""}`;
   row.addEventListener("click", event => {
     event.stopPropagation();
     activeSubtitleLanguageKey = item.key;
@@ -1322,6 +1327,13 @@ const renderSubtitleSelectionRails = () => {
   languages.forEach(appendSubtitleLanguageRow);
   addonSubtitleList.textContent = "";
   const activeOptions = options.filter(option => option.languageKey === activeSubtitleLanguageKey);
+  if (activeSubtitleLanguageKey === ONLINE_SUBTITLE_KEY && typeof window.renderSubtitleSearch === "function") {
+    window.renderSubtitleSearch(addonSubtitleList);
+    subtitleStyleRail.hidden = false;
+    subtitleStyleRail.parentElement.classList.add("style-visible");
+    renderSubtitleStylePanel();
+    return;
+  }
   if (activeSubtitleLanguageKey === "__off__") {
     appendSubtitleOptionsEmptyState(state.noneLabel || "None");
   } else if (activeOptions.length > 0) {

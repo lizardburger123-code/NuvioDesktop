@@ -17,6 +17,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.1em;
+  font-family: var(--sub-font, "Cairo"), "Segoe UI", "Tahoma", "Arial", sans-serif;
   font-size: var(--sub-size, 7.5cqh);
   font-weight: var(--sub-weight, 600);
   line-height: 1.22;
@@ -65,7 +66,7 @@
 }
 
 .sub-line-rtl {
-  font-family: "Segoe UI", "Tahoma", "Arial", sans-serif;
+  font-family: inherit;
 }
 
 .sub-box.sub-tweening {
@@ -109,4 +110,138 @@
   background: #fff;
   color: #000;
   font-weight: 600;
+}
+
+/* Font picker and one-sentence-per-line toggle in the style panel. */
+.sub-font-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 6px;
+  margin: 6px 0 10px;
+}
+
+.sub-font-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 9px 11px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .07);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06);
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: background 160ms ease, box-shadow 160ms ease, transform 120ms ease;
+}
+
+.sub-font-option:hover { background: rgba(255, 255, 255, .13); }
+.sub-font-option:active { transform: scale(.96); }
+
+.sub-font-option.active {
+  background: rgba(255, 255, 255, .92);
+  color: #0b0b10;
+  box-shadow: none;
+}
+
+.sub-font-sample {
+  font-size: 18px;
+  line-height: 1.35;
+  align-self: stretch;
+  text-align: right;
+}
+
+.sub-font-name {
+  font-size: 11.5px;
+  opacity: .7;
+}
+
+.sub-split-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sub-split-toggle.active {
+  background: #fff;
+  color: #000;
+}
+
+/* Search online rail. */
+.subtitle-online-row {
+  margin-top: 8px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08);
+}
+
+.subsearch-head {
+  padding: 2px 2px 8px;
+}
+
+.subsearch-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.subsearch-mode {
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .08);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease, transform 120ms ease;
+}
+
+.subsearch-mode:hover { background: rgba(255, 255, 255, .16); }
+.subsearch-mode:active { transform: scale(.96); }
+.subsearch-mode.active { background: #fff; color: #000; font-weight: 600; }
+
+.subsearch-status {
+  padding: 4px 4px 10px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  opacity: .72;
+  text-wrap: pretty;
+}
+
+.subsearch-status.error { color: #ffb4b4; opacity: 1; }
+
+.subsearch-status.busy::before {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-inline-end: 8px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, .25);
+  border-top-color: #fff;
+  vertical-align: -1px;
+  animation: subsearch-spin 800ms linear infinite;
+}
+
+.subsearch-skeleton {
+  height: 54px;
+  margin: 0 0 6px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .06);
+}
+
+.subsearch-row.loading { opacity: .6; cursor: progress; }
+
+.subsearch-row .subtitle-option-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+@keyframes subsearch-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .subsearch-status.busy::before { animation: none; }
 }

@@ -26,5 +26,11 @@ internal sealed interface PresenceSnapshot {
         val isPlaying: Boolean,
         val positionMs: Long,
         val durationMs: Long,
+        val contentId: String? = null,
+        val contentType: String? = null,
+        val seasonNumber: Int? = null,
+        val episodeNumber: Int? = null,
+        val releaseInfo: String? = null,
+        val streamTitle: String? = null,
     ) : PresenceSnapshot
 }

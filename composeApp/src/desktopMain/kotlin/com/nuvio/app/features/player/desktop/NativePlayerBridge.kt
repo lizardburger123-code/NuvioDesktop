@@ -312,6 +312,8 @@ internal object NativePlayerBridge {
             "loading-indicator.js" to readResourceBytes("/player-ui/loading-indicator.js"),
             "subtitle-layer.js" to readResourceBytes("/player-ui/subtitle-layer.js"),
             "subtitle-layer.css" to readResourceBytes("/player-ui/subtitle-layer.css"),
+            "subtitle-search.js" to readResourceBytes("/player-ui/subtitle-search.js"),
+            "subtitle-fonts.css" to readResourceBytes("/player-ui/subtitle-fonts.css"),
             "vision.css" to readResourceBytes("/player-ui/vision.css"),
             "vision.js" to readResourceBytes("/player-ui/vision.js"),
             "vendor/gsap.min.js" to readResourceBytes("/player-ui/vendor/gsap.min.js"),
@@ -325,11 +327,34 @@ internal object NativePlayerBridge {
                 "/composeResources/nuvio.composeapp.generated.resources/font/jetbrains_sans_bold.ttf",
             ),
         )
+        // Subtitle fonts ship once, with the new interface (resources/app-ui/fonts).
+        SubtitleFontFiles.forEach { name ->
+            resourceBytesOrNull("/app-ui/fonts/$name")?.let { files["fonts/$name"] = it }
+        }
         val root = DesktopCache.installVersionedFiles("player-ui", files).toFile()
         return ControlsPageAssets(
             url = root.resolve("controls.html").toURI().toASCIIString(),
         )
     }
+
+    private val SubtitleFontFiles = listOf(
+        "Cairo.ttf",
+        "Tajawal-Regular.ttf",
+        "Tajawal-Bold.ttf",
+        "Tajawal-ExtraBold.ttf",
+        "Almarai-Regular.ttf",
+        "Almarai-Bold.ttf",
+        "Almarai-ExtraBold.ttf",
+        "NotoNaskhArabic.ttf",
+        "NotoKufiArabic.ttf",
+        "ReadexPro.ttf",
+        "Amiri-Regular.ttf",
+        "Amiri-Bold.ttf",
+        "Changa.ttf",
+        "IBMPlexSansArabic-Regular.ttf",
+        "IBMPlexSansArabic-SemiBold.ttf",
+        "IBMPlexSansArabic-Bold.ttf",
+    )
 
     private fun nativePlayerFontFaces(): String =
         """

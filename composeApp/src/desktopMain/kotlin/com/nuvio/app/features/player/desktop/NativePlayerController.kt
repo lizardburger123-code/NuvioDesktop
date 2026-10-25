@@ -33,6 +33,11 @@ import com.nuvio.app.features.autosync.AutoSyncPlayerController
 import com.nuvio.app.features.autosync.AutoSyncPreferencesRepository
 import com.nuvio.app.features.autosync.AutoSyncSubtitleCandidate
 import com.nuvio.app.features.autosync.DesktopAutoSync
+import com.nuvio.app.core.ui.AppPresenceState
+import com.nuvio.app.core.ui.PresenceSnapshot
+import com.nuvio.app.shell.ShellSubtitleStore
+import com.nuvio.app.shell.SubtitleQuery
+import com.nuvio.app.shell.SubtitleSearchService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -171,6 +176,7 @@ internal class NativePlayerController(
             terminalFailure?.let { message -> SwingUtilities.invokeLater { pending.onError(message) } }
             return
         }
+        DesktopSubtitleSearchUi.reset()
         log.d {
             "attach requested source=${sourceUrl.toPlaybackLogKey()} headers=${sourceHeaders.size} " +
                 "playWhenReady=$playWhenReady initialPositionMs=$initialPositionMs decoderPriority=$decoderPriority"
@@ -585,6 +591,16 @@ internal class NativePlayerController(
                 DesktopSubtitleLayoutStorage.savePosition(layout.x, value.toFloat())
             }
             "subtitleAutoSyncRun" -> runAutoSyncNow()
+            "subtitleFont" -> {
+                DesktopSubtitleFonts.names.getOrNull(value.toInt())?.let { font -> ShellSubtitleStore.update { it.copy(font = font) } }
+                pushControlsNow()
+            }
+            "subtitleSplitLines" -> {
+                ShellSubtitleStore.update { it.copy(splitLines = value != 0.0) }
+                pushControlsNow()
+            }
+            "subtitleSearchRun" -> runSubtitleSearch(value.toInt())
+            "subtitleSearchPick" -> pickSubtitleSearchResult(value.toInt())
             "subtitleResetPosition" -> {
                 DesktopSubtitleLayoutStorage.resetPosition()
                 updateControls(controlsState)
@@ -1164,7 +1180,84 @@ internal class NativePlayerController(
 
     private fun postAutoSyncNotice(message: String) {
         DesktopAutoSyncNotice.post(message)
-        updateControls(controlsState)
+        pushControlsNow()
+    }
+
+    /** Re-sends the controls even when only page-side state (notices, search, fonts) changed. */
+    private fun pushControlsNow() {
+        SwingUtilities.invokeLater {
+            if (releaseRequested) return@invokeLater
+            lastSentControlsStructureKey = null
+            updateControls(controlsState)
+        }
+    }
+
+    // ---- Online subtitle search ------------------------------------------------
+
+    private var subtitleSearchJob: Job? = null
+
+    /** mode 0: preferred languages, 1: Arabic, 2: English. */
+    private fun runSubtitleSearch(mode: Int) {
+        val playing = AppPresenceState.current.value as? PresenceSnapshot.Player
+        val prefs = ShellSubtitleStore.prefs.value
+        val languages = when (mode) {
+            1 -> listOf("ar")
+            2 -> listOf("en")
+            else -> prefs.languages.ifEmpty { listOf("ar", "en") }
+        }
+        val query = SubtitleQuery(
+            title = playing?.title?.takeIf { it.isNotBlank() } ?: controlsState.title,
+            imdbId = playing?.contentId?.takeIf { it.startsWith("tt") },
+            year = playing?.releaseInfo?.let { Regex("\\d{4}").find(it)?.value?.toIntOrNull() },
+            season = playing?.seasonNumber,
+            episode = playing?.episodeNumber,
+            releaseHint = playing?.streamTitle?.takeIf { it.isNotBlank() } ?: controlsState.streamTitle,
+            languages = languages,
+        )
+        subtitleSearchJob?.cancel()
+        DesktopSubtitleSearchUi.begin(mode)
+        pushControlsNow()
+        subtitleSearchJob = autoSyncScope.launch {
+            val outcome = try {
+                Result.success(SubtitleSearchService.search(query))
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (error: Throwable) {
+                Result.failure(error)
+            }
+            SwingUtilities.invokeLater {
+                outcome
+                    .onSuccess { results -> DesktopSubtitleSearchUi.finish(results, SubtitleSearchService.configuredSources()) }
+                    .onFailure { error -> DesktopSubtitleSearchUi.fail(error.message ?: "The search didn't work.") }
+                pushControlsNow()
+            }
+        }
+    }
+
+    private fun pickSubtitleSearchResult(index: Int) {
+        val result = DesktopSubtitleSearchUi.results.getOrNull(index) ?: return
+        DesktopSubtitleSearchUi.loading(index)
+        pushControlsNow()
+        autoSyncScope.launch {
+            val outcome = try {
+                Result.success(SubtitleSearchService.download(result))
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (error: Throwable) {
+                Result.failure(error)
+            }
+            SwingUtilities.invokeLater {
+                outcome.onSuccess { path ->
+                    DesktopSubtitleSearchUi.loaded(index)
+                    // Same path as an addon subtitle: shown at once, then auto-synced when that's on.
+                    startAutoSync(path.toString(), force = false)
+                    DesktopAutoSyncNotice.post("${result.providerName} subtitles loaded")
+                }.onFailure { error ->
+                    DesktopSubtitleSearchUi.loadFailed(index, error.message ?: "That subtitle couldn't be downloaded.")
+                }
+                pushControlsNow()
+            }
+        }
     }
 
     override fun selectSubtitleTrack(index: Int) {
@@ -2026,6 +2119,23 @@ private fun StringBuilder.appendSubtitleStyleJson(style: SubtitleStyleState) {
     appendJsonField("autoSyncNotice", DesktopAutoSyncNotice.message)
     append(',')
     appendJsonField("autoSyncNoticeId", DesktopAutoSyncNotice.id)
+    val shellPrefs = ShellSubtitleStore.prefs.value
+    append(',')
+    appendJsonField("font", shellPrefs.font)
+    append(',')
+    appendJsonField("fontIndex", DesktopSubtitleFonts.names.indexOf(shellPrefs.font))
+    append(',')
+    appendJsonField("splitLines", shellPrefs.splitLines)
+    append(',')
+    append("\"fonts\":[")
+    DesktopSubtitleFonts.names.forEachIndexed { index, name ->
+        if (index > 0) append(',')
+        append(name.toJsonString())
+    }
+    append(']')
+    append(',')
+    append("\"search\":")
+    appendSubtitleSearchJson()
     layout.x?.let {
         append(',')
         append("\"x\":").append(it)
@@ -2034,6 +2144,40 @@ private fun StringBuilder.appendSubtitleStyleJson(style: SubtitleStyleState) {
         append(',')
         append("\"y\":").append(it)
     }
+    append('}')
+}
+
+private fun StringBuilder.appendSubtitleSearchJson() {
+    val ui = DesktopSubtitleSearchUi
+    append('{')
+    appendJsonField("status", ui.status)
+    append(',')
+    appendJsonField("message", ui.message)
+    append(',')
+    appendJsonField("mode", ui.mode)
+    append(',')
+    appendJsonField("loadingIndex", ui.loadingIndex)
+    append(',')
+    appendJsonField("loadedIndex", ui.loadedIndex)
+    append(',')
+    appendJsonField("revision", ui.revision)
+    append(',')
+    append("\"results\":[")
+    ui.results.forEachIndexed { index, item ->
+        if (index > 0) append(',')
+        append('{')
+        appendJsonField("provider", item.providerName)
+        append(',')
+        appendJsonField("language", item.language)
+        append(',')
+        appendJsonField("release", item.release)
+        append(',')
+        appendJsonField("downloads", item.downloads)
+        append(',')
+        appendJsonField("hi", item.hearingImpaired)
+        append('}')
+    }
+    append(']')
     append('}')
 }
 

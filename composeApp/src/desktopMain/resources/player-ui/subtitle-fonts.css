@@ -1,0 +1,17 @@
+/* Subtitle fonts (SIL Open Font License; licences in the app's fonts/licenses folder). */
+@font-face { font-family: "Cairo"; src: url("fonts/Cairo.ttf"); font-weight: 200 1000; font-display: block; }
+@font-face { font-family: "Tajawal"; src: url("fonts/Tajawal-Regular.ttf"); font-weight: 400; font-display: block; }
+@font-face { font-family: "Tajawal"; src: url("fonts/Tajawal-Bold.ttf"); font-weight: 600 700; font-display: block; }
+@font-face { font-family: "Tajawal"; src: url("fonts/Tajawal-ExtraBold.ttf"); font-weight: 800; font-display: block; }
+@font-face { font-family: "Almarai"; src: url("fonts/Almarai-Regular.ttf"); font-weight: 400; font-display: block; }
+@font-face { font-family: "Almarai"; src: url("fonts/Almarai-Bold.ttf"); font-weight: 600 700; font-display: block; }
+@font-face { font-family: "Almarai"; src: url("fonts/Almarai-ExtraBold.ttf"); font-weight: 800; font-display: block; }
+@font-face { font-family: "Noto Naskh Arabic"; src: url("fonts/NotoNaskhArabic.ttf"); font-weight: 400 700; font-display: block; }
+@font-face { font-family: "Noto Kufi Arabic"; src: url("fonts/NotoKufiArabic.ttf"); font-weight: 100 900; font-display: block; }
+@font-face { font-family: "Readex Pro"; src: url("fonts/ReadexPro.ttf"); font-weight: 160 700; font-display: block; }
+@font-face { font-family: "Amiri"; src: url("fonts/Amiri-Regular.ttf"); font-weight: 400; font-display: block; }
+@font-face { font-family: "Amiri"; src: url("fonts/Amiri-Bold.ttf"); font-weight: 600 700; font-display: block; }
+@font-face { font-family: "Changa"; src: url("fonts/Changa.ttf"); font-weight: 200 800; font-display: block; }
+@font-face { font-family: "IBM Plex Sans Arabic"; src: url("fonts/IBMPlexSansArabic-Regular.ttf"); font-weight: 400; font-display: block; }
+@font-face { font-family: "IBM Plex Sans Arabic"; src: url("fonts/IBMPlexSansArabic-SemiBold.ttf"); font-weight: 600; font-display: block; }
+@font-face { font-family: "IBM Plex Sans Arabic"; src: url("fonts/IBMPlexSansArabic-Bold.ttf"); font-weight: 700; font-display: block; }

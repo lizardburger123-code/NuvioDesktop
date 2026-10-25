@@ -229,11 +229,12 @@ internal class ShellRpc(private val host: ShellHost) {
         topicJobs.values.forEach { it.cancel() }
         topicJobs.clear()
         val state = ProfileRepository.state.value
-        val active = state.profiles.firstOrNull { it.profileIndex == state.activeProfileIndex }
+        val activeIndex = ProfileRepository.activeProfileId
+        val active = state.activeProfile ?: state.profiles.firstOrNull { it.profileIndex == activeIndex }
         WatchLaterStore.ensureLoaded()
         return buildJsonObject {
             put("profile", buildJsonObject {
-                put("id", state.activeProfileIndex)
+                put("id", active?.profileIndex ?: activeIndex)
                 put("name", active?.name?.ifBlank { null } ?: "You")
             })
             put("profiles", buildJsonArray {

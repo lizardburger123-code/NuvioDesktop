@@ -34,6 +34,58 @@
     return match && !ARABIC_EDGE_PUNCTUATION.test(match[2]) ? match[2] + match[1] : line;
   };
 
+  // ---- One sentence per line (MBC style) -----------------------------------
+  //
+  // "ماذا تريد هل... لا لست هنا" becomes two lines, "ماذا تريد هل..." over "لا لست هنا".
+  // Splits after sentence punctuation and before dialogue dashes. Latin text only splits when
+  // the next sentence starts with a capital, so "I was... thinking" stays together.
+  const ABBREVIATION = /(?:^|\s)(?:mr|mrs|ms|dr|st|jr|sr|vs|etc|lt|col|gen|prof|capt|sgt|mt|no)\.$/i;
+  const INITIAL = /(?:^|\s)\p{Lu}\.$/u;
+  const LATIN_LOWER = /^[a-z\u00df-\u00ff]/;
+  const HAS_WORD = /[\p{L}\p{N}]{2,}|[\p{Script=Arabic}]/u;
+
+  const splitSentences = line => {
+    // Punctuation glued to the next Arabic word ("هل ...لا") belongs to the end of the previous sentence.
+    const text = line.replace(/\s+([.!?؟…]+)(?=\p{Script=Arabic})/gu, "$1 ");
+    const pieces = [];
+    let start = 0;
+    const breaks = /([.!?؟…]+)(\s+)(?=\S)|(\s+)(?=[-–—]\s*\S)/gu;
+    let match;
+    while ((match = breaks.exec(text))) {
+      const isDash = match[3] !== undefined;
+      const cut = isDash ? match.index : match.index + match[1].length;
+      const resume = isDash ? match.index + match[3].length : cut + match[2].length;
+      const head = text.slice(start, cut).trim();
+      const rest = text.slice(resume);
+      if (!head || !HAS_WORD.test(head)) continue;
+      if (isDash) {
+        // "- Hi - Bye": a dash mid-line only starts a new speaker after a finished sentence or when the line opened with one.
+        if (!/^[-–—]/.test(text.trim()) && !/[.!?؟…]$/.test(head)) continue;
+      } else {
+        if (ABBREVIATION.test(head) || INITIAL.test(head)) continue;
+        if (!/\p{Script=Arabic}/u.test(rest.slice(0, 3)) && LATIN_LOWER.test(rest)) continue;
+      }
+      pieces.push(head);
+      start = resume;
+    }
+    pieces.push(text.slice(start).trim());
+    // Never leave a fragment without a word on its own line.
+    return pieces.reduce((out, piece) => {
+      if (!piece) return out;
+      if (out.length && !HAS_WORD.test(piece)) out[out.length - 1] += ` ${piece}`;
+      else out.push(piece);
+      return out;
+    }, []);
+  };
+
+  // mpv hands over plain text, but some files still carry markup.
+  const cleanText = text => text
+    .replace(/\r\n?/g, "\n")
+    .replace(/\\N/g, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/?(?:i|b|u|s|font)\b[^>]*>/gi, "")
+    .replace(/\{\\[^}]*\}/g, "");
+
   const layer = document.createElement("div");
   layer.className = "sub-layer";
   layer.setAttribute("aria-live", "off");
@@ -137,25 +189,36 @@
     box.style.setProperty("--sub-color", color);
     box.style.setProperty("--sub-outline", outlineOn ? outlineColor : "transparent");
     box.style.setProperty("--sub-weight", style.bold ? "700" : "600");
+    box.style.setProperty("--sub-font", `"${String(currentFont()).replace(/["\\]/g, "")}"`);
   };
+
+  const subtitleStyle = () => (typeof state !== "undefined" && state.subtitleStyle) || {};
+  let localSplit = null; // optimistic value until the next controls update
+  let localFont = null;
+  const splitLinesEnabled = () => (localSplit !== null ? localSplit : subtitleStyle().splitLines !== false);
+  const currentFont = () => localFont || subtitleStyle().font || "Cairo";
 
   const render = () => {
     const showText = overlayMode === true && !bitmapSubtitles && lastText.trim().length > 0;
-    const signature = showText ? lastText : "";
+    const signature = showText ? `${splitLinesEnabled() ? 1 : 0}|${lastText}` : "";
     if (signature === renderedSignature) return;
     renderedSignature = signature;
     box.replaceChildren();
     box.dataset.empty = showText ? "false" : "true";
     if (!showText) return;
-    for (const raw of lastText.replace(/\r\n?/g, "\n").split("\n")) {
-      const isRtl = RTL_SCRIPT.test(raw);
-      const text = isRtl ? arabicLine(raw) : raw.replace(BIDI_CONTROLS, "");
-      if (!text.trim()) continue;
-      const line = document.createElement("div");
-      line.className = isRtl ? "sub-line sub-line-rtl" : "sub-line";
-      line.dir = isRtl ? "rtl" : "auto";
-      line.textContent = text;
-      box.appendChild(line);
+    const split = splitLinesEnabled();
+    for (const raw of cleanText(lastText).split("\n")) {
+      const sentences = split ? splitSentences(raw.replace(BIDI_CONTROLS, "")) : [raw];
+      for (const sentence of sentences) {
+        const isRtl = RTL_SCRIPT.test(sentence);
+        const text = isRtl ? arabicLine(sentence) : sentence.replace(BIDI_CONTROLS, "");
+        if (!text.trim()) continue;
+        const line = document.createElement("div");
+        line.className = isRtl ? "sub-line sub-line-rtl" : "sub-line";
+        line.dir = isRtl ? "rtl" : "auto";
+        line.textContent = text;
+        box.appendChild(line);
+      }
     }
   };
 
@@ -221,9 +284,14 @@
       layout = incoming;
       applyPosition(alignChanged);
     }
+    localSplit = null;
+    localFont = null;
     applyStyle();
     renderAlignmentControls();
+    renderFontControls();
     placeLayer();
+    renderedSignature = "\u0001";
+    render();
   });
 
   window.addEventListener("resize", () => {
@@ -337,6 +405,77 @@
     styleCard.insertBefore(section, bottomOffsetSection ? bottomOffsetSection.nextSibling : styleCard.firstChild);
   }
 
+  const fontSection = document.createElement("div");
+  fontSection.className = "style-section sub-font-section";
+  fontSection.innerHTML = `
+    <span class="style-label">Font</span>
+    <div class="sub-font-grid" role="radiogroup" aria-label="Subtitle font"></div>
+    <div class="sub-split-row">
+      <span class="style-label">One sentence per line</span>
+      <button class="panel-button sub-split-toggle" type="button" aria-pressed="true">On</button>
+    </div>
+  `;
+  if (styleCard) styleCard.insertBefore(fontSection, section.nextSibling);
+  const fontGrid = fontSection.querySelector(".sub-font-grid");
+  const splitToggle = fontSection.querySelector(".sub-split-toggle");
+  let fontSignature = "";
+
+  const renderFontControls = () => {
+    const fonts = Array.isArray(subtitleStyle().fonts) ? subtitleStyle().fonts : [];
+    const signature = fonts.join("|");
+    if (signature !== fontSignature) {
+      fontSignature = signature;
+      fontGrid.replaceChildren();
+      fonts.forEach((name, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "sub-font-option";
+        button.dataset.font = name;
+        button.dataset.index = String(index);
+        button.setAttribute("role", "radio");
+        const sample = document.createElement("span");
+        sample.className = "sub-font-sample";
+        sample.dir = "rtl";
+        sample.style.fontFamily = `"${name}", sans-serif`;
+        sample.textContent = "ماذا تريد؟";
+        const label = document.createElement("span");
+        label.className = "sub-font-name";
+        label.textContent = name;
+        button.append(sample, label);
+        fontGrid.appendChild(button);
+      });
+    }
+    const active = currentFont();
+    fontGrid.querySelectorAll(".sub-font-option").forEach(button => {
+      const on = button.dataset.font === active;
+      button.classList.toggle("active", on);
+      button.setAttribute("aria-checked", on ? "true" : "false");
+    });
+    const split = splitLinesEnabled();
+    splitToggle.textContent = split ? "On" : "Off";
+    splitToggle.setAttribute("aria-pressed", split ? "true" : "false");
+    splitToggle.classList.toggle("active", split);
+  };
+
+  fontSection.addEventListener("click", event => {
+    event.stopPropagation();
+    const option = event.target.closest(".sub-font-option");
+    if (option) {
+      localFont = option.dataset.font;
+      applyStyle();
+      renderFontControls();
+      if (typeof send === "function") send("subtitleFont", Number(option.dataset.index));
+      return;
+    }
+    if (event.target.closest(".sub-split-toggle")) {
+      localSplit = !splitLinesEnabled();
+      renderFontControls();
+      renderedSignature = "\u0001";
+      render();
+      if (typeof send === "function") send("subtitleSplitLines", localSplit ? 1 : 0);
+    }
+  });
+
   const renderAlignmentControls = () => {
     section.querySelectorAll(".sub-align-option").forEach(button => {
       const active = button.dataset.align === layout.align;
@@ -367,4 +506,5 @@
   applyStyle();
   applyPosition(false);
   renderAlignmentControls();
+  renderFontControls();
 })();
