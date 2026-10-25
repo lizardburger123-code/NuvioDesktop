@@ -1,0 +1,112 @@
+/* HTML subtitle layer: sized to the video picture so cqw / cqh follow the picture. */
+.sub-layer {
+  position: absolute;
+  z-index: 1;
+  container-type: size;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.sub-box {
+  position: absolute;
+  left: 50%;
+  top: 90%;
+  transform: translate(-50%, -100%);
+  width: max-content;
+  max-width: 92cqw;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1em;
+  font-size: var(--sub-size, 7.5cqh);
+  font-weight: var(--sub-weight, 600);
+  line-height: 1.22;
+  color: var(--sub-color, #fff);
+  text-align: center;
+  -webkit-text-stroke: 0.11em var(--sub-outline, rgba(0, 0, 0, .92));
+  paint-order: stroke fill;
+  text-shadow: 0 0.04em 0.18em rgba(0, 0, 0, .55);
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.sub-box[data-empty="true"] {
+  pointer-events: none;
+  visibility: hidden;
+}
+
+/* MBC 2: anchored by the right edge, every line flush right. */
+.sub-box[data-align="right"] {
+  transform: translate(-100%, -100%);
+  text-align: right;
+  align-items: flex-end;
+}
+
+.sub-box[data-align="left"] {
+  transform: translate(0, -100%);
+  text-align: left;
+  align-items: flex-start;
+}
+
+.sub-box[data-align="center"] {
+  align-items: center;
+}
+
+.sub-line {
+  unicode-bidi: plaintext;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sub-box[data-align="right"] .sub-line {
+  text-align: right;
+}
+
+.sub-line-rtl {
+  font-family: "Segoe UI", "Tahoma", "Arial", sans-serif;
+}
+
+.sub-box.sub-tweening {
+  transition:
+    left 420ms cubic-bezier(.2, .8, .2, 1),
+    top 420ms cubic-bezier(.2, .8, .2, 1),
+    max-width 420ms cubic-bezier(.2, .8, .2, 1);
+}
+
+.sub-box.sub-dragging {
+  cursor: grabbing;
+  outline: 1px dashed rgba(255, 255, 255, .35);
+  outline-offset: 0.2em;
+  border-radius: 0.2em;
+}
+
+/* Alignment control in the subtitle style panel. */
+.sub-align-segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 8px;
+}
+
+.sub-align-option {
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .08);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.sub-align-option:hover {
+  background: rgba(255, 255, 255, .16);
+}
+
+.sub-align-option.active {
+  background: #fff;
+  color: #000;
+  font-weight: 600;
+}

@@ -310,6 +310,8 @@ internal object NativePlayerBridge {
             "party.css" to readResourceBytes("/player-ui/party.css"),
             "party.js" to readResourceBytes("/player-ui/party.js"),
             "loading-indicator.js" to readResourceBytes("/player-ui/loading-indicator.js"),
+            "subtitle-layer.js" to readResourceBytes("/player-ui/subtitle-layer.js"),
+            "subtitle-layer.css" to readResourceBytes("/player-ui/subtitle-layer.css"),
             "fonts/jetbrains_sans_regular.ttf" to readResourceBytes(
                 "/composeResources/nuvio.composeapp.generated.resources/font/jetbrains_sans_regular.ttf",
             ),

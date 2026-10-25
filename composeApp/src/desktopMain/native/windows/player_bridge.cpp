@@ -48,7 +48,14 @@ typedef enum mpv_format {
 typedef enum mpv_event_id {
     MPV_EVENT_NONE = 0,
     MPV_EVENT_SHUTDOWN = 1,
+    MPV_EVENT_PROPERTY_CHANGE = 22,
 } mpv_event_id;
+
+typedef struct mpv_event_property {
+    const char *name;
+    mpv_format format;
+    void *data;
+} mpv_event_property;
 
 typedef struct mpv_event {
     mpv_event_id event_id;
@@ -63,6 +70,7 @@ namespace {
 HMODULE gModule = nullptr;
 constexpr UINT WM_NUVIO_TASK = WM_APP + 0x4E50;
 constexpr UINT_PTR NUVIO_TIMER_ID = 0x4E50;
+constexpr uint64_t kSubTextObserverId = 0x5354;
 
 // Caps on waiting for the player's own UI thread during teardown. Exceeding these means that
 // thread is wedged; shutdown gives up rather than blocking the caller forever.
@@ -527,6 +535,7 @@ struct MpvApi {
     using mpv_free_fn = void (*)(void *);
     using mpv_wait_event_fn = mpv_event *(*)(mpv_handle *, double);
     using mpv_wakeup_fn = void (*)(mpv_handle *);
+    using mpv_observe_property_fn = int (*)(mpv_handle *, uint64_t, const char *, mpv_format);
 
     HMODULE library = nullptr;
     std::once_flag loadOnce;
@@ -545,6 +554,7 @@ struct MpvApi {
     mpv_free_fn freeValue = nullptr;
     mpv_wait_event_fn waitEvent = nullptr;
     mpv_wakeup_fn wakeup = nullptr;
+    mpv_observe_property_fn observeProperty = nullptr;
 
     void ensureLoaded() {
         std::call_once(loadOnce, [this]() { load(); });
@@ -604,6 +614,7 @@ struct MpvApi {
         freeValue = loadSymbol<mpv_free_fn>("mpv_free");
         waitEvent = loadSymbol<mpv_wait_event_fn>("mpv_wait_event");
         wakeup = loadSymbol<mpv_wakeup_fn>("mpv_wakeup");
+        observeProperty = loadSymbol<mpv_observe_property_fn>("mpv_observe_property");
     }
 
     template <typename T>
@@ -1222,6 +1233,18 @@ public:
         return tracksJsonForType("sub");
     }
 
+    // Bitmap subtitle formats cannot be re-drawn as HTML text; mpv must draw them.
+    bool selectedSubtitleIsBitmap() {
+        std::string codec = stringProperty("current-tracks/sub/codec", "");
+        for (char &ch : codec) ch = (char)std::tolower((unsigned char)ch);
+        return codec.find("pgs") != std::string::npos ||
+               codec.find("hdmv") != std::string::npos ||
+               codec.find("dvb") != std::string::npos ||
+               codec.find("dvd") != std::string::npos ||
+               codec.find("vobsub") != std::string::npos ||
+               codec.find("xsub") != std::string::npos;
+    }
+
     void selectAudioTrackId(int trackId) {
         std::lock_guard<std::mutex> lock(mpvMutex);
         if (!mpv) return;
@@ -1412,6 +1435,8 @@ private:
     jmethodID eventMethod = nullptr;
 
     std::atomic_bool controlsWebReady = false;
+    std::mutex subtitleTextMutex;
+    std::string lastSubtitleText;
     std::atomic_bool layoutSubviewsPending = false;
     std::mutex controlsMutex;
     std::string pendingControlsJson;
@@ -1797,6 +1822,8 @@ private:
             if (initResult < 0) {
                 throw std::runtime_error(std::string("mpv_initialize failed: ") + api.errorText(initResult));
             }
+            // Feed the HTML subtitle layer: plain current subtitle text (ASS tags stripped).
+            (void)api.observeProperty(mpv, kSubTextObserverId, "sub-text", MPV_FORMAT_STRING);
 
             std::vector<const char *> loadCommand = {"loadfile", sourceUrl.c_str()};
             std::string loadOptions;
@@ -1901,9 +1928,36 @@ private:
                << ",loading:" << (loading ? "true" : "false")
                << ",audioTracks:" << audioTracks
                << ",subtitleTracks:" << subtitleTracks
+               << ",videoAspect:" << doubleProperty("video-params/aspect", 0.0)
+               << ",subtitleBitmap:" << (selectedSubtitleIsBitmap() ? "true" : "false")
                << "})";
         std::wstring wideScript = toWide(script.str());
         webView->ExecuteScript(wideScript.c_str(), nullptr);
+    }
+
+    void pushSubtitleText(const std::string &text) {
+        {
+            std::lock_guard<std::mutex> lock(subtitleTextMutex);
+            if (text == lastSubtitleText) return;
+            lastSubtitleText = text;
+        }
+        auto self = shared_from_this();
+        postUiTask([self, text]() {
+            if (!self->webView || !self->controlsWebReady.load()) return;
+            std::wstring script =
+                L"window.playerSubtitleText&&window.playerSubtitleText(" + javaScriptStringLiteral(text) + L")";
+            self->webView->ExecuteScript(script.c_str(), nullptr);
+        });
+    }
+
+    void resendSubtitleText() {
+        std::string text;
+        {
+            std::lock_guard<std::mutex> lock(subtitleTextMutex);
+            text = lastSubtitleText;
+            lastSubtitleText = std::string("\x01");
+        }
+        pushSubtitleText(text);
     }
 
     void handleWebMessage(const std::wstring &messageJson) {
@@ -1911,10 +1965,17 @@ private:
         if (type.empty()) return;
         double value = extractJsonNumber(messageJson, L"value", 0.0);
 
+        if (type == "subtitleOverlayMode") {
+            // 1 = page draws text subtitles itself, so hide mpv's; 0 = mpv draws (bitmap subs).
+            setStringProperty("sub-visibility", value >= 0.5 ? "no" : "yes");
+            return;
+        }
+
         if (type == "controlsReady") {
             controlsWebReady.store(true);
             flushPendingControlsJsonIfReady();
             syncControls();
+            resendSubtitleText();
             return;
         }
         if (type == "selectSubtitleTrack") {
@@ -2022,6 +2083,15 @@ private:
             if (!event) continue;
             if (event->event_id == MPV_EVENT_SHUTDOWN) {
                 return;
+            }
+            if (event->event_id == MPV_EVENT_PROPERTY_CHANGE && event->reply_userdata == kSubTextObserverId) {
+                std::string text;
+                auto *property = static_cast<mpv_event_property *>(event->data);
+                if (property && property->format == MPV_FORMAT_STRING && property->data) {
+                    const char *value = *static_cast<const char **>(property->data);
+                    if (value) text = value;
+                }
+                pushSubtitleText(text);
             }
         }
     }

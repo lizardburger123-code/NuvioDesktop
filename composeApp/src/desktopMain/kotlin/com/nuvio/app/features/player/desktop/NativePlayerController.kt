@@ -562,6 +562,22 @@ internal class NativePlayerController(
                 }
             }
             "dragWindow" -> NativePlayerBridge.beginWindowDrag(handle)
+            "subtitleAlign" -> {
+                DesktopSubtitleLayoutStorage.saveAlign(DesktopSubtitleLayout.alignFromCode(value.toInt()))
+                updateControls(controlsState)
+            }
+            "subtitlePosX" -> {
+                val layout = DesktopSubtitleLayoutStorage.load()
+                DesktopSubtitleLayoutStorage.savePosition(value.toFloat(), layout.y)
+            }
+            "subtitlePosY" -> {
+                val layout = DesktopSubtitleLayoutStorage.load()
+                DesktopSubtitleLayoutStorage.savePosition(layout.x, value.toFloat())
+            }
+            "subtitleResetPosition" -> {
+                DesktopSubtitleLayoutStorage.resetPosition()
+                updateControls(controlsState)
+            }
             "volumeChange" -> setFallbackVolume(value.toFloat())
             "volumeChangeTemporary" -> setTemporaryVolume(value.toFloat())
             "setPlaybackSpeed" -> {
@@ -1881,6 +1897,17 @@ private fun StringBuilder.appendSubtitleStyleJson(style: SubtitleStyleState) {
     appendJsonField("fontSizeSp", style.fontSizeSp)
     append(',')
     appendJsonField("bottomOffset", style.bottomOffset)
+    val layout = DesktopSubtitleLayoutStorage.load()
+    append(',')
+    appendJsonField("align", layout.align)
+    layout.x?.let {
+        append(',')
+        append("\"x\":").append(it)
+    }
+    layout.y?.let {
+        append(',')
+        append("\"y\":").append(it)
+    }
     append('}')
 }
 
