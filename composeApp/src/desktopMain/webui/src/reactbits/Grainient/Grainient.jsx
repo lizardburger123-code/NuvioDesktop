@@ -275,6 +275,7 @@ const Grainient = ({
   intro = true,
   lightMode = false,
   dpr,
+  fps = 0,
   className = '',
   style,
   ...rest
@@ -304,7 +305,8 @@ const Grainient = ({
     clickSwirl,
     intro,
     lightMode,
-    dpr
+    dpr,
+    fps
   };
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
@@ -512,10 +514,17 @@ const Grainient = ({
       }
     };
 
+    // Nuvio: an optional frame cap (the field drifts slowly, so 30fps reads the same and halves the
+    // GPU work under every glass surface) and a pause while screens transition.
+    let held = false;
     const frame = now => {
       raf = 0;
-      if (!visible || document.hidden) return;
+      if (!visible || document.hidden || held) return;
       const s = settingsRef.current;
+      if (s.fps > 0 && last && now - last < 1000 / s.fps - 3) {
+        raf = requestAnimationFrame(frame);
+        return;
+      }
       const dt = last ? clamp((now - last) / 1000, 0.001, 0.05) : 1 / 60;
       last = now;
       if (!reduce) time += dt * s.speed * 0.16;
@@ -534,8 +543,18 @@ const Grainient = ({
     };
 
     function wake() {
-      if (!raf && visible && !document.hidden) raf = requestAnimationFrame(frame);
+      if (!raf && visible && !document.hidden && !held) raf = requestAnimationFrame(frame);
     }
+    const onTransition = event => {
+      held = Boolean(event.detail);
+      if (held) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      } else {
+        last = performance.now();
+        wake();
+      }
+    };
 
     const locate = event => {
       const rect = container.getBoundingClientRect();
@@ -593,6 +612,7 @@ const Grainient = ({
     window.addEventListener('pointerdown', onPointerDown, { passive: true });
     document.documentElement.addEventListener('pointerleave', onPointerLeave);
     document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('nuvio:transition', onTransition);
     resize();
     wakeRef.current = wake;
 
@@ -605,6 +625,7 @@ const Grainient = ({
       window.removeEventListener('pointerdown', onPointerDown);
       document.documentElement.removeEventListener('pointerleave', onPointerLeave);
       document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('nuvio:transition', onTransition);
       gl.deleteTexture(target);
       gl.deleteFramebuffer(buffer);
       gl.deleteVertexArray(vao);

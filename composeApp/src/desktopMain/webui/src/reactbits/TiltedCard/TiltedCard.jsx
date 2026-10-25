@@ -233,7 +233,10 @@ const TiltedCard = ({
       const ry = state.ry;
       const radiansX = (rx * Math.PI) / 180;
       const radiansY = (ry * Math.PI) / 180;
-      body.style.transform = `translate3d(0, ${state.ty.toFixed(2)}px, 0) rotateX(${rx.toFixed(3)}deg) rotateY(${(ry + state.flip).toFixed(3)}deg) scale(${scale.toFixed(4)})`;
+      // Nuvio: at rest drop the 3D transform so idle cards don't each hold a compositor layer.
+      const resting = !busy && Math.abs(rx) < 0.005 && Math.abs(ry) < 0.005 && Math.abs(state.ty) < 0.01
+        && Math.abs(state.flip) < 0.01 && Math.abs(scale - 1) < 0.0005;
+      body.style.transform = resting ? '' : `translate3d(0, ${state.ty.toFixed(2)}px, 0) rotateX(${rx.toFixed(3)}deg) rotateY(${(ry + state.flip).toFixed(3)}deg) scale(${scale.toFixed(4)})`;
       body.style.opacity = opacity < 1 ? smoother(opacity).toFixed(3) : '';
       body.style.setProperty('--tc-px', (Math.sin(radiansY) * s.parallax).toFixed(4));
       body.style.setProperty('--tc-py', (-Math.sin(radiansX) * s.parallax).toFixed(4));
@@ -253,7 +256,7 @@ const TiltedCard = ({
         const offsetY = 12 + 16 * state.lift + Math.sin(radiansX) * 18 - state.ty * 0.6;
         const turn = Math.abs(Math.cos((state.flip * Math.PI) / 180));
         const spread = scale * (0.86 + 0.04 * state.lift);
-        shade.style.transform = `translate3d(${offsetX.toFixed(2)}px, ${offsetY.toFixed(2)}px, 0) scale(${(spread * (0.2 + 0.8 * turn)).toFixed(4)}, ${spread.toFixed(4)})`;
+        shade.style.transform = `translate(${offsetX.toFixed(2)}px, ${offsetY.toFixed(2)}px) scale(${(spread * (0.2 + 0.8 * turn)).toFixed(4)}, ${spread.toFixed(4)})`;
         shade.style.opacity = (strength * (0.6 + 0.4 * state.lift)).toFixed(3);
       }
 

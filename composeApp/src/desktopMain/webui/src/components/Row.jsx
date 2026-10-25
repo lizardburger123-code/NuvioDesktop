@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LuChevronLeft, LuChevronRight } from "react-icons/lu";
+import { useScreenActive } from "../lib/screen.js";
 import "./Row.css";
 
 /** A titled horizontal shelf. Children render only once the row nears the viewport. */
@@ -8,6 +9,7 @@ export default function Row({ title, subtitle, action, children, className = "",
   const trackRef = useRef(null);
   const [near, setNear] = useState(false);
   const [edges, setEdges] = useState({ start: true, end: false });
+  const active = useScreenActive();
 
   useEffect(() => {
     const node = rowRef.current;
@@ -25,17 +27,23 @@ export default function Row({ title, subtitle, action, children, className = "",
   const measure = useCallback(() => {
     const track = trackRef.current;
     if (!track) return;
-    setEdges({ start: track.scrollLeft < 8, end: track.scrollLeft + track.clientWidth >= track.scrollWidth - 8 });
+    const start = track.scrollLeft < 8;
+    const end = track.scrollLeft + track.clientWidth >= track.scrollWidth - 8;
+    // Scroll fires every frame: only re-render when an arrow actually changes state.
+    setEdges(prev => (prev.start === start && prev.end === end ? prev : { start, end }));
   }, []);
 
+  // Measure when the row (or its content) resizes. Never while the screen is parked: reading
+  // layout there would force a hidden screen to render.
   useEffect(() => {
-    measure();
     const track = trackRef.current;
-    if (!track) return undefined;
+    if (!track || !active) return undefined;
+    measure();
     const observer = new ResizeObserver(measure);
     observer.observe(track);
+    if (track.firstElementChild) observer.observe(track.firstElementChild);
     return () => observer.disconnect();
-  }, [measure, near, children]);
+  }, [measure, near, active]);
 
   const page = direction => {
     const track = trackRef.current;

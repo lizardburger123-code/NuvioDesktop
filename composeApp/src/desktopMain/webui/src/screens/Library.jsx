@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
 import { useApp } from "../AppContext.jsx";
 import { ContinueCard, PosterCard } from "../components/Cards.jsx";
 import { navigate } from "../lib/router.js";
+import { useSegmentPill } from "../lib/motion.js";
 import "./Library.css";
 
 const TABS = [
@@ -21,6 +22,8 @@ export default function Library({ params }) {
   const library = useTopic("library", { items: [], cloud: [] });
   const continueWatching = useTopic("continue", []);
   const [sort, setSort] = useState("recent");
+  const tabsRef = useRef(null);
+  useSegmentPill(tabsRef);
 
   useEffect(() => { call("library.subscribe").catch(() => {}); }, []);
 
@@ -39,7 +42,7 @@ export default function Library({ params }) {
       <section className="library-head">
         <h1 className="t-page">Library</h1>
         <div className="library-bar">
-          <div className="seg glass-flat" role="tablist" aria-label="Library">
+          <div ref={tabsRef} className="seg glass-flat" role="tablist" aria-label="Library">
             {TABS.map(t => (
               <button key={t.id} role="tab" aria-pressed={tab === t.id} onClick={() => navigate("library", { tab: t.id }, { replace: true })}>
                 {t.label} <span className="library-count num">{counts[t.id]}</span>

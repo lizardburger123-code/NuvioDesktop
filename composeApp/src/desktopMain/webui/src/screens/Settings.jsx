@@ -7,6 +7,7 @@ import { call } from "../bridge.js";
 import { useApp } from "../AppContext.jsx";
 import { PRESETS, applyAppearance, parseHex } from "../theme/appearance.js";
 import { navigate } from "../lib/router.js";
+import { useSegmentPill } from "../lib/motion.js";
 import { initials } from "../components/TopBar.jsx";
 import "./Settings.css";
 
@@ -120,6 +121,8 @@ const resizeImage = file => new Promise((resolve, reject) => {
 
 function Appearance() {
   const { appearance, setAppearance, toast } = useApp();
+  const wallSeg = useRef(null);
+  useSegmentPill(wallSeg);
   const colors = appearance.colors || PRESETS[0].colors;
   const [saved, stamp] = useSavedStamp();
   const fileRef = useRef(null);
@@ -172,7 +175,7 @@ function Appearance() {
       </Panel>
 
       <Panel title="Wallpaper" description="The picture behind Home and Search, tinted with your colours. Featured artwork rotates through the titles on Home; a title's page always shows that title's artwork.">
-        <div className="seg glass-flat" role="group" aria-label="Wallpaper">
+        <div ref={wallSeg} className="seg glass-flat" role="group" aria-label="Wallpaper">
           {[["featured", "Featured artwork"], ["custom", "My image"], ["none", "Gradient only"]].map(([id, label]) => (
             <button key={id} aria-pressed={mode === id} onClick={() => (id === "custom" && !appearance.wallpaper?.image ? fileRef.current?.click() : update({ wallpaper: { ...appearance.wallpaper, mode: id } }))}>{label}</button>
           ))}
@@ -260,6 +263,8 @@ function SubtitlePreview({ style }) {
 
 function Subtitles() {
   const { toast } = useApp();
+  const alignSeg = useRef(null);
+  useSegmentPill(alignSeg);
   const [value, setValue] = useState(null);
   const [saved, stamp] = useSavedStamp();
   const [testing, setTesting] = useState(null);
@@ -317,7 +322,7 @@ function Subtitles() {
       </Panel>
 
       <Panel title="Placement" description="MBC 2 keeps every line flush right near the bottom right of the picture. Each line of the subtitle stays on its own line.">
-        <div className="seg glass-flat" role="group" aria-label="Alignment">
+        <div ref={alignSeg} className="seg glass-flat" role="group" aria-label="Alignment">
           {[["right", "MBC 2 (right-aligned)"], ["center", "Center"], ["left", "Left"]].map(([id, label]) => (
             <button key={id} aria-pressed={(value.align || "right") === id} onClick={() => update({ align: id })}>{label}</button>
           ))}
@@ -517,7 +522,7 @@ function Profile() {
 function About() {
   const { boot } = useApp();
   const credits = useMemo(() => [
-    ["Interface", "React, GSAP 3.15, React Bits (Grainient, GlassSurface, TiltedCard, SpotlightCard, ShinyText) by David Haz"],
+    ["Interface", "React, GSAP 3.15, View Transitions, React Bits (Grainient, GlassSurface, TiltedCard, SpotlightCard, GradientText, ClickSpark) by David Haz"],
     ["Fonts", "Plus Jakarta Sans, IBM Plex Sans Arabic, Cairo, Tajawal, Almarai, Noto Naskh / Kufi Arabic, Readex Pro, Changa, Amiri (SIL Open Font License)"],
     ["Icons", "Lucide"],
   ], []);

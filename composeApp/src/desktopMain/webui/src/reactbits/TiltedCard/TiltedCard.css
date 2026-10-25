@@ -30,8 +30,12 @@
   filter: blur(20px);
   opacity: 0;
   pointer-events: none;
-  will-change: transform, opacity;
 }
+
+/* Nuvio: promote layers only while a card is live (hover, focus, press). A permanent will-change
+   on every poster made hundreds of blurred compositor layers that were redrawn every frame. */
+.tilted-card[data-active] .tilted-card__shadow,
+.tilted-card[data-active] .tilted-card__body { will-change: transform, opacity; }
 
 .tilted-card__body {
   position: relative;
@@ -167,5 +171,4 @@
   opacity: 0;
   pointer-events: none;
   transform-origin: 0 0;
-  will-change: transform, opacity;
 }

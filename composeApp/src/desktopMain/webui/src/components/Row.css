@@ -28,7 +28,7 @@
 }
 .row-arrow svg { width: 18px; height: 18px; }
 .row-arrow:hover:not(:disabled) { background: rgb(255 255 255 / .16); }
-.row-arrow:active:not(:disabled) { transform: scale(.94); }
+.row-arrow:active:not(:disabled) { transform: scale(.96); }
 .row-arrow:disabled { opacity: .3; cursor: default; }
 
 .row-track {
@@ -47,3 +47,4 @@
 .row-track > * { scroll-snap-align: start; flex: none; }
 .row-placeholder { height: 300px; }
 .row-empty { color: var(--ink-2); font-size: var(--fs-14); padding: 18px 0; }
+

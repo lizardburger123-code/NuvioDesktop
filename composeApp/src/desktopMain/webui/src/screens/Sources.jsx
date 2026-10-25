@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { gsap } from "gsap";
+import { DURATION, EASE, reduceMotion, useSegmentPill } from "../lib/motion.js";
 import { LuLoaderCircle, LuMaximize, LuPlay, LuRefreshCw, LuX, LuZap } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
@@ -37,9 +37,17 @@ export default function Sources({ meta, video, onClose }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // The sheet slides in from the edge it belongs to. Opacity sits on the sheet itself (never on an
+  // ancestor), so its frosted glass keeps blurring the page behind it.
+  const [closing, setClosing] = useState(false);
+  const qualityRef = useRef(null);
+  useSegmentPill(qualityRef);
   useLayoutEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    gsap.fromTo(panelRef.current, { x: 48, autoAlpha: 0 }, { x: 0, autoAlpha: 1, duration: 0.55, ease: "expo.out" });
+    if (reduceMotion()) return;
+    panelRef.current.animate(
+      [{ opacity: 0, transform: "translate3d(64px, 0, 0)" }, { opacity: 1, transform: "none" }],
+      { duration: DURATION.sheet + 100, easing: EASE.out },
+    );
   }, []);
 
   const groups = useMemo(() => (state.groups || []).map(group => {
@@ -59,15 +67,26 @@ export default function Sources({ meta, video, onClose }) {
   const removedCount = useMemo(() => (state.groups || []).reduce((sum, group) =>
     sum + (group.streams || []).filter(stream => parseStream(stream).removed).length, 0), [state.groups]);
 
+  // Rows settle in as a list; only the first screenful staggers (the rest are below the fold).
   useLayoutEffect(() => {
-    if (!listRef.current || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const rows = listRef.current.querySelectorAll(".source-row");
-    if (rows.length) gsap.fromTo(rows, { y: 10, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.4, ease: "power3.out", stagger: 0.025, clearProps: "transform,opacity,visibility" });
+    if (!listRef.current || reduceMotion()) return undefined;
+    const rows = [...listRef.current.querySelectorAll(".source-row")].slice(0, 12);
+    const animations = rows.map((row, i) => row.animate(
+      [{ opacity: 0, transform: "translate3d(0, 10px, 0)" }, { opacity: 1, transform: "none" }],
+      { duration: 380, delay: i * 22, easing: EASE.out, fill: "backwards" },
+    ));
+    return () => animations.forEach(animation => animation.cancel());
   }, [allCount, quality, cachedOnly, fullFrameOnly, showRemoved]);
 
   const close = () => {
-    if (!panelRef.current || window.matchMedia("(prefers-reduced-motion: reduce)").matches) { onClose(); return; }
-    gsap.to(panelRef.current, { x: 24, autoAlpha: 0, duration: 0.22, ease: "power2.out", onComplete: onClose });
+    if (closing) return;
+    if (!panelRef.current || reduceMotion()) { onClose(); return; }
+    setClosing(true);
+    const exit = panelRef.current.animate(
+      [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translate3d(32px, 0, 0)" }],
+      { duration: DURATION.exit, easing: EASE.exit, fill: "forwards" },
+    );
+    exit.onfinish = onClose;
   };
 
   const play = async stream => {
@@ -92,7 +111,7 @@ export default function Sources({ meta, video, onClose }) {
   };
 
   return createPortal(
-    <div className="sources-layer" data-modal-open onClick={close}>
+    <div className={`sources-layer${closing ? " is-closing" : ""}`} data-modal-open onClick={close}>
       <aside ref={panelRef} className="sources glass-dark" onClick={event => event.stopPropagation()} aria-label="Sources">
         <header className="sources-head">
           <div className="sources-titles">
@@ -102,11 +121,15 @@ export default function Sources({ meta, video, onClose }) {
               <span className="sources-sub num">{episodeCode(video.season, video.episode)}{video.title ? ` · ${video.title}` : ""}</span>
             ) : null}
           </div>
-          <button className="btn btn-glass btn-icon btn-sm" onClick={close} aria-label="Close sources"><LuX /></button>
+          <div className="sources-tools">
+            <button className="btn btn-ghost btn-sm" onClick={load} aria-label="Reload sources" title="Reload"><LuRefreshCw /></button>
+            <button className="btn btn-primary btn-sm" onClick={best} disabled={!total}><LuPlay /> Best</button>
+            <button className="btn btn-glass btn-icon btn-sm" onClick={close} aria-label="Close sources"><LuX /></button>
+          </div>
         </header>
 
         <div className="sources-filters">
-          <div className="seg glass-flat" role="group" aria-label="Quality">
+          <div ref={qualityRef} className="seg glass-flat" role="group" aria-label="Quality">
             {QUALITIES.map(q => (
               <button key={q} aria-pressed={quality === q} onClick={() => setQuality(q)}>{q}</button>
             ))}
@@ -127,9 +150,6 @@ export default function Sources({ meta, video, onClose }) {
               Filtered out ({removedCount})
             </button>
           ) : null}
-          <span className="sources-spacer" />
-          <button className="btn btn-ghost btn-sm" onClick={load} aria-label="Reload sources" title="Reload"><LuRefreshCw /></button>
-          <button className="btn btn-primary btn-sm" onClick={best} disabled={!total}><LuPlay /> Best</button>
         </div>
 
         <div className="sources-list" ref={listRef}>

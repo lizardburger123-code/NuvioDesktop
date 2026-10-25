@@ -18,7 +18,9 @@ export function AppProvider({ boot, children }) {
     toastId.current += 1;
     const id = toastId.current;
     setToasts(list => [...list.slice(-2), { id, message, icon, tone }]);
-    window.setTimeout(() => setToasts(list => list.filter(t => t.id !== id)), 3200);
+    // Mark it leaving first so it can animate out, then drop it.
+    window.setTimeout(() => setToasts(list => list.map(t => (t.id === id ? { ...t, leaving: true } : t))), 3000);
+    window.setTimeout(() => setToasts(list => list.filter(t => t.id !== id)), 3240);
   }, []);
 
   const setAppearance = useCallback(patch => {

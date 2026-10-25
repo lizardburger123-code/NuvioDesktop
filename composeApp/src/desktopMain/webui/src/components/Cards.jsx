@@ -21,7 +21,7 @@ const TILT = {
 export const PosterCard = memo(function PosterCard({ item, onOpen, onToggleLater, saved, width = 168 }) {
   const height = Math.round(width * 1.5);
   return (
-    <div className="poster" style={{ width }}>
+    <div className="poster" data-card style={{ width }}>
       <TiltedCard
         {...TILT}
         imageSrc={item.poster}
@@ -63,7 +63,7 @@ export const PosterCard = memo(function PosterCard({ item, onOpen, onToggleLater
 export const WideCard = memo(function WideCard({ image, logo, title, kicker, meta, progress, watched, onOpen, onRemove, removeLabel, width = 320, badge }) {
   const height = Math.round(width * 9 / 16);
   return (
-    <div className="wide" style={{ width }}>
+    <div className="wide" data-card style={{ width }}>
       <TiltedCard
         {...TILT}
         rotateAmplitude={6}

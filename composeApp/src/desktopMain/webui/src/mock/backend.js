@@ -157,8 +157,11 @@ export const createMockBackend = deliver => {
   const push = (topic, data, delay = 0) => window.setTimeout(() => deliver({ topic, data }), delay);
   const reply = (id, result, delay = 30) => { if (id) window.setTimeout(() => deliver({ id, result }), delay); };
 
+  let homeLoaded = false;
   const pushHome = () => {
-    push("home", { loading: true, hero: [], sections: [] });
+    // Like the app: the loading state is only seen once; later subscribes get the data.
+    if (!homeLoaded) push("home", { loading: true, hero: [], sections: [] });
+    homeLoaded = true;
     push("home", { loading: false, hero: [trendingSeries[4], library[3], anime[5], trendingMovies[9]], sections }, 260);
   };
 

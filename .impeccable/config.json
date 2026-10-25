@@ -11,6 +11,15 @@
         ],
         "createdAt": "2026-10-04T20:55:56.220Z",
         "reason": "Agent reviewed: these five image elements receive media URLs from setImageSource in controls.js; their artwork, logo, and thumbnail visibility is controlled by playback state and image-loading classes"
+      },
+      {
+        "rule": "gradient-text",
+        "value": "*",
+        "files": [
+          "composeApp/src/desktopMain/webui/src/theme/base.css"
+        ],
+        "createdAt": "2026-10-25T15:58:39.301Z",
+        "reason": "agent decision: launch-intro wordmark uses the user's custom gradient colours; user's brief asked for gradient customisation and eye-catching effects"
       }
     ]
   }

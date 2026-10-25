@@ -83,7 +83,7 @@
 .tile-round { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: rgb(255 255 255 / .16); transition: transform var(--t-fast) var(--ease-soft), background-color var(--t-fast) ease; }
 .tile-round svg { width: 17px; height: 17px; }
 .tile-round:hover { background: rgb(255 255 255 / .26); }
-.tile-round:active { transform: scale(.94); }
+.tile-round:active { transform: scale(.96); }
 .tile-round-main { background: #fff; color: #0a0a0c; }
 .tile-round-main:hover { background: rgb(255 255 255 / .85); }
 .tile-round-main svg { transform: translateX(1px); fill: currentColor; }
@@ -123,3 +123,7 @@
   .tiles { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); }
   .tile-schedule { display: none; }
 }
+
+/* Spotlight artwork layers (cross-faded in Tiles.jsx). */
+.tile-art { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; }
+.tile-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 30%; }

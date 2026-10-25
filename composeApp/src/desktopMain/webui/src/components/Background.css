@@ -20,9 +20,10 @@
 .scene-walls {
   position: absolute;
   inset: 0;
-  transition: transform 900ms var(--ease-out), filter 600ms ease;
-  filter: blur(var(--wall-blur));
+  transition: transform 900ms var(--ease-out);
 }
+/* Only filter when the user asked for blur: even blur(0) costs a render surface every frame. */
+.scene.has-blur .scene-walls { filter: blur(var(--wall-blur)); }
 
 .scene-wall {
   position: absolute;

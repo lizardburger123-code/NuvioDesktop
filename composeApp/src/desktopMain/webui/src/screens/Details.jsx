@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { gsap } from "gsap";
 import { LuBookmark, LuBookmarkCheck, LuClapperboard, LuListVideo, LuPlay, LuStar } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
 import { useApp } from "../AppContext.jsx";
+import { useScreenActive } from "../lib/screen.js";
+import { EASE, reduceMotion } from "../lib/motion.js";
 import Row from "../components/Row.jsx";
 import { PosterCard, WideCard } from "../components/Cards.jsx";
 import Sources from "./Sources.jsx";
@@ -22,12 +23,15 @@ export default function Details({ params }) {
   const [season, setSeason] = useState(params.season ?? null);
   const [sources, setSources] = useState(null);
   const heroRef = useRef(null);
+  const active = useScreenActive();
 
   useEffect(() => { call("details.load", { type, id }).catch(error => toast(error.message, { tone: "error" })); }, [type, id, toast]);
+  // The title's backdrop becomes the scene while this screen is the one on display.
   useEffect(() => {
+    if (!active) return undefined;
     setArt(meta?.background || meta?.banner || null);
     return () => setArt(null);
-  }, [meta?.background, meta?.banner, setArt]);
+  }, [active, meta?.background, meta?.banner, setArt]);
 
   const seasons = useMemo(() => {
     if (!meta?.videos?.length) return [];
@@ -71,11 +75,16 @@ export default function Details({ params }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meta]);
 
+  // The hero writes itself in once the title has loaded. Each part fades on its own element:
+  // fading a wrapper would cut the glass buttons inside it off from the backdrop they blur.
   useLayoutEffect(() => {
-    if (!meta || !heroRef.current || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return undefined;
-    const parts = heroRef.current.querySelectorAll("[data-rise]");
-    const tween = gsap.fromTo(parts, { y: 18, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.7, ease: "expo.out", stagger: 0.06, clearProps: "transform,opacity,visibility" });
-    return () => tween.kill();
+    if (!meta || !heroRef.current || reduceMotion()) return undefined;
+    const parts = [...heroRef.current.querySelectorAll("[data-rise]")];
+    const animations = parts.map((part, i) => part.animate(
+      [{ opacity: 0, transform: "translate3d(0, 18px, 0)" }, { opacity: 1, transform: "none" }],
+      { duration: 640, delay: 60 + i * 55, easing: EASE.out, fill: "backwards" },
+    ));
+    return () => animations.forEach(animation => animation.cancel());
   }, [meta?.id]);
 
   const play = async video => {
@@ -126,16 +135,17 @@ export default function Details({ params }) {
         </div>
         {meta.genres?.length ? <div className="details-genres" data-rise>{meta.genres.slice(0, 4).join(" · ")}</div> : null}
         {meta.description ? <p className="details-desc" data-rise dir="auto">{meta.description}</p> : null}
-        <div className="details-actions" data-rise>
-          <button className="btn btn-primary details-play" onClick={() => target && play(target)}>
+        <div className="details-actions">
+          <button data-rise className="btn btn-primary details-play" onClick={() => target && play(target)}>
             <LuPlay className="fill" />
             <span>{target?.label}</span>
             {target?.sub ? <span className="details-play-sub num">{target.sub}</span> : null}
           </button>
-          <button className="btn btn-glass" onClick={() => target && setSources(target)}>
+          <button data-rise className="btn btn-glass" onClick={() => target && setSources(target)}>
             <LuListVideo /> Sources
           </button>
           <button
+            data-rise
             className={`btn btn-glass btn-icon${saved ? " is-on" : ""}`}
             onClick={() => toggleLater(meta)}
             aria-pressed={saved}
@@ -145,7 +155,7 @@ export default function Details({ params }) {
             {saved ? <LuBookmarkCheck /> : <LuBookmark />}
           </button>
           {meta.trailers?.length ? (
-            <button className="btn btn-glass btn-icon" aria-label="Trailer" title="Trailer" onClick={() => call("app.openTrailer", { trailer: meta.trailers[0] })}>
+            <button data-rise className="btn btn-glass btn-icon" aria-label="Trailer" title="Trailer" onClick={() => call("app.openTrailer", { trailer: meta.trailers[0] })}>
               <LuClapperboard />
             </button>
           ) : null}

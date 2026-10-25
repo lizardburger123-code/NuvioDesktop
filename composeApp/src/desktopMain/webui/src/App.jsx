@@ -1,10 +1,12 @@
-import { useEffect, useLayoutEffect, useRef, useState, lazy, Suspense } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { gsap } from "gsap";
 import { call, on } from "./bridge.js";
 import { useTopic } from "./store.js";
 import { AppProvider, useApp } from "./AppContext.jsx";
 import { applyAppearance } from "./theme/appearance.js";
-import { back, goSection, useStack } from "./lib/router.js";
+import { BEFORE_NAV, aliveEntries, back, goSection, useRouter } from "./lib/router.js";
+import { playScreenEntrance } from "./lib/motion.js";
+import { ScreenActiveContext } from "./lib/screen.js";
 import Background from "./components/Background.jsx";
 import TopBar from "./components/TopBar.jsx";
 import Toasts from "./components/Toasts.jsx";
@@ -18,24 +20,75 @@ import Settings from "./screens/Settings.jsx";
 
 const SCREENS = { home: Home, browse: Browse, search: Search, details: Details, library: Library, settings: Settings };
 
-function Screen({ entry }) {
+/**
+ * One kept-alive screen. Parked screens stay mounted (state, scroll, decoded images) but are
+ * taken out of flow, skipped by rendering and made inert; activating one restores its scroll
+ * and glides it in.
+ */
+const ScreenLayer = memo(function ScreenLayer({ entry, active, nav }) {
   const ref = useRef(null);
+  const shown = useRef(false);
+  const rowScroll = useRef(new Map());
   const Component = SCREENS[entry.name] || Home;
+
+  // Parking a screen drops its scrollers' offsets, so remember them just before leaving.
+  useEffect(() => {
+    if (!active) return undefined;
+    const save = () => {
+      const map = new Map();
+      ref.current?.querySelectorAll(".row-track, [data-keep-scroll]").forEach(el => {
+        if (el.scrollLeft || el.scrollTop) map.set(el, [el.scrollLeft, el.scrollTop]);
+      });
+      rowScroll.current = map;
+    };
+    window.addEventListener(BEFORE_NAV, save);
+    return () => window.removeEventListener(BEFORE_NAV, save);
+  }, [active]);
+
   useLayoutEffect(() => {
+    if (!active) {
+      shown.current = false;
+      return;
+    }
+    if (shown.current) return;
+    shown.current = true;
     window.scrollTo(0, entry.scroll || 0);
-  }, [entry.key]);
+    rowScroll.current.forEach(([left, top], el) => {
+      if (!el.isConnected) return;
+      el.scrollLeft = left;
+      el.scrollTop = top;
+    });
+    playScreenEntrance(ref.current, nav);
+    // Only on activation; nav is read for that moment.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
+
+  // Parking/unparking must not re-render the whole screen; only what reads the active flag does.
+  const content = useMemo(() => <Component params={entry.params} />, [Component, entry.params]);
+
   return (
-    <div ref={ref} className="screen-host">
-      <Component params={entry.params} />
-    </div>
+    <ScreenActiveContext.Provider value={active}>
+      <div ref={ref} className={`screen-host${active ? "" : " is-parked"}`} inert={!active} aria-hidden={!active || undefined}>
+        {content}
+      </div>
+    </ScreenActiveContext.Provider>
   );
+});
+
+function Screens() {
+  const router = useRouter();
+  const top = router.stack[router.stack.length - 1];
+  const alive = useMemo(() => aliveEntries(router), [router]);
+  return alive.map(entry => (
+    <ScreenLayer key={entry.key} entry={entry} active={entry.key === top.key} nav={entry.key === top.key ? router.nav : null} />
+  ));
 }
 
 const appearanceSpark = appearance => (appearance?.colors?.length ? ["#ffffff", ...appearance.colors] : "#ffffff");
 
 function Shell() {
-  const stack = useStack();
-  const top = stack[stack.length - 1];
+  const router = useRouter();
+  const top = router.stack[router.stack.length - 1];
   const { appearance, art } = useApp();
   const home = useTopic("home", { hero: [] });
   const [scrolled, setScrolled] = useState(false);
@@ -80,9 +133,9 @@ function Shell() {
   return (
     <>
       <Background appearance={appearance} featured={home.hero} art={sceneArt} scrolled={scrolled && top.name === "home"} />
-      <TopBar route={top} profile={useApp().profile} compact={compact} />
+      <TopBar route={top} stack={router.stack} profile={useApp().profile} compact={compact} />
       <ClickSpark sparkColor={appearanceSpark(appearance)} sparkCount={10} sparkRadius={26} sparkSize={12} duration={520} shape="streak" glow={0.6}>
-        <Screen key={top.key} entry={top} />
+        <Screens />
       </ClickSpark>
       <Toasts />
     </>

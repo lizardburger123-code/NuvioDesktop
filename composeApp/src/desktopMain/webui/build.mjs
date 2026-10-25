@@ -54,7 +54,7 @@ const options = {
   format: "iife",
   target: ["chrome120"],
   jsx: "automatic",
-  minify: !watch,
+  minify: !watch && !process.env.NO_MINIFY,
   sourcemap: watch ? "inline" : false,
   legalComments: "none",
   define: { "process.env.NODE_ENV": watch ? '"development"' : '"production"' },

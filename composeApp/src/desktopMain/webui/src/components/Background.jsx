@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { gsap } from "gsap";
+import { EASE, reduceMotion } from "../lib/motion.js";
 import Grainient from "../reactbits/Grainient/Grainient.jsx";
 import "./Background.css";
 
@@ -33,28 +33,34 @@ export default function Background({ appearance, featured, art, scrolled }) {
       setLayers([]);
       return;
     }
+    // Decode off the main thread before swapping, so the cross-fade never waits on a decode.
     const img = new Image();
     let alive = true;
-    img.onload = img.onerror = () => {
+    img.src = wallpaper;
+    const swap = () => {
       if (!alive) return;
       idRef.current += 1;
       setLayers(prev => [...prev.slice(-1), { src: wallpaper, id: idRef.current }]);
     };
-    img.src = wallpaper;
+    (img.decode ? img.decode() : Promise.resolve()).then(swap, swap);
     return () => { alive = false; };
   }, [wallpaper]);
 
   const lastLayerRef = useRef(null);
   useEffect(() => {
     const node = lastLayerRef.current;
-    if (!node) return;
-    gsap.fromTo(node, { opacity: 0, scale: 1.04 }, { opacity: 1, scale: 1, duration: 1.1, ease: "power2.out" });
+    if (!node || layers.length < 2 || reduceMotion()) return;
+    // The new picture settles in over the old one (compositor-only: opacity and scale).
+    node.animate(
+      [{ opacity: 0, transform: "scale(1.035)" }, { opacity: 1, transform: "none" }],
+      { duration: 1100, easing: EASE.glide },
+    );
   }, [layers]);
 
   const grainColors = useMemo(() => ["#06060a", colors[0], colors[1], colors[2], "#06060a"], [colors]);
 
   return (
-    <div className={`scene${scrolled ? " scene-scrolled" : ""}${wallpaper ? " has-wall" : ""}`} aria-hidden="true">
+    <div className={`scene${scrolled ? " scene-scrolled" : ""}${wallpaper ? " has-wall" : ""}${Number.parseFloat(appearance?.blur) > 0 ? " has-blur" : ""}`} aria-hidden="true">
       <div className="scene-grain">
         <Grainient
           colors={grainColors}
@@ -69,6 +75,7 @@ export default function Background({ appearance, featured, art, scrolled }) {
           clickSwirl={false}
           intro={false}
           dpr={1}
+          fps={30}
         />
       </div>
       <div className="scene-walls">

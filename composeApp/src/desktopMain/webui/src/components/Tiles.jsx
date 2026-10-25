@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { gsap } from "gsap";
+import { EASE, reduceMotion } from "../lib/motion.js";
+import { useScreenActive } from "../lib/screen.js";
 import { LuBookmark, LuCalendarClock, LuInfo, LuLibrary, LuPlay, LuSkipForward } from "react-icons/lu";
 import SpotlightCard from "../reactbits/SpotlightCard/SpotlightCard.jsx";
 import { episodeCode, minutesLeft, relativeAir, clockTime, year } from "../lib/format.js";
@@ -9,8 +10,10 @@ import "./Tiles.css";
 const openDetails = item => navigate("details", { type: item.type, id: item.id, name: item.name });
 
 function Tile({ className = "", children, style, onClick, label }) {
+  const active = useScreenActive();
   return (
     <SpotlightCard
+      paused={!active}
       className={`tile ${className}`}
       style={style}
       spotlightColor="rgba(255, 255, 255, 0.22)"
@@ -24,25 +27,74 @@ function Tile({ className = "", children, style, onClick, label }) {
   );
 }
 
+/** Artwork that cross-fades (after decoding) instead of cutting when the picture changes. */
+function TileArt({ src }) {
+  const [layers, setLayers] = useState(() => (src ? [{ src, id: 0 }] : []));
+  const id = useRef(0);
+  const last = useRef(null);
+  useEffect(() => {
+    if (!src || layers[layers.length - 1]?.src === src) return undefined;
+    let alive = true;
+    const img = new Image();
+    img.src = src;
+    const swap = () => {
+      if (!alive) return;
+      id.current += 1;
+      setLayers(prev => [...prev.slice(-1), { src, id: id.current }]);
+    };
+    (img.decode ? img.decode() : Promise.resolve()).then(swap, swap);
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [src]);
+  useLayoutEffect(() => {
+    if (layers.length < 2 || !last.current || reduceMotion()) return;
+    last.current.animate(
+      [{ opacity: 0, transform: "scale(1.04)" }, { opacity: 1, transform: "none" }],
+      { duration: 900, easing: EASE.glide },
+    );
+  }, [layers]);
+  return (
+    <div className="tile-art" aria-hidden="true">
+      {layers.map((layer, i) => (
+        <img key={layer.id} ref={i === layers.length - 1 ? last : undefined} src={layer.src} alt="" decoding="async" />
+      ))}
+    </div>
+  );
+}
+
 export function SpotlightTile({ items = [], onPlay }) {
   const [index, setIndex] = useState(0);
   const bodyRef = useRef(null);
+  const first = useRef(true);
+  const active = useScreenActive();
   const item = items[index % Math.max(1, items.length)];
 
+  // Rotate only while Home is on screen (a parked Home shouldn't keep re-rendering).
   useEffect(() => {
-    if (items.length < 2) return undefined;
+    if (items.length < 2 || !active) return undefined;
     const timer = window.setInterval(() => setIndex(i => (i + 1) % items.length), 9000);
     return () => window.clearInterval(timer);
-  }, [items.length]);
+  }, [items.length, active]);
 
+  // New title: the copy writes itself in, each line on its own element.
   useLayoutEffect(() => {
-    if (!bodyRef.current) return;
-    gsap.fromTo(bodyRef.current.children, { y: 10, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.55, ease: "expo.out", stagger: 0.05 });
+    if (first.current) {
+      first.current = false;
+      return undefined;
+    }
+    if (!bodyRef.current || reduceMotion()) return undefined;
+    const parts = [...bodyRef.current.children];
+    const animations = parts.map((part, i) => part.animate(
+      [{ opacity: 0, transform: "translate3d(0, 10px, 0)" }, { opacity: 1, transform: "none" }],
+      { duration: 560, delay: 120 + i * 50, easing: EASE.out, fill: "backwards" },
+    ));
+    return () => animations.forEach(animation => animation.cancel());
   }, [index]);
 
   if (!item) return <div className="tile tile-spotlight skel" />;
   return (
-    <Tile className="tile-spotlight" style={{ backgroundImage: `url("${item.banner || item.poster}")` }} onClick={() => openDetails(item)} label={item.name}>
+    <Tile className="tile-spotlight" onClick={() => openDetails(item)} label={item.name}>
+      <TileArt src={item.banner || item.poster} />
       <div className="tile-scrim" />
       <div className="tile-body" ref={bodyRef}>
         <span className="tile-kicker">Spotlight</span>

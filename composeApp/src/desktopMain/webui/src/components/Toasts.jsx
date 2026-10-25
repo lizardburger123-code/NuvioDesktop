@@ -1,13 +1,24 @@
 import { useLayoutEffect, useRef } from "react";
-import { gsap } from "gsap";
 import { useApp } from "../AppContext.jsx";
+import { EASE, reduceMotion } from "../lib/motion.js";
 import "./Toasts.css";
 
 function Toast({ toast }) {
   const ref = useRef(null);
   useLayoutEffect(() => {
-    gsap.fromTo(ref.current, { y: 16, scale: 0.94, autoAlpha: 0 }, { y: 0, scale: 1, autoAlpha: 1, duration: 0.45, ease: "back.out(1.6)" });
+    if (reduceMotion()) return;
+    ref.current.animate(
+      [{ opacity: 0, transform: "translate3d(0, 14px, 0) scale(.96)" }, { opacity: 1, transform: "none" }],
+      { duration: 420, easing: EASE.out },
+    );
   }, []);
+  useLayoutEffect(() => {
+    if (!toast.leaving) return;
+    ref.current.animate(
+      [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translate3d(0, 6px, 0) scale(.98)" }],
+      { duration: 220, easing: EASE.exit, fill: "forwards" },
+    );
+  }, [toast.leaving]);
   return (
     <div ref={ref} className={`toast glass-dark${toast.tone === "error" ? " toast-error" : ""}`} role="status">
       {toast.message}

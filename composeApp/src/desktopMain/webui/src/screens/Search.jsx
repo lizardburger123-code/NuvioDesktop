@@ -5,6 +5,7 @@ import { useApp } from "../AppContext.jsx";
 import SearchHero from "../components/SearchHero.jsx";
 import { PosterCard, SkeletonPosters } from "../components/Cards.jsx";
 import { navigate } from "../lib/router.js";
+import { useScreenActive } from "../lib/screen.js";
 import "./Search.css";
 
 export default function Search({ params }) {
@@ -12,6 +13,7 @@ export default function Search({ params }) {
   const [query, setQuery] = useState(params.q || "");
   const results = useTopic("search", { query: "", loading: false, sections: [] });
   const timer = useRef(0);
+  const active = useScreenActive();
 
   const run = (text, { live = false } = {}) => {
     window.clearTimeout(timer.current);
@@ -37,7 +39,7 @@ export default function Search({ params }) {
     <main className="screen search">
       <section className="search-top">
         <h1 className="t-page">Search</h1>
-        <SearchHero autoFocus initial={params.q || ""} onSubmit={run} compact />
+        <SearchHero autoFocus={active} initial={params.q || ""} onSubmit={run} compact />
       </section>
 
       {query && current.loading && !total ? (

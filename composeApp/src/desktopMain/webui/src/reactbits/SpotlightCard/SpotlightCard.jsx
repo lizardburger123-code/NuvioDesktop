@@ -63,6 +63,7 @@ const SpotlightCard = ({
   flare = true,
   grain = 0,
   theme = 'dark',
+  paused = false,
   ...rest
 }) => {
   const rootRef = useRef(null);
@@ -84,7 +85,8 @@ const SpotlightCard = ({
     smoothing: clamp(smoothing, 0, 1),
     ambient,
     flare,
-    grain: clamp(grain, 0, 1)
+    grain: clamp(grain, 0, 1),
+    paused
   };
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
@@ -143,7 +145,7 @@ const SpotlightCard = ({
 
     const tick = now => {
       raf = 0;
-      if (!alive) return;
+      if (!alive || settingsRef.current.paused) return;
       const s = settingsRef.current;
       const dt = Math.min(0.05, Math.max(0.001, (now - last) / 1000));
       last = now;
@@ -190,7 +192,8 @@ const SpotlightCard = ({
     };
 
     const wake = () => {
-      if (raf || !alive) return;
+      // Nuvio: off-screen (or parked) cards don't measure themselves on every pointer move.
+      if (raf || !alive || !state.visible || settingsRef.current.paused) return;
       last = performance.now();
       raf = requestAnimationFrame(tick);
     };
