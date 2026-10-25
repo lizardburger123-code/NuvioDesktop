@@ -80,8 +80,27 @@ jobs:
             "-Pcompose.desktop.packaging.checkJdkVendor=false" `
             --no-configuration-cache `
             --no-daemon `
-            --stacktrace
+            --stacktrace 2>&1 | Tee-Object -FilePath build-output.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # Job logs live on storage that some viewers cannot reach; surface compiler errors as
+      # annotations so they show up in the run summary and the checks API.
+      - name: Report build errors
+        if: failure()
+        shell: pwsh
+        run: |
+          if (-not (Test-Path build-output.log)) { exit 0 }
+          # GitHub keeps at most 10 error annotations per step, so compiler errors go first.
+          $log = Get-Content build-output.log
+          $lines = @($log | Where-Object { $_ -match '^e: |error C\d+|error LNK' })
+          if ($lines.Count -eq 0) {
+            $lines = @($log | Where-Object { $_ -match 'What went wrong|^\s*> |Exception:' })
+          }
+          $lines | Select-Object -First 10 | ForEach-Object {
+            $msg = ($_ -replace '%', '%25' -replace "`r", '' -replace "`n", ' ').Trim()
+            if ($msg.Length -gt 900) { $msg = $msg.Substring(0, 900) }
+            Write-Output "::error::$msg"
+          }
 
       - name: Upload MSI
         uses: actions/upload-artifact@v7
