@@ -74,6 +74,10 @@ jobs:
       - name: Build MSI
         shell: pwsh
         run: |
+          # Fork builds get their own version line (0.1.1000+run) so the MSI upgrades an
+          # installed official 0.1.x build in place and official updates never look newer.
+          $env:NUVIO_DESKTOP_VERSION_NAME = "0.1.$(1000 + [int]$env:GITHUB_RUN_NUMBER)-fork"
+          Write-Output "Version: $env:NUVIO_DESKTOP_VERSION_NAME"
           & .\gradlew.bat `
             :composeApp:packageReleaseMsi `
             "-Pnuvio.webview2.dir=$env:WEBVIEW2_ROOT" `
