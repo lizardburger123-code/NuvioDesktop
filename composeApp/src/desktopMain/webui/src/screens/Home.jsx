@@ -11,7 +11,7 @@ import { navigate } from "../lib/router.js";
 import "./Home.css";
 
 export default function Home() {
-  const { watchLater, laterIds, toggleLater, openDetails, resume } = useApp();
+  const { watchLater, laterIds, toggleLater, openDetails, resume, removeContinue } = useApp();
   const home = useTopic("home", { loading: true, hero: [], sections: [] });
   const continueWatching = useTopic("continue", []);
   const upcoming = useTopic("upcoming", []);
@@ -44,7 +44,7 @@ export default function Home() {
 
       {continueWatching.length ? (
         <Row title="Continue watching" subtitle={`${continueWatching.length} in progress`}>
-          {continueWatching.map(entry => <ContinueCard key={entry.key} entry={entry} onResume={resume} />)}
+          {continueWatching.map(entry => <ContinueCard key={entry.key} entry={entry} onResume={resume} onRemove={removeContinue} />)}
         </Row>
       ) : null}
 

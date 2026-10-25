@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef } from "react";
 import { gsap } from "gsap";
+import Magnet from "../reactbits/Magnet/Magnet.jsx";
 import { LuBookmark, LuFilm, LuHouse, LuLibrary, LuSettings, LuSparkles, LuTv } from "react-icons/lu";
 import { goSection } from "../lib/router.js";
 import "./Dock.css";
@@ -30,8 +31,8 @@ export default function Dock({ counts = {} }) {
         const Icon = item.icon;
         const count = item.tab === "later" ? counts.later : undefined;
         return (
+          <Magnet key={`${item.route}:${item.kind || item.tab || ""}`} padding={36} magnetStrength={4} scale={1.08}>
           <button
-            key={`${item.route}:${item.kind || item.tab || ""}`}
             className="dock-item"
             aria-current={item.route === "home" ? "page" : undefined}
             onClick={() => goSection(item.route, item.kind ? { kind: item.kind } : item.tab ? { tab: item.tab } : {})}
@@ -42,6 +43,7 @@ export default function Dock({ counts = {} }) {
             </span>
             <span className="dock-label">{item.label}</span>
           </button>
+          </Magnet>
         );
       })}
     </nav>

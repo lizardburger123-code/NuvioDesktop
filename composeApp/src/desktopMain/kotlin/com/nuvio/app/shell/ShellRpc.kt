@@ -187,6 +187,11 @@ internal class ShellRpc(private val host: ShellHost) {
             JsonPrimitive(added)
         }
         "library.subscribe" -> subscribeLibrary()
+        "continue.remove" -> {
+            val id = params.string("id") ?: error("Missing title.")
+            WatchProgressRepository.removeProgress(contentId = id)
+            JsonPrimitive(true)
+        }
         "settings.appearance.get" -> appearanceJson()
         "settings.appearance.set" -> setAppearance(params)
         "settings.subtitles.get" -> subtitlesJson()
@@ -224,7 +229,7 @@ internal class ShellRpc(private val host: ShellHost) {
 
     // ---- App -------------------------------------------------------------------------------
 
-    private fun bootstrap(): JsonElement {
+    private suspend fun bootstrap(): JsonElement {
         // A (re)loaded page has an empty topic cache: restart every subscription so it gets current values.
         topicJobs.values.forEach { it.cancel() }
         topicJobs.clear()
@@ -232,10 +237,22 @@ internal class ShellRpc(private val host: ShellHost) {
         val activeIndex = ProfileRepository.activeProfileId
         val active = state.activeProfile ?: state.profiles.firstOrNull { it.profileIndex == activeIndex }
         WatchLaterStore.ensureLoaded()
+        val avatar = active?.let { profile ->
+            kotlinx.coroutines.withTimeoutOrNull(3_000) {
+                runCatching {
+                    if (com.nuvio.app.features.profiles.AvatarRepository.avatars.value.isEmpty() && profile.avatarId != null) {
+                        com.nuvio.app.features.profiles.AvatarRepository.fetchAvatars()
+                    }
+                    com.nuvio.app.features.profiles.AvatarRepository.shareableImageUrl(profile)
+                }.getOrNull()
+            }
+        }
         return buildJsonObject {
             put("profile", buildJsonObject {
                 put("id", active?.profileIndex ?: activeIndex)
                 put("name", active?.name?.ifBlank { null } ?: "You")
+                avatar?.let { put("avatar", it) }
+                active?.avatarColorHex?.let { put("color", it) }
             })
             put("profiles", buildJsonArray {
                 state.profiles.forEach { profile ->

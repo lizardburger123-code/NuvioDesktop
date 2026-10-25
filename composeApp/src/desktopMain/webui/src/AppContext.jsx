@@ -55,10 +55,17 @@ export function AppProvider({ boot, children }) {
     navigate("details", { type: entry.type, id: entry.id, name: entry.name, sources: target.videoId, season: target.season, episode: target.episode });
   }, [toast]);
 
+  const removeContinue = useCallback(entry => {
+    call("continue.remove", { id: entry.id, type: entry.type }).then(
+      () => toast(`Removed ${entry.name} from Continue watching`),
+      error => toast(error.message, { tone: "error" }),
+    );
+  }, [toast]);
+
   const value = useMemo(() => ({
     boot, profile: boot.profile, appearance, setAppearance, art, setArt, toast, toasts,
-    watchLater, laterIds, toggleLater, openDetails, resume,
-  }), [boot, appearance, setAppearance, art, toast, toasts, watchLater, laterIds, toggleLater, openDetails, resume]);
+    watchLater, laterIds, toggleLater, openDetails, resume, removeContinue,
+  }), [boot, appearance, setAppearance, art, toast, toasts, watchLater, laterIds, toggleLater, openDetails, resume, removeContinue]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

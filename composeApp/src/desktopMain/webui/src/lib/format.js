@@ -39,12 +39,18 @@ export const parseStream = stream => {
   else if (has(/ddp|dd\+|eac3|5\.1|7\.1/i)) tags.push(has(/7\.1/) ? "7.1" : "5.1");
   if (has(/hevc|x265|h\.?265/i)) tags.push("HEVC");
   if (has(/\b(ar|ara|arabic)\b|عربي/i)) tags.push("Arabic");
+  // Releases that fill a 16:9 screen (no letterbox bars).
+  const fullFrame = has(/imax|open[ ._-]?matte|full[ ._-]?frame|\b1[.,]78\b|\b16[x:]9\b|\b1[.,]90\b/i);
+  if (has(/imax/i)) tags.unshift("IMAX");
+  else if (has(/open[ ._-]?matte/i)) tags.unshift("Open Matte");
   const sizeMatch = text.match(/(\d+(?:\.\d+)?)\s?(GB|MB|GiB|MiB)/i);
   const size = stream.size || (sizeMatch ? `${sizeMatch[1]} ${sizeMatch[2].toUpperCase().replace("I", "i")}` : "");
   const cached = stream.cached === true || has(/⚡|\[\+\]|cached|\[(TB|RD|AD|PM)\+\]/i);
   const release = (stream.filename || stream.title || stream.name || "").split("\n")[0].replace(/\.(mkv|mp4|avi)$/i, "");
   const sizeBytes = sizeMatch ? parseFloat(sizeMatch[1]) * (/g/i.test(sizeMatch[2]) ? 1024 : 1) : 0;
-  return { quality, tags, size, cached, release, sizeBytes };
+  // AIOStreams can list streams its filters dropped, with a "removal reason"; they aren't playable picks.
+  const removed = has(/removal reason|removed:|\bexcluded\b/i);
+  return { quality, tags, size, cached, release, sizeBytes, fullFrame, removed };
 };
 
 export const qualityRank = quality => ({ "4K": 4, "1080p": 3, "720p": 2, SD: 1 })[quality] || 0;

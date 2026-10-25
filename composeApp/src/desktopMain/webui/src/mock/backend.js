@@ -240,6 +240,12 @@ export const createMockBackend = deliver => {
     "app.useClassic": () => true,
     "addons.configure": () => true,
     "profiles.switch": () => true,
+    "continue.remove": ({ id }) => {
+      const index = continueWatching.findIndex(entry => entry.id === id);
+      if (index >= 0) continueWatching.splice(index, 1);
+      push("continue", [...continueWatching]);
+      return true;
+    },
     "subtitles.testProvider": ({ provider }) => ({ ok: false, message: `No ${provider} key saved yet` }),
     "settings.playback.get": () => [
       { key: "autoplay", label: "Play the best source automatically", description: "Skip the source list when a cached source matches your quality settings.", type: "toggle", value: false },

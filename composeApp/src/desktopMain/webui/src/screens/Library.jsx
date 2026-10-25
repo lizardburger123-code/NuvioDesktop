@@ -17,7 +17,7 @@ const SORTS = { recent: "Recently added", name: "A to Z", year: "Year" };
 
 export default function Library({ params }) {
   const tab = params.tab || "later";
-  const { watchLater, laterIds, toggleLater, openDetails, resume } = useApp();
+  const { watchLater, laterIds, toggleLater, openDetails, resume, removeContinue } = useApp();
   const library = useTopic("library", { items: [], cloud: [] });
   const continueWatching = useTopic("continue", []);
   const [sort, setSort] = useState("recent");
@@ -59,7 +59,7 @@ export default function Library({ params }) {
 
       {tab === "continue" ? (
         <section className="library-grid library-grid-wide">
-          {continueWatching.map(entry => <ContinueCard key={entry.key} entry={entry} onResume={resume} />)}
+          {continueWatching.map(entry => <ContinueCard key={entry.key} entry={entry} onResume={resume} onRemove={removeContinue} />)}
         </section>
       ) : (
         <section className="library-grid">

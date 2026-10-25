@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { LuBookmark, LuBookmarkCheck, LuCheck, LuPlay, LuStar } from "react-icons/lu";
+import { LuBookmark, LuBookmarkCheck, LuCheck, LuPlay, LuStar, LuX } from "react-icons/lu";
 import TiltedCard from "../reactbits/TiltedCard/TiltedCard.jsx";
 import { episodeCode, minutesLeft, year } from "../lib/format.js";
 import "./Cards.css";
@@ -60,7 +60,7 @@ export const PosterCard = memo(function PosterCard({ item, onOpen, onToggleLater
 });
 
 /** Landscape card for continue watching and episodes. */
-export const WideCard = memo(function WideCard({ image, logo, title, kicker, meta, progress, watched, onOpen, width = 320, badge }) {
+export const WideCard = memo(function WideCard({ image, logo, title, kicker, meta, progress, watched, onOpen, onRemove, removeLabel, width = 320, badge }) {
   const height = Math.round(width * 9 / 16);
   return (
     <div className="wide" style={{ width }}>
@@ -85,6 +85,11 @@ export const WideCard = memo(function WideCard({ image, logo, title, kicker, met
         {watched ? <span className="wide-watched" aria-label="Watched"><LuCheck /></span> : null}
         {progress > 0 ? <span className="wide-progress"><span style={{ width: `${Math.min(100, Math.round(progress * 100))}%` }} /></span> : null}
       </TiltedCard>
+      {onRemove ? (
+        <button className="wide-remove" onClick={event => { event.stopPropagation(); onRemove(); }} aria-label={removeLabel || "Remove"} title={removeLabel || "Remove"}>
+          <LuX />
+        </button>
+      ) : null}
       <div className="wide-text">
         {kicker ? <span className="wide-kicker num">{kicker}</span> : null}
         <span className="wide-title" dir="auto">{title}</span>
@@ -94,7 +99,7 @@ export const WideCard = memo(function WideCard({ image, logo, title, kicker, met
   );
 });
 
-export const ContinueCard = ({ entry, onResume }) => (
+export const ContinueCard = ({ entry, onResume, onRemove }) => (
   <WideCard
     image={entry.thumbnail || entry.backdrop}
     logo={entry.season == null ? entry.logo : null}
@@ -103,6 +108,8 @@ export const ContinueCard = ({ entry, onResume }) => (
     meta={minutesLeft(entry.positionMs, entry.durationMs)}
     progress={entry.progress}
     onOpen={() => onResume(entry)}
+    onRemove={onRemove ? () => onRemove(entry) : undefined}
+    removeLabel="Remove from Continue watching"
   />
 );
 

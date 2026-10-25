@@ -2,12 +2,23 @@
 // Kotlin only ever sees "play"; everything else stays inside the page, so moving around is
 // instant and keeps scroll positions.
 import { useSyncExternalStore } from "react";
+import { flushSync } from "react-dom";
 
 let stack = [{ name: "home", params: {}, key: 1, scroll: 0 }];
 let seq = 1;
 let direction = 0; // 1 forward, -1 back, 0 replace
 const listeners = new Set();
-const emit = () => listeners.forEach(fn => fn());
+const notify = () => listeners.forEach(fn => fn());
+// Screens cross-fade with the View Transitions API; the top bar and backdrop stay put (base.css).
+const emit = () => {
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!document.startViewTransition || reduce) {
+    notify();
+    return;
+  }
+  document.documentElement.dataset.nav = direction > 0 ? "forward" : direction < 0 ? "back" : "section";
+  document.startViewTransition(() => flushSync(notify));
+};
 
 export const navigate = (name, params = {}, { replace = false } = {}) => {
   const top = stack[stack.length - 1];

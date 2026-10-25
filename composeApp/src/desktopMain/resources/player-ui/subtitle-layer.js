@@ -10,12 +10,14 @@
   "use strict";
 
   const ALIGN_CODES = { center: 0, left: 1, right: 2 };
+  // MBC 2: the block sits centred (movable by dragging); its lines are right-aligned inside it,
+  // so every line starts from the same right edge.
   const HOME = {
-    right: { x: 93, y: 90 },
+    right: { x: 50, y: 90 },
     left: { x: 7 },
     center: { x: 50 },
   };
-  const X_RANGE = { right: [75, 99], left: [1, 25], center: [50, 50] };
+  const X_RANGE = { right: [12, 88], left: [1, 25], center: [50, 50] };
   const Y_RANGE = [70, 96];
   const SNAP_PERCENT = 3;
   const CLICK_SLOP_PX = 6;
@@ -27,8 +29,24 @@
   const ARABIC_EDGE_PUNCTUATION = /[.…!?؟،,:;]$/;
 
   // "...لكن" instead of "لكن...": move leading punctuation of an Arabic line to its end.
+  const OPENERS = { "(": ")", "[": "]", "{": "}", "«": "»" };
+  // Files made for left-to-right players often store an opening bracket at the end of an Arabic
+  // line: "محمد) كان يسرق من القمة.(" -> "(محمد) كان يسرق من القمة."
+  const fixBrackets = line => {
+    const match = line.match(/^([\s\S]*?)([.…!?؟،,:;]*)([(\[{«]+)([.…!?؟،,:;]*)$/);
+    if (!match) return line;
+    const [, body, before, openers, after] = match;
+    const needs = [...openers].every(open => {
+      const close = OPENERS[open];
+      const opens = body.split(open).length - 1;
+      const closes = body.split(close).length - 1;
+      return closes > opens;
+    });
+    return needs ? `${openers}${body}${before}${after}`.trim() : line;
+  };
+
   const arabicLine = raw => {
-    const line = raw.replace(BIDI_CONTROLS, "").trim();
+    const line = fixBrackets(raw.replace(BIDI_CONTROLS, "").trim());
     if (!ARABIC.test(line)) return line;
     const match = line.match(/^([.…!?؟،,:;]+)\s*([\s\S]*\S)$/);
     return match && !ARABIC_EDGE_PUNCTUATION.test(match[2]) ? match[2] + match[1] : line;
@@ -121,7 +139,8 @@
     let x = Number(next.x);
     let y = Number(next.y);
     const [xMin, xMax] = X_RANGE[align];
-    x = finite(x) ? clamp(x, xMin, xMax) : homeX(align);
+    // A position saved by an older layout (MBC used to sit at the far right) goes back home.
+    x = finite(x) && x >= xMin && x <= xMax ? x : homeX(align);
     if (align === "center") x = HOME.center.x;
     if (!finite(y) || y < Y_RANGE[0] || y > Y_RANGE[1]) y = homeY(align);
     return { align, x, y };
@@ -168,7 +187,7 @@
     box.style.left = `${layout.x}%`;
     box.style.top = `${layout.y}%`;
     const maxWidth = layout.align === "right"
-      ? layout.x - 2
+      ? Math.min(layout.x, 100 - layout.x) * 2 - 4
       : layout.align === "left"
         ? 100 - layout.x - 2
         : 92;

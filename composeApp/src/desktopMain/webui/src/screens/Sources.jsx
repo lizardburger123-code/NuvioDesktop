@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { gsap } from "gsap";
-import { LuLoaderCircle, LuPlay, LuRefreshCw, LuX, LuZap } from "react-icons/lu";
+import { LuLoaderCircle, LuMaximize, LuPlay, LuRefreshCw, LuX, LuZap } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
 import { useApp } from "../AppContext.jsx";
@@ -17,6 +17,8 @@ export default function Sources({ meta, video, onClose }) {
   const listRef = useRef(null);
   const [quality, setQuality] = useState("All");
   const [cachedOnly, setCachedOnly] = useState(false);
+  const [fullFrameOnly, setFullFrameOnly] = useState(() => { try { return localStorage.getItem("nuvio.fullFrame") === "1"; } catch { return false; } });
+  const [showRemoved, setShowRemoved] = useState(false);
   const [starting, setStarting] = useState(null);
   const topic = useTopic("streams", { key: null, loading: true, groups: [] });
   const state = topic.key === video.videoId ? topic : { loading: true, groups: [] };
@@ -42,19 +44,22 @@ export default function Sources({ meta, video, onClose }) {
 
   const groups = useMemo(() => (state.groups || []).map(group => {
     const rows = (group.streams || []).map(stream => ({ stream, info: parseStream(stream) }))
-      .filter(({ info }) => (quality === "All" || info.quality === quality) && (!cachedOnly || info.cached))
+      .filter(({ info }) => (quality === "All" || info.quality === quality) && (!cachedOnly || info.cached)
+        && (!fullFrameOnly || info.fullFrame) && (showRemoved || !info.removed))
       .sort((a, b) => (b.info.cached - a.info.cached) || (qualityRank(b.info.quality) - qualityRank(a.info.quality)));
     return { ...group, rows };
-  }), [state.groups, quality, cachedOnly]);
+  }), [state.groups, quality, cachedOnly, fullFrameOnly, showRemoved]);
 
   const total = groups.reduce((sum, group) => sum + group.rows.length, 0);
   const allCount = (state.groups || []).reduce((sum, group) => sum + (group.streams?.length || 0), 0);
+  const removedCount = useMemo(() => (state.groups || []).reduce((sum, group) =>
+    sum + (group.streams || []).filter(stream => parseStream(stream).removed).length, 0), [state.groups]);
 
   useLayoutEffect(() => {
     if (!listRef.current || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const rows = listRef.current.querySelectorAll(".source-row");
     if (rows.length) gsap.fromTo(rows, { y: 10, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.4, ease: "power3.out", stagger: 0.025, clearProps: "transform,opacity,visibility" });
-  }, [allCount, quality, cachedOnly]);
+  }, [allCount, quality, cachedOnly, fullFrameOnly, showRemoved]);
 
   const close = () => {
     if (!panelRef.current || window.matchMedia("(prefers-reduced-motion: reduce)").matches) { onClose(); return; }
@@ -105,6 +110,19 @@ export default function Sources({ meta, video, onClose }) {
           <button className="chip" aria-pressed={cachedOnly} onClick={() => setCachedOnly(v => !v)}>
             <LuZap /> Cached
           </button>
+          <button
+            className="chip"
+            aria-pressed={fullFrameOnly}
+            title="Only IMAX, Open Matte and 16:9 full-frame releases (no black bars)"
+            onClick={() => setFullFrameOnly(v => { const next = !v; try { localStorage.setItem("nuvio.fullFrame", next ? "1" : "0"); } catch {} return next; })}
+          >
+            <LuMaximize /> No black bars
+          </button>
+          {removedCount ? (
+            <button className="chip" aria-pressed={showRemoved} onClick={() => setShowRemoved(v => !v)} title="Streams AIOStreams filtered out, listed with the reason">
+              Filtered out ({removedCount})
+            </button>
+          ) : null}
           <span className="sources-spacer" />
           <button className="btn btn-ghost btn-sm" onClick={load} aria-label="Reload sources" title="Reload"><LuRefreshCw /></button>
           <button className="btn btn-primary btn-sm" onClick={best} disabled={!total}><LuPlay /> Best</button>

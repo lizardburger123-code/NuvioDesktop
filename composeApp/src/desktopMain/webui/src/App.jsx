@@ -1,13 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState, lazy, Suspense } from "react";
-import { gsap } from "gsap";
 import { call, on } from "./bridge.js";
 import { useTopic } from "./store.js";
 import { AppProvider, useApp } from "./AppContext.jsx";
 import { applyAppearance } from "./theme/appearance.js";
-import { back, currentDirection, goSection, useStack } from "./lib/router.js";
+import { back, goSection, useStack } from "./lib/router.js";
 import Background from "./components/Background.jsx";
 import TopBar from "./components/TopBar.jsx";
 import Toasts from "./components/Toasts.jsx";
+import ClickSpark from "./reactbits/ClickSpark/ClickSpark.jsx";
 import Home from "./screens/Home.jsx";
 import Browse from "./screens/Browse.jsx";
 import Search from "./screens/Search.jsx";
@@ -22,15 +22,6 @@ function Screen({ entry }) {
   const Component = SCREENS[entry.name] || Home;
   useLayoutEffect(() => {
     window.scrollTo(0, entry.scroll || 0);
-    const node = ref.current;
-    if (!node || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return undefined;
-    const direction = currentDirection();
-    const tween = gsap.fromTo(
-      node,
-      { opacity: 0, x: direction * 28, y: direction === 0 ? 10 : 0 },
-      { opacity: 1, x: 0, y: 0, duration: 0.5, ease: "expo.out", clearProps: "transform,opacity" },
-    );
-    return () => tween.kill();
   }, [entry.key]);
   return (
     <div ref={ref} className="screen-host">
@@ -38,6 +29,8 @@ function Screen({ entry }) {
     </div>
   );
 }
+
+const appearanceSpark = appearance => (appearance?.colors?.length ? ["#ffffff", ...appearance.colors] : "#ffffff");
 
 function Shell() {
   const stack = useStack();
@@ -87,7 +80,9 @@ function Shell() {
     <>
       <Background appearance={appearance} featured={home.hero} art={sceneArt} scrolled={scrolled && top.name === "home"} />
       <TopBar route={top} profile={useApp().profile} compact={compact} />
-      <Screen key={top.key} entry={top} />
+      <ClickSpark sparkColor={appearanceSpark(appearance)} sparkCount={10} sparkRadius={26} sparkSize={12} duration={520} shape="streak" glow={0.6}>
+        <Screen key={top.key} entry={top} />
+      </ClickSpark>
       <Toasts />
     </>
   );

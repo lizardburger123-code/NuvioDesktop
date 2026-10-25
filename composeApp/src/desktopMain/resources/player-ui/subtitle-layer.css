@@ -40,7 +40,7 @@
 
 /* MBC 2: anchored by the right edge, every line flush right. */
 .sub-box[data-align="right"] {
-  transform: translate(-100%, -100%);
+  transform: translate(-50%, -100%);
   text-align: right;
   align-items: flex-end;
 }
