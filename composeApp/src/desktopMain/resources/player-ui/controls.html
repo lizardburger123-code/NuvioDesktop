@@ -6,6 +6,7 @@
   <link rel="stylesheet" href="controls.css">
   <link rel="stylesheet" href="party.css">
   <link rel="stylesheet" href="subtitle-layer.css">
+  <link rel="stylesheet" href="vision.css">
 </head>
 <body>
   <svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute">
@@ -239,25 +240,39 @@
           </div>
           <div class="player-badges" id="playerBadges" hidden></div>
         </section>
-        <input id="seek" class="scrub" type="range" min="0" max="1000" value="0" aria-label="Seek">
+        <div class="ornament" id="ornament">
+        <div class="scrub-row">
+          <span class="time-elapsed" id="timeElapsed">0:00</span>
+          <div class="scrub-wrap" id="scrubWrap">
+            <input id="seek" class="scrub" type="range" min="0" max="1000" value="0" aria-label="Seek">
+            <span class="scrub-bubble" id="scrubBubble" aria-hidden="true">0:00</span>
+          </div>
+          <span class="time-remaining" id="timeRemaining">-0:00</span>
+        </div>
         <div class="time-row">
           <span class="time-pill" id="position">00:00</span>
           <span class="time-pill" id="duration">00:00</span>
         </div>
         <div class="action-row">
           <div class="action-pill">
-            <button class="action playback-action" id="toggle" data-command="toggle" aria-label="Play">
+            <button class="action transport-action" data-command="seekBack" aria-label="Back 10 seconds" title="Back 10 seconds (J)">
+              <svg><use href="#icon-replay10"></use></svg>
+            </button>
+            <button class="action playback-action" id="toggle" data-command="toggle" aria-label="Play" title="Play / Pause (Space)">
               <svg><use id="toggleIcon" href="#icon-play"></use></svg><span id="toggleLabel">Play</span>
+            </button>
+            <button class="action transport-action" data-command="seekForward" aria-label="Forward 10 seconds" title="Forward 10 seconds (L)">
+              <svg><use href="#icon-forward10"></use></svg>
             </button>
             <button class="action optional" id="nextEpisodeButton" data-command="playNextEpisode" aria-label="Next episode" hidden>
               <svg><use href="#icon-skip-next"></use></svg><span id="nextEpisodeButtonLabel">Next episode</span>
             </button>
-            <button class="action" data-command="resize"><svg><use href="#icon-aspect"></use></svg><span id="resizeLabel">Fit</span></button>
-            <button class="action" data-command="speed"><svg><use href="#icon-speed"></use></svg><span id="speedLabel">1x</span></button>
-            <button class="action" data-command="subtitles"><svg><use href="#icon-subs"></use></svg><span id="subtitlesLabel">Subs</span></button>
-            <button class="action" data-command="audio"><svg><use href="#icon-audio"></use></svg><span id="audioLabel">Audio</span></button>
-            <button class="action optional" id="sourcesButton" data-command="sources"><svg><use href="#icon-source"></use></svg><span id="sourcesLabel">Sources</span></button>
-            <button class="action optional" id="episodesButton" data-command="episodes"><svg><use href="#icon-episodes"></use></svg><span id="episodesLabel">Episodes</span></button>
+            <button class="action" data-command="resize" title="Picture size"><svg><use href="#icon-aspect"></use></svg><span id="resizeLabel">Fit</span></button>
+            <button class="action" data-command="speed" title="Playback speed"><svg><use href="#icon-speed"></use></svg><span id="speedLabel">1x</span></button>
+            <button class="action" data-command="subtitles" title="Subtitles"><svg><use href="#icon-subs"></use></svg><span id="subtitlesLabel">Subs</span></button>
+            <button class="action" data-command="audio" title="Audio"><svg><use href="#icon-audio"></use></svg><span id="audioLabel">Audio</span></button>
+            <button class="action optional" id="sourcesButton" data-command="sources" title="Sources"><svg><use href="#icon-source"></use></svg><span id="sourcesLabel">Sources</span></button>
+            <button class="action optional" id="episodesButton" data-command="episodes" title="Episodes"><svg><use href="#icon-episodes"></use></svg><span id="episodesLabel">Episodes</span></button>
           </div>
           <div class="playback-status">
             <div class="volume-control" id="volumeControl" aria-label="Volume">
@@ -268,6 +283,7 @@
             </div>
             <div class="time-label" id="timeLabel" aria-label="Toggle between total and remaining time" title="Toggle between total and remaining time">00:00 / 00:00</div>
           </div>
+        </div>
         </div>
       </section>
       <section class="player-toast" id="playerToast" aria-live="polite" aria-atomic="true" aria-hidden="true">
@@ -522,5 +538,7 @@
   <script src="party.js"></script>
   <script src="controls.js"></script>
   <script src="subtitle-layer.js"></script>
+  <script src="vendor/gsap.min.js"></script>
+  <script src="vision.js"></script>
 </body>
 </html>

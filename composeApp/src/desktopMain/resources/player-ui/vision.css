@@ -1,0 +1,578 @@
+/*
+ * Nuvio fork: "vision" skin for the desktop player controls.
+ * macOS / visionOS feel: floating material ornament, grouped capsules, depth from tone and soft
+ * shadow, elastic sliders. Loaded after controls.css and only restyles; behaviour stays in
+ * controls.js. Motion lives in vision.js (GSAP).
+ *
+ * Note: the video is drawn by mpv underneath this transparent WebView, so backdrop-filter cannot
+ * frost it. The material is a tinted surface with a light edge instead of a blur.
+ */
+
+:root {
+  --v-mat: rgba(24, 24, 28, .72);
+  --v-mat-raised: rgba(44, 44, 50, .9);
+  --v-mat-hover: rgba(255, 255, 255, .1);
+  --v-mat-press: rgba(255, 255, 255, .16);
+  --v-edge: inset 0 0 0 .5px rgba(255, 255, 255, .14), inset 0 1px 0 rgba(255, 255, 255, .08);
+  --v-lift: 0 24px 60px rgba(0, 0, 0, .38), 0 3px 10px rgba(0, 0, 0, .28);
+  --v-ink: #fff;
+  --v-ink-2: rgba(235, 235, 245, .66);
+  --v-ink-3: rgba(235, 235, 245, .42);
+  --v-r-ornament: 28px;
+  --v-pad: 8px;
+  --v-btn: 40px;
+  --v-ornament-w: min(1240px, calc(100vw - (var(--hp) * 2)));
+  --v-spring: cubic-bezier(.2, .9, .25, 1);
+  --v-ease: cubic-bezier(.2, 0, 0, 1);
+}
+
+html,
+body {
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Scrims: lighter, eased, only where text sits ------------------------------------------- */
+
+.top-gradient {
+  height: 150px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, .5) 0%, rgba(0, 0, 0, .22) 45%, rgba(0, 0, 0, 0) 100%);
+}
+
+.bottom-gradient {
+  height: 320px;
+  background: linear-gradient(to top, rgba(0, 0, 0, .62) 0%, rgba(0, 0, 0, .34) 38%, rgba(0, 0, 0, .1) 70%, rgba(0, 0, 0, 0) 100%);
+}
+
+/* ---- Header: one capsule ------------------------------------------------------------------ */
+
+.header-actions {
+  gap: 2px;
+  padding: 4px;
+  border-radius: 24px;
+  background: var(--v-mat);
+  box-shadow: var(--v-edge), var(--v-lift);
+}
+
+.header-button {
+  width: var(--v-btn);
+  height: var(--v-btn);
+  background: transparent;
+}
+
+.header-button svg {
+  width: 20px;
+  height: 20px;
+}
+
+.header-button:hover {
+  background: var(--v-mat-hover);
+}
+
+.opening-actions {
+  gap: 2px;
+  padding: 4px;
+  border-radius: 24px;
+  background: var(--v-mat);
+  box-shadow: var(--v-edge), var(--v-lift);
+}
+
+.opening-button {
+  width: var(--v-btn);
+  height: var(--v-btn);
+  background: transparent;
+}
+
+.opening-button svg {
+  width: 20px;
+  height: 20px;
+}
+
+.opening-button:hover {
+  background: var(--v-mat-hover);
+}
+
+.opening-button:active,
+.opening-button.is-pressed {
+  transform: scale(.96);
+}
+
+/* ---- Ornament ------------------------------------------------------------------------------ */
+
+.progress {
+  left: 50%;
+  right: auto;
+  width: var(--v-ornament-w);
+  margin-left: calc(var(--v-ornament-w) / -2);
+  bottom: max(20px, var(--slider-bottom));
+}
+
+.metadata {
+  padding: 0 4px 14px;
+}
+
+.title {
+  font-size: clamp(20px, 1.5vw, 28px);
+  font-weight: 700;
+  letter-spacing: -.01em;
+  line-height: 1.12;
+  text-wrap: balance;
+  text-shadow: 0 1px 18px rgba(0, 0, 0, .45);
+}
+
+.episode {
+  margin-top: 4px;
+  font-size: clamp(14px, .95vw, 16px);
+  color: var(--v-ink-2);
+  text-shadow: 0 1px 14px rgba(0, 0, 0, .5);
+}
+
+.stream-title,
+.provider {
+  color: var(--v-ink-3);
+}
+
+.provider {
+  font-style: normal;
+}
+
+.ornament {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px var(--v-pad) var(--v-pad);
+  border-radius: var(--v-r-ornament);
+  background: var(--v-mat);
+  box-shadow: var(--v-edge), var(--v-lift);
+  will-change: transform;
+}
+
+.scrub-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 0 14px;
+}
+
+.time-elapsed,
+.time-remaining {
+  min-width: 52px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--v-ink-2);
+  white-space: nowrap;
+}
+
+.time-remaining {
+  text-align: right;
+}
+
+.scrub-wrap {
+  position: relative;
+  height: 24px;
+  display: flex;
+  align-items: center;
+}
+
+/* The input stays the real control; its track is the visible bar. Height and stretch come from
+   vision.js so the bar can thicken on hover and stretch like rubber past either end. */
+.scrub {
+  --scrub-h: 6px;
+  height: 24px;
+  transform-origin: var(--scrub-origin, 0% 50%);
+  will-change: transform;
+}
+
+.scrub::-webkit-slider-runnable-track {
+  height: var(--scrub-h);
+  border-radius: 999px;
+  background:
+    linear-gradient(var(--v-ink), var(--v-ink)) left center / var(--progress, 0%) 100% no-repeat,
+    linear-gradient(rgba(255, 255, 255, .34), rgba(255, 255, 255, .34)) left center / var(--bufferProgress, 0%) 100% no-repeat,
+    rgba(255, 255, 255, .18);
+}
+
+.scrub::-webkit-slider-thumb {
+  width: 2px;
+  height: var(--scrub-h);
+  margin-top: 0;
+}
+
+.scrub:focus-visible {
+  outline: none;
+}
+
+.scrub:focus-visible::-webkit-slider-runnable-track {
+  box-shadow: 0 0 0 2px var(--theme-focus);
+}
+
+.scrub-bubble {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  padding: 5px 9px;
+  border-radius: 10px;
+  background: var(--v-mat-raised);
+  box-shadow: var(--v-edge), 0 8px 24px rgba(0, 0, 0, .35);
+  color: var(--v-ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(4px) scale(.92);
+  transform-origin: 50% 100%;
+}
+
+.time-row,
+.time-label {
+  display: none !important;
+}
+
+/* ---- Action row ---------------------------------------------------------------------------- */
+
+.action-row {
+  margin-top: 0;
+  gap: 12px;
+}
+
+.action-pill {
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+.action {
+  min-height: var(--v-btn);
+  min-width: var(--v-btn);
+  justify-content: center;
+  gap: 7px;
+  padding: 0 11px;
+  border-radius: 20px;
+  color: var(--v-ink);
+}
+
+.action svg {
+  width: 20px;
+  height: 20px;
+}
+
+.action span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--v-ink-2);
+}
+
+.action:hover,
+.side-control:hover,
+.play-control:hover {
+  background: var(--v-mat-hover);
+}
+
+.action:hover span {
+  color: var(--v-ink);
+}
+
+.action.transport-action {
+  padding: 0;
+  width: 44px;
+}
+
+.action.transport-action svg {
+  width: 26px;
+  height: 26px;
+}
+
+/* Play is the one filled control: a white disc, the only element that carries full weight. */
+.action.playback-action {
+  width: 48px;
+  min-height: 48px;
+  padding: 0;
+  margin: -4px 2px;
+  border-radius: 999px;
+  background: var(--v-ink);
+  color: #0b0b0d;
+}
+
+.action.playback-action:hover {
+  background: rgba(255, 255, 255, .88);
+}
+
+.action.playback-action span {
+  display: none;
+}
+
+.action.playback-action svg {
+  width: 20px;
+  height: 20px;
+}
+
+.action.playback-action svg use[href="#icon-play"] {
+  transform: translateX(1.5px);
+}
+
+/* Visual break between transport and the tools that change what you see and hear. */
+.action-pill > .action[data-command="resize"] {
+  margin-left: 14px;
+}
+
+.action.is-pressed,
+.action:active,
+.header-button:active,
+.header-button.is-pressed,
+.volume-button:active,
+.volume-button.is-pressed,
+.side-control:active,
+.side-control.is-pressed,
+.skip-prompt:active,
+.skip-prompt.is-pressed,
+.track-row:active:not(:disabled),
+.track-row.is-pressed:not(:disabled),
+.panel-button:active,
+.round-step:active {
+  transform: scale(.96);
+}
+
+.action.focused:focus-visible,
+button.action:focus-visible,
+.header-button:focus-visible {
+  outline: 2px solid var(--theme-focus);
+  outline-offset: 2px;
+}
+
+/* ---- Volume: Apple-style capsule --------------------------------------------------------- */
+
+.playback-status {
+  gap: 10px;
+  padding-right: 8px;
+}
+
+.volume-control {
+  gap: 6px;
+}
+
+.volume-button {
+  width: var(--v-btn);
+  height: var(--v-btn);
+  margin: 0;
+  padding: 0;
+}
+
+.volume-button:hover {
+  background: var(--v-mat-hover);
+  transform: none;
+}
+
+.volume-control svg {
+  width: 22px;
+  height: 22px;
+  filter: none;
+}
+
+.volume-slider {
+  --vol-h: 6px;
+  width: 128px;
+  height: 24px;
+  transform-origin: var(--vol-origin, 0% 50%);
+  will-change: transform;
+}
+
+/* White up to 100%, warm amber across the boost range (100-200%). */
+.volume-slider::-webkit-slider-runnable-track {
+  height: var(--vol-h);
+  border-radius: 999px;
+  background:
+    linear-gradient(var(--v-ink), var(--v-ink)) left center / min(var(--volume-position), 50%) 100% no-repeat,
+    linear-gradient(90deg, transparent 50%, #ffb340 50%) left center / var(--volume-position) 100% no-repeat,
+    rgba(255, 255, 255, .18);
+}
+
+.volume-slider::-webkit-slider-thumb {
+  width: 2px;
+  height: var(--vol-h);
+  margin-top: 0;
+  border-radius: 0;
+  background: transparent;
+  opacity: 0;
+}
+
+.volume-slider:focus-visible::-webkit-slider-runnable-track {
+  box-shadow: 0 0 0 2px var(--theme-focus);
+}
+
+/* ---- Toast -------------------------------------------------------------------------------- */
+
+.player-toast {
+  border-radius: 999px;
+  background: var(--v-mat-raised);
+  box-shadow: var(--v-edge), var(--v-lift);
+}
+
+/* ---- Panels (audio, subtitles, speed, sources, episodes) ---------------------------------- */
+
+.player-rail-modal {
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, .55) 0%, rgba(0, 0, 0, .28) 45%, rgba(0, 0, 0, .08) 80%),
+    rgba(0, 0, 0, .18);
+}
+
+.player-rail-modal {
+  --rail-bottom-clearance: calc(max(20px, var(--slider-bottom)) + 124px);
+}
+
+.player-rail-modal .track-panel {
+  padding: 22px 12px 12px;
+  border-radius: 30px;
+  background: var(--v-mat-raised);
+  box-shadow: var(--v-edge), var(--v-lift);
+  overflow: hidden;
+}
+
+.player-rail-modal .track-header {
+  padding: 0 10px 10px;
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 700;
+  letter-spacing: -.01em;
+}
+
+.subtitle-rail-title {
+  padding: 0 10px;
+  color: var(--v-ink-3);
+  font-weight: 600;
+}
+
+.track-row {
+  border-radius: 18px;
+  border: 0;
+}
+
+.player-rail-modal .track-row {
+  border-radius: 18px;
+}
+
+.track-row:hover:not(:disabled) {
+  background: var(--v-mat-hover);
+}
+
+/* Selection reads as a lifted row with a check, not a slab of brand colour. */
+.track-row.selected,
+.track-row.selected:hover:not(:disabled) {
+  background: rgba(255, 255, 255, .16);
+  color: var(--v-ink);
+  font-weight: 600;
+}
+
+.track-row.selected .track-check {
+  color: var(--theme-accent-strong, #fff);
+}
+
+.subtitle-count,
+.subtitle-language-row.selected .subtitle-count {
+  background: rgba(255, 255, 255, .14);
+  color: var(--v-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.track-row.source-row {
+  background: rgba(255, 255, 255, .05);
+  box-shadow: none;
+}
+
+.track-row.source-row.selected,
+.track-row.source-row.selected:hover:not(:disabled) {
+  background: rgba(255, 255, 255, .16);
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .5);
+}
+
+.player-side-modal .player-side-panel {
+  margin: 12px;
+  height: calc(100% - 24px);
+  border-radius: 30px;
+  background: var(--v-mat-raised);
+  box-shadow: var(--v-edge), var(--v-lift);
+}
+
+.style-card {
+  border-radius: 20px;
+}
+
+/* ---- Next episode, skip ------------------------------------------------------------------- */
+
+.skip-prompt,
+.next-episode-card {
+  background: var(--v-mat-raised);
+  box-shadow: var(--v-edge), var(--v-lift);
+}
+
+/* ---- Pause overlay: let the title breathe ------------------------------------------------ */
+
+.pause-title {
+  letter-spacing: -.02em;
+  text-wrap: balance;
+}
+
+.pause-description {
+  text-wrap: pretty;
+}
+
+/* ---- Narrow windows ---------------------------------------------------------------------- */
+
+@media (max-width: 760px) {
+  .scrub-row {
+    gap: 10px;
+    padding: 0 8px;
+  }
+
+  .time-elapsed,
+  .time-remaining {
+    min-width: 40px;
+    font-size: 12px;
+  }
+
+  .action.transport-action {
+    display: none;
+  }
+
+  .volume-slider {
+    width: 84px;
+  }
+}
+
+.player.pip-mode .ornament {
+  padding: 8px 6px 6px;
+  border-radius: 22px;
+}
+
+.player.pip-mode .action.transport-action,
+.player.pip-mode .scrub-row .time-elapsed,
+.player.pip-mode .scrub-row .time-remaining {
+  display: none;
+}
+
+/* ShinyText shimmer on the opening status line (vision.js paints the gradient). */
+.v-shiny {
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* GSAP drives transforms during an animation; keep CSS transitions from fighting it. */
+.v-animating {
+  transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scrub,
+  .volume-slider,
+  .ornament {
+    transform: none !important;
+  }
+}
