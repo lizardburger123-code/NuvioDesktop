@@ -496,7 +496,9 @@ function Profile() {
         <div className="profiles">
           {(boot.profiles || []).map(profile => (
             <button key={profile.id} className="profile-card" aria-pressed={profile.id === boot.profile?.id} onClick={() => profile.id !== boot.profile?.id && call("profiles.switch", { id: profile.id }).then(() => window.location.reload(), error => toast(error.message, { tone: "error" }))}>
-              <span className="avatar avatar-lg">{initials(profile.name)}</span>
+              {profile.avatar
+                ? <img className="avatar avatar-lg avatar-img" src={profile.avatar} alt="" />
+                : <span className="avatar avatar-lg" style={profile.color ? { background: profile.color } : undefined}>{initials(profile.name)}</span>}
               <span>{profile.name}</span>
             </button>
           ))}

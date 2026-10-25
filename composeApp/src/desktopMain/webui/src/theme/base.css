@@ -206,3 +206,23 @@ p { text-wrap: pretty; }
 @keyframes vt-in { from { opacity: 0; transform: translateY(10px) scale(.99); filter: blur(6px); } }
 @keyframes vt-in-forward { from { opacity: 0; transform: translateX(24px); filter: blur(6px); } }
 @keyframes vt-in-back { from { opacity: 0; transform: translateX(-24px); filter: blur(6px); } }
+
+/* ---- Launch intro ------------------------------------------------------------------------- */
+.intro {
+  position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; align-content: center; gap: 22px;
+  background: var(--ground); overflow: hidden; will-change: opacity, transform;
+}
+.intro-glow {
+  position: absolute; width: 70vmax; height: 70vmax; border-radius: 50%;
+  background: radial-gradient(circle, rgb(var(--g2-rgb) / .55), rgb(var(--g1-rgb) / .25) 40%, transparent 68%);
+  filter: blur(40px);
+}
+.intro-word { position: relative; display: flex; gap: .04em; font-size: clamp(56px, 9vw, 128px); font-weight: 800; letter-spacing: .08em; }
+.intro-clip { display: inline-block; overflow: hidden; padding: 0 .02em; }
+.intro-letter {
+  display: inline-block;
+  background: linear-gradient(120deg, #fff 10%, var(--g3) 55%, #fff 90%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.intro-line { position: relative; width: min(260px, 40vw); height: 2px; border-radius: 2px; transform-origin: left;
+  background: linear-gradient(90deg, transparent, var(--g3), transparent); }

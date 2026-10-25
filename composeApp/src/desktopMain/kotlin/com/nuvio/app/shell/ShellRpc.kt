@@ -262,6 +262,11 @@ internal class ShellRpc(private val host: ShellHost) {
                         put("id", profile.profileIndex)
                         put("name", profile.name)
                         put("pin", profile.pinEnabled)
+                        put("color", profile.avatarColorHex)
+                        val item = profile.avatarId?.let { id -> com.nuvio.app.features.profiles.AvatarRepository.avatars.value.firstOrNull { it.id == id } }
+                        val url = if (profile.profileIndex == active?.profileIndex) avatar
+                            else runCatching { com.nuvio.app.features.profiles.profileAvatarImageUrl(profile, item) }.getOrNull()?.takeIf { it.startsWith("http") }
+                        url?.let { put("avatar", it) }
                     })
                 }
             })

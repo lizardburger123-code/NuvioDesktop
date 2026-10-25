@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, lazy, Suspense } from "react";
+import { gsap } from "gsap";
 import { call, on } from "./bridge.js";
 import { useTopic } from "./store.js";
 import { AppProvider, useApp } from "./AppContext.jsx";
@@ -115,10 +116,59 @@ export default function App() {
       </div>
     );
   }
-  if (!boot) return <div className="boot" aria-busy="true" />;
   return (
-    <AppProvider boot={boot}>
-      <Shell />
-    </AppProvider>
+    <>
+      {boot ? (
+        <AppProvider boot={boot}>
+          <Shell />
+        </AppProvider>
+      ) : <div className="boot" aria-busy="true" />}
+      <Intro ready={Boolean(boot)} />
+    </>
+  );
+}
+
+/** Launch intro: the wordmark draws in over the gradient, then lifts away once data is ready. */
+function Intro({ ready }) {
+  const ref = useRef(null);
+  const [done, setDone] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const shown = useRef(performance.now());
+  const timeline = useRef(null);
+
+  useLayoutEffect(() => {
+    const node = ref.current;
+    if (!node) return undefined;
+    const letters = node.querySelectorAll(".intro-letter");
+    timeline.current = gsap.timeline()
+      .fromTo(node.querySelector(".intro-glow"), { scale: 0.4, opacity: 0 }, { scale: 1, opacity: 1, duration: 1.1, ease: "expo.out" })
+      .fromTo(letters, { yPercent: 110, opacity: 0, filter: "blur(10px)" },
+        { yPercent: 0, opacity: 1, filter: "blur(0px)", duration: 0.8, ease: "expo.out", stagger: 0.06 }, 0.1)
+      .fromTo(node.querySelector(".intro-line"), { scaleX: 0 }, { scaleX: 1, duration: 0.9, ease: "power3.inOut" }, 0.35);
+    return () => timeline.current?.kill();
+  }, []);
+
+  useEffect(() => {
+    if (!ready || done) return undefined;
+    const wait = Math.max(0, 1300 - (performance.now() - shown.current));
+    const timer = window.setTimeout(() => {
+      gsap.to(ref.current, {
+        opacity: 0, scale: 1.04, filter: "blur(8px)", duration: 0.7, ease: "power2.inOut",
+        onComplete: () => setDone(true),
+      });
+    }, wait);
+    return () => window.clearTimeout(timer);
+  }, [ready, done]);
+
+  if (done) return null;
+  return (
+    <div ref={ref} className="intro" aria-hidden="true">
+      <div className="intro-glow" />
+      <div className="intro-word">
+        {"NUVIO".split("").map((letter, i) => (
+          <span key={i} className="intro-clip"><span className="intro-letter">{letter}</span></span>
+        ))}
+      </div>
+      <div className="intro-line" />
+    </div>
   );
 }

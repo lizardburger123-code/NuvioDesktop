@@ -45,13 +45,17 @@ export default function Sources({ meta, video, onClose }) {
   const groups = useMemo(() => (state.groups || []).map(group => {
     const rows = (group.streams || []).map(stream => ({ stream, info: parseStream(stream) }))
       .filter(({ info }) => (quality === "All" || info.quality === quality) && (!cachedOnly || info.cached)
-        && (!fullFrameOnly || info.fullFrame) && (showRemoved || !info.removed))
-      .sort((a, b) => (b.info.cached - a.info.cached) || (qualityRank(b.info.quality) - qualityRank(a.info.quality)));
+        && (showRemoved || !info.removed))
+      // "IMAX first": expanded-ratio releases lead the list instead of hiding everything else.
+      .sort((a, b) => (fullFrameOnly ? (b.info.fullFrame - a.info.fullFrame) : 0)
+        || (b.info.cached - a.info.cached) || (qualityRank(b.info.quality) - qualityRank(a.info.quality)));
     return { ...group, rows };
   }), [state.groups, quality, cachedOnly, fullFrameOnly, showRemoved]);
 
   const total = groups.reduce((sum, group) => sum + group.rows.length, 0);
   const allCount = (state.groups || []).reduce((sum, group) => sum + (group.streams?.length || 0), 0);
+  const imaxCount = useMemo(() => (state.groups || []).reduce((sum, group) =>
+    sum + (group.streams || []).filter(stream => parseStream(stream).fullFrame).length, 0), [state.groups]);
   const removedCount = useMemo(() => (state.groups || []).reduce((sum, group) =>
     sum + (group.streams || []).filter(stream => parseStream(stream).removed).length, 0), [state.groups]);
 
@@ -113,10 +117,10 @@ export default function Sources({ meta, video, onClose }) {
           <button
             className="chip"
             aria-pressed={fullFrameOnly}
-            title="Only IMAX, Open Matte and 16:9 full-frame releases (no black bars)"
+            title="Put IMAX, IMAX Enhanced and Open Matte releases (taller picture, fewer black bars) at the top"
             onClick={() => setFullFrameOnly(v => { const next = !v; try { localStorage.setItem("nuvio.fullFrame", next ? "1" : "0"); } catch {} return next; })}
           >
-            <LuMaximize /> No black bars
+            <LuMaximize /> IMAX first{imaxCount ? ` (${imaxCount})` : ""}
           </button>
           {removedCount ? (
             <button className="chip" aria-pressed={showRemoved} onClick={() => setShowRemoved(v => !v)} title="Streams AIOStreams filtered out, listed with the reason">

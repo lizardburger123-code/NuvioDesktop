@@ -39,10 +39,14 @@ export const parseStream = stream => {
   else if (has(/ddp|dd\+|eac3|5\.1|7\.1/i)) tags.push(has(/7\.1/) ? "7.1" : "5.1");
   if (has(/hevc|x265|h\.?265/i)) tags.push("HEVC");
   if (has(/\b(ar|ara|arabic)\b|عربي/i)) tags.push("Arabic");
-  // Releases that fill a 16:9 screen (no letterbox bars).
-  const fullFrame = has(/imax|open[ ._-]?matte|full[ ._-]?frame|\b1[.,]78\b|\b16[x:]9\b|\b1[.,]90\b/i);
-  if (has(/imax/i)) tags.unshift("IMAX");
-  else if (has(/open[ ._-]?matte/i)) tags.unshift("Open Matte");
+  // Releases mastered to fill more of a 16:9 screen: IMAX (1.90:1 expanded), IMAX Enhanced
+  // (Disney+ Marvel/Pixar web releases), Open Matte and full-frame. Names are the only signal
+  // addons give, so this reads every naming variant AIOStreams/Torrentio/Comet pass through.
+  const imax = has(/\bimax\b|imax[ ._-]?enhanced|\bexpanded[ ._-]?(aspect|ratio)?\b|\b1[.,]90(:1)?\b|\b1[.,]43(:1)?\b/i);
+  const openMatte = has(/open[ ._-]?matte|full[ ._-]?frame|\b16[x:]9\b|\b1[.,]78(:1)?\b/i);
+  const fullFrame = imax || openMatte;
+  if (imax) tags.unshift(has(/imax[ ._-]?enhanced/i) ? "IMAX Enhanced" : "IMAX");
+  else if (openMatte) tags.unshift("Open Matte");
   const sizeMatch = text.match(/(\d+(?:\.\d+)?)\s?(GB|MB|GiB|MiB)/i);
   const size = stream.size || (sizeMatch ? `${sizeMatch[1]} ${sizeMatch[2].toUpperCase().replace("I", "i")}` : "");
   const cached = stream.cached === true || has(/⚡|\[\+\]|cached|\[(TB|RD|AD|PM)\+\]/i);
