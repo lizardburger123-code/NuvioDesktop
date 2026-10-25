@@ -88,8 +88,22 @@
     return `${body.slice(0, body.length - tail.length).trimEnd()}${pair[1]}${tail}${punct}`;
   };
 
+  // Name first, stored for left-to-right players: both brackets are closers and the one that opens
+  // the name sits at the end. "إليس نيكولز) تعرضت للخنق)" -> "(إليس نيكولز) تعرضت للخنق".
+  const fixTrailingCloser = line => {
+    if (!ARABIC.test(line)) return line;
+    const match = line.match(/^([\s\S]*?\S)\s*([)\]}»])([.…!?؟،,:;]*)$/);
+    if (!match) return line;
+    const [, body, edge, punct] = match;
+    const pair = PAIRS.find(p => p.includes(edge));
+    const inner = [...body].filter(c => pair.includes(c));
+    // "... (مارلو)" is already right; only two closers mean the opener was moved to the end.
+    if (inner.length !== 1 || inner[0] !== pair[1]) return line;
+    return `${pair[0]}${body}${punct}`;
+  };
+
   const arabicLine = raw => {
-    const line = fixLeadingBracket(fixBrackets(raw.replace(BIDI_CONTROLS, "").trim()));
+    const line = fixTrailingCloser(fixLeadingBracket(fixBrackets(raw.replace(BIDI_CONTROLS, "").trim())));
     if (!ARABIC.test(line)) return line;
     const match = line.match(/^([.…!?؟،,:;]+)\s*([\s\S]*\S)$/);
     return match && !ARABIC_EDGE_PUNCTUATION.test(match[2]) ? match[2] + match[1] : line;
