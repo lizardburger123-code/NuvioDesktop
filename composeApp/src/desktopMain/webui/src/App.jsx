@@ -151,6 +151,21 @@ function Shell() {
   );
 }
 
+// Pictures that fail to load (plain http, hotlink-protected or blocked) retry once through
+// Nuvio's local fetcher, which adds browser headers and uses the unblock route.
+let imageProxy = null;
+if (typeof document !== "undefined") {
+  document.addEventListener("error", event => {
+    const img = event.target;
+    if (!imageProxy || img?.tagName !== "IMG" || img.dataset.proxied) return;
+    const src = img.getAttribute("src") || "";
+    if (!/^https?:\/\//i.test(src) || src.startsWith("http://127.0.0.1")) return;
+    img.dataset.proxied = "1";
+    img.src = imageProxy + encodeURIComponent(src);
+    window.requestAnimationFrame(() => { img.style.display = ""; });
+  }, true);
+}
+
 export default function App() {
   const [boot, setBoot] = useState(null);
   const [error, setError] = useState(null);
@@ -162,6 +177,7 @@ export default function App() {
         if (!alive) return;
         applyAppearance(data.appearance);
         setBoot(data);
+        call("net.get").then(net => { if (net?.port) imageProxy = `http://127.0.0.1:${net.port}/img?u=`; }, () => {});
       },
       err => alive && setError(err),
     );

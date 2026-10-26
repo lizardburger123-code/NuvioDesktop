@@ -86,8 +86,9 @@ internal object ShellNet {
             customProxy = store.getString("net_proxy").orEmpty()
         }
         runCatching { ProxySelector.setDefault(Selector(ProxySelector.getDefault())) }
+        // Always up: the interface falls back to it for pictures that won't load directly.
+        runCatching { start() }.onFailure { log.w(it) { "local proxy didn't start" } }
         if (mode != Mode.OFF) {
-            runCatching { start() }.onFailure { log.w(it) { "unblock proxy didn't start" } }
             interfaceProxied = port > 0
             if (mode == Mode.WARP) pool.execute { runCatching { ShellWarp.ensureRunning() }.onFailure { log.w(it) { "WARP didn't start" } } }
         }
@@ -196,6 +197,10 @@ internal object ShellNet {
         if (parts.size < 3) return
         val (method, target, version) = Triple(parts[0], parts[1], parts[2])
         val out = client.getOutputStream()
+        if (method == "GET" && target.startsWith("/img?")) {
+            serveImage(target, out)
+            return
+        }
         if (method.equals("CONNECT", ignoreCase = true)) {
             val (host, port) = hostPort(target, 443)
             val upstream = try {
@@ -234,6 +239,38 @@ internal object ShellNet {
             upstream.getOutputStream().apply { write(rebuilt.toByteArray(Charsets.ISO_8859_1)); flush() }
             client.soTimeout = 0
             relay(client, input, upstream, host, tls = false)
+        }
+    }
+
+    private val imageClient by lazy {
+        OkHttpClient.Builder().connectTimeout(12, TimeUnit.SECONDS).readTimeout(25, TimeUnit.SECONDS).followRedirects(true).build()
+    }
+
+    /**
+     * Pictures the interface couldn't load (plain http, hotlink-protected, or blocked): fetched
+     * here with a browser's headers and the unblock route, then handed back from 127.0.0.1.
+     */
+    private fun serveImage(target: String, out: OutputStream) {
+        try {
+            val url = java.net.URLDecoder.decode(target.substringAfter("u=").substringBefore("&"), Charsets.UTF_8)
+            require(url.startsWith("http://") || url.startsWith("https://"))
+            val origin = url.substringBefore("://") + "://" + url.substringAfter("://").substringBefore("/") + "/"
+            val request = Request.Builder().url(url)
+                .header("User-Agent", BrowserAgent)
+                .header("Referer", origin)
+                .header("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
+                .get().build()
+            imageClient.newCall(request).execute().use { response ->
+                val bytes = response.body?.bytes() ?: ByteArray(0)
+                val type = response.header("Content-Type") ?: "image/jpeg"
+                out.write(("HTTP/1.1 ${response.code} OK\r\nContent-Type: $type\r\nContent-Length: ${bytes.size}\r\n" +
+                    "Cache-Control: max-age=86400\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n").toByteArray())
+                out.write(bytes)
+                out.flush()
+            }
+        } catch (_: Exception) {
+            out.write("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
+            out.flush()
         }
     }
 
