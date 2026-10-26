@@ -30,6 +30,7 @@ import com.nuvio.app.shell.ShellJson.double
 import com.nuvio.app.shell.ShellJson.int
 import com.nuvio.app.shell.ShellJson.long
 import com.nuvio.app.shell.ShellJson.string
+import com.nuvio.app.features.downloads.DownloadsRepository
 import com.nuvio.app.shell.ShellJson.asStringList
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -195,6 +196,39 @@ internal class ShellRpc(private val host: ShellHost) {
         "store.resolve" -> ShellAddonStore.resolve(params.string("slug") ?: error("Missing addon."))
         "store.showAdult" -> JsonPrimitive(ShellAddonStore.showAdult())
         "library.cloud" -> ShellDiscover.libraryItems()
+        "downloads.subscribe" -> {
+            DownloadsRepository.ensureLoaded()
+            if (topicJobs["downloads"]?.isActive != true) watch("downloads", DownloadsRepository.uiState) { ShellDownloads.json(it) }
+            JsonPrimitive(true)
+        }
+        "downloads.start" -> downloadStart(params)
+        "downloads.pause" -> { DownloadsRepository.pauseDownload(params.string("id") ?: error("Missing download.")); JsonPrimitive(true) }
+        "downloads.resume" -> { DownloadsRepository.resumeDownload(params.string("id") ?: error("Missing download.")); JsonPrimitive(true) }
+        "downloads.remove" -> { DownloadsRepository.cancelDownload(params.string("id") ?: error("Missing download.")); JsonPrimitive(true) }
+        "downloads.reveal" -> { ShellDownloads.reveal(params.string("id")); JsonPrimitive(true) }
+        "downloads.folder" -> buildJsonObject { put("path", ShellDownloads.folder().absolutePath) }
+        "downloads.setFolder" -> buildJsonObject { put("path", ShellDownloads.setFolder(params.string("path"))) }
+        "downloads.play" -> {
+            val actions = host.actions() ?: error("Playback isn't ready yet. Try again in a moment.")
+            val item = ShellDownloads.item(params.string("id") ?: error("Missing download."))
+            val stream = ShellDownloads.localStream(item)
+            val launch = buildJsonObject {
+                put("type", item.contentType)
+                put("metaId", item.parentMetaId)
+                put("metaType", item.parentMetaType)
+                put("videoId", item.videoId)
+                item.seasonNumber?.let { put("season", it) }
+                item.episodeNumber?.let { put("episode", it) }
+                put("title", item.title)
+                item.poster?.let { put("poster", it) }
+                item.logo?.let { put("logo", it) }
+                item.background?.let { put("background", it) }
+                item.episodeTitle?.let { put("episodeTitle", it) }
+                item.episodeThumbnail?.let { put("thumbnail", it) }
+            }
+            actions.launchPlayback(request(launch, stream))
+            JsonPrimitive(true)
+        }
         "home.rows" -> ShellHomeRows.list()
         "home.rows.set" -> {
             ShellHomeRows.setEnabled(params.string("key") ?: error("Missing row."), params.bool("enabled") ?: false)
@@ -614,6 +648,41 @@ internal class ShellRpc(private val host: ShellHost) {
         if (params.containsKey("subtitle")) ShellSubtitlePicker.choose(params.string("subtitle"), subtitleTarget(params))
         actions.launchPlayback(request(params, stream))
         return buildJsonObject { put("ok", true) }
+    }
+
+    /** Save a source to disk: direct links as they are, torrents through their TorBox copy. */
+    private suspend fun downloadStart(params: JsonObject): JsonElement {
+        val key = params.string("streamKey") ?: error("Missing source.")
+        var stream = streamIndex[key] ?: error("That source is no longer listed. Reload the sources and pick again.")
+        val hash = ShellTorbox.hashOf(stream)
+        if (params.bool("torbox") == true || (stream.playableDirectUrl == null && hash != null)) {
+            val link = ShellTorbox.link(hash ?: error("That source has no torrent."), stream.behaviorHints.filename, params.int("season"), params.int("episode"))
+            stream = stream.copy(url = link, infoHash = null, fileIdx = null, externalUrl = null, clientResolve = null, debridCacheStatus = null, sources = emptyList())
+        }
+        if (stream.playableDirectUrl == null) error("This source can't be saved. Pick a direct source, or cache the torrent on TorBox first.")
+        val req = request(params, stream)
+        val result = DownloadsRepository.enqueueFromStream(
+            contentType = req.type,
+            videoId = req.videoId,
+            parentMetaId = req.parentMetaId,
+            parentMetaType = req.parentMetaType,
+            title = req.title,
+            logo = req.logo,
+            poster = req.poster,
+            background = req.background,
+            seasonNumber = req.seasonNumber,
+            episodeNumber = req.episodeNumber,
+            episodeTitle = req.episodeTitle,
+            episodeThumbnail = req.episodeThumbnail,
+            stream = stream,
+        )
+        if (result == com.nuvio.app.features.downloads.DownloadEnqueueResult.MissingUrl) error("This source has no link to save.")
+        if (result == com.nuvio.app.features.downloads.DownloadEnqueueResult.UnsupportedFormat) error("This source is a live playlist (HLS or DASH); it can only be streamed.")
+        if (topicJobs["downloads"]?.isActive != true) watch("downloads", DownloadsRepository.uiState) { ShellDownloads.json(it) }
+        return buildJsonObject {
+            put("result", result.name.lowercase())
+            put("folder", ShellDownloads.folder().absolutePath)
+        }
     }
 
     /** Continue watching: restart the last source instantly when it is still cached. */

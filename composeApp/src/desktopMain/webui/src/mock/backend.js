@@ -203,6 +203,22 @@ export const createMockBackend = deliver => {
   });
 
   const mockCache = {};
+  let downloads = [{ id: "d1", type: "movie", metaId: "tt9004", videoId: "tt9004", title: "Project Hail Mary", fileName: "Project Hail Mary_2026.mkv", source: "SELection", status: "completed", done: 8.4e9, total: 8.4e9, speed: 0, createdAt: Date.now() - 864e5 }];
+  let dlTimer = 0;
+  const tickDownloads = () => {
+    window.clearInterval(dlTimer);
+    dlTimer = window.setInterval(() => {
+      let live = false;
+      downloads = downloads.map(d => {
+        if (d.status !== "downloading") return d;
+        live = true;
+        const done = Math.min(d.total, d.done + 3.2e8);
+        return { ...d, done, speed: 6.4e8, status: done >= d.total ? "completed" : "downloading" };
+      });
+      push("downloads", downloads);
+      if (!live) window.clearInterval(dlTimer);
+    }, 500);
+  };
   let net = { mode: "off", proxy: "", port: 47231, restartForPictures: false, warp: { available: true, state: "off" } };
   const handlers = {
     "app.bootstrap": () => ({
@@ -299,6 +315,19 @@ export const createMockBackend = deliver => {
       mockCache[hash] = { at: Date.now() };
       resolve({ connected: true, items: { [hash]: { state: "downloading", progress: 0, ready: false, eta: 9, seeds: 12 } } });
     }, 500)),
+    "downloads.subscribe": () => { push("downloads", downloads); return true; },
+    "downloads.start": ({ streamKey, title, season, episode }) => {
+      downloads = [{ id: `d${Date.now()}`, type: "series", metaId: "x", videoId: streamKey, title: title || "Download", season, episode, fileName: `${title || "Download"}.mkv`, source: "SELection", status: "downloading", done: 0, total: 2.4e9, speed: 0, createdAt: Date.now() }, ...downloads];
+      push("downloads", downloads); tickDownloads();
+      return { result: "started", folder: "C:\\Users\\you\\Downloads\\Nuvio" };
+    },
+    "downloads.pause": ({ id }) => { downloads = downloads.map(d => (d.id === id ? { ...d, status: "paused", speed: 0 } : d)); push("downloads", downloads); return true; },
+    "downloads.resume": ({ id }) => { downloads = downloads.map(d => (d.id === id ? { ...d, status: "downloading" } : d)); push("downloads", downloads); tickDownloads(); return true; },
+    "downloads.remove": ({ id }) => { downloads = downloads.filter(d => d.id !== id); push("downloads", downloads); return true; },
+    "downloads.reveal": () => true,
+    "downloads.play": () => true,
+    "downloads.folder": () => ({ path: "C:\\Users\\you\\Downloads\\Nuvio" }),
+    "downloads.setFolder": ({ path }) => ({ path: path || "C:\\Users\\you\\Downloads\\Nuvio" }),
     "net.get": () => ({ ...net }),
     "net.set": ({ mode, proxy }) => { net = { ...net, mode, proxy: proxy || net.proxy, restartForPictures: mode !== "off", warp: { ...net.warp, state: mode === "warp" ? "on" : "off" } }; return { ...net }; },
     "net.test": ({ url }) => new Promise(resolve => setTimeout(() => resolve(net.mode === "off" ? { ok: false, ms: 5012, error: "Connection reset" } : { ok: true, status: 200, ms: 412, bytes: 2048, url }), 600)),

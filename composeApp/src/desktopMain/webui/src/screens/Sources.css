@@ -157,3 +157,27 @@ button.source-cache:active { transform: translateY(-50%) scale(.96); }
 .source-cache-bar i { display: block; height: 100%; width: var(--p, 0%); border-radius: inherit; background: linear-gradient(90deg, var(--g2), var(--g3)); transition: width 600ms var(--ease-out, ease); }
 .source-cache-label { display: flex; gap: 6px; align-items: baseline; font-size: 11.5px; line-height: 1; }
 .source-cache-label small { font-weight: 600; color: var(--ink-3); }
+
+/* Download: a round button in its own column, left of the play arrow. */
+.source-row { grid-template-columns: 62px minmax(0, 1fr) 36px 40px; }
+.source-item.has-cache .source-row { grid-template-columns: 62px minmax(0, 1fr) 138px 36px 40px; }
+.source-dl {
+  position: absolute;
+  top: 50%;
+  right: 64px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--ink-2);
+  background: rgb(255 255 255 / .06);
+  transform: translateY(-50%);
+  opacity: .55;
+  transition: opacity var(--t-fast) ease, background-color var(--t-fast) ease, color var(--t-fast) ease, transform var(--t-fast) var(--ease-soft);
+}
+.source-dl svg { width: 16px; height: 16px; }
+.source-item:hover .source-dl, .source-dl:focus-visible { opacity: 1; }
+.source-dl:hover { color: var(--ink); background: rgb(255 255 255 / .16); }
+.source-dl:active { transform: translateY(-50%) scale(.94); }
+.source-item.has-cache .source-cache { right: 108px; }

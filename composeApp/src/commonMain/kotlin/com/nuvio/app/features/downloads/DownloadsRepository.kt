@@ -164,6 +164,8 @@ object DownloadsRepository {
             fallbackTitle = stream.streamLabel,
             sourceUrl = sourceUrl,
             downloadId = downloadId,
+            preferredExtension = stream.behaviorHints.filename?.substringAfterLast('.', "")?.lowercase()
+                ?.takeIf { it.length in 2..4 && it.all(Char::isLetterOrDigit) },
         )
 
         val item = DownloadItem(
@@ -528,6 +530,7 @@ private fun buildFileName(
     fallbackTitle: String,
     sourceUrl: String,
     downloadId: String,
+    preferredExtension: String? = null,
 ): String {
     val baseTitle = if (seasonNumber != null && episodeNumber != null) {
         buildString {
@@ -545,7 +548,7 @@ private fun buildFileName(
         title.ifBlank { fallbackTitle }
     }
 
-    val extension = sourceUrl.fileExtensionFromUrl()
+    val extension = preferredExtension ?: sourceUrl.fileExtensionFromUrl()
     return buildString {
         append(baseTitle.sanitizeFileName().ifBlank { "download" }.take(92))
         append('_')

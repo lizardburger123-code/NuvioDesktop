@@ -185,7 +185,7 @@ export default function TopBar({ route, stack, profile, compact }) {
           <LuArrowLeft />
         </button>
         <div className="topbar-day">
-          <GradientText className="topbar-weekday" colors={colors} animationSpeed={10} glow={0.35}>{day}</GradientText>
+          <GradientText className="topbar-weekday" colors={colors} animationSpeed={14}>{day}</GradientText>
           <span className="topbar-date"><i className="topbar-dot" />{date}</span>
         </div>
       </div>

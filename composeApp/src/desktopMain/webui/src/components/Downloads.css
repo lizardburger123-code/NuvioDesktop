@@ -1,0 +1,42 @@
+.dl { padding: 20px var(--gutter) 0; display: flex; flex-direction: column; gap: 12px; max-width: 1100px; }
+.dl-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dl-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.dl-item {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 14px 12px 12px;
+  border-radius: 20px;
+  background: rgb(255 255 255 / .05);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .07);
+}
+.dl-art { width: 112px; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; background: rgb(255 255 255 / .06); }
+.dl-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.dl-main { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.dl-main strong { font-size: var(--fs-14); font-weight: 750; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dl-main strong em { font-style: normal; font-weight: 650; color: var(--ink-3); }
+.dl-file { font-size: var(--fs-12); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dl-progress { height: 5px; border-radius: 5px; background: rgb(255 255 255 / .1); overflow: hidden; }
+.dl-progress i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--g2), var(--g3)); transition: width 500ms linear; }
+.is-paused .dl-progress i, .is-failed .dl-progress i { background: rgb(255 255 255 / .35); }
+.dl-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: var(--fs-12); color: var(--ink-2); }
+.dl-status { font-weight: 750; }
+.dl-status.s-downloading { color: var(--ink); }
+.dl-status.s-completed { color: #7ef0a0; }
+.dl-status.s-failed, .dl-error { color: #ffb4ad; }
+.dl-actions { display: flex; align-items: center; gap: 6px; }
+.dl-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--ink-2);
+  background: rgb(255 255 255 / .07);
+  transition: background-color var(--t-fast) ease, color var(--t-fast) ease, transform var(--t-fast) var(--ease-soft);
+}
+.dl-icon svg { width: 16px; height: 16px; }
+.dl-icon:hover { color: var(--ink); background: rgb(255 255 255 / .15); }
+.dl-icon:active { transform: scale(.94); }
+@media (max-width: 900px) { .dl-item { grid-template-columns: 80px minmax(0, 1fr); } .dl-actions { grid-column: 1 / -1; justify-content: flex-end; } .dl-art { width: 80px; } }

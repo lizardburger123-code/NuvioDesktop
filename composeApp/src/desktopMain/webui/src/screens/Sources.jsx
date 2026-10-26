@@ -2,7 +2,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { DURATION, EASE, reduceMotion, useSegmentPill } from "../lib/motion.js";
 import { holdAmbient } from "../lib/hold.js";
-import { LuCloudDownload, LuLoaderCircle, LuMaximize, LuPlay, LuRefreshCw, LuX, LuZap } from "react-icons/lu";
+import { LuCloudDownload, LuDownload, LuLoaderCircle, LuMaximize, LuPlay, LuRefreshCw, LuX, LuZap } from "react-icons/lu";
+import { navigate } from "../lib/router.js";
 import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
 import { useApp } from "../AppContext.jsx";
@@ -150,6 +151,24 @@ export default function Sources({ meta, video, onClose }) {
   }, [downloadingKey]);
   useEffect(() => onCacheReady(name => toast(`Ready on TorBox: ${name}`)), [toast]);
 
+  // Save a source to disk (direct links, or a torrent's TorBox copy).
+  const [saving, setSaving] = useState(null);
+  const download = async (stream, extra = {}) => {
+    setSaving(stream.key);
+    try {
+      const params = { ...playParams(stream), ...extra };
+      const result = await call("downloads.start", params, { timeoutMs: 60000 });
+      toast(result?.result === "replaced" ? "Downloading again (the old copy was replaced)" : "Downloading", {
+        action: { label: "Show", run: () => { close(); navigate("library", { tab: "downloads" }); } },
+      });
+    } catch (error) {
+      if (/connect torbox/i.test(error.message)) setConnect({ retry: () => download(stream, extra) });
+      else toast(error.message, { tone: "error" });
+    } finally {
+      setSaving(null);
+    }
+  };
+
   const sendCache = async stream => {
     const info = parseStream(stream);
     try {
@@ -249,11 +268,23 @@ export default function Sources({ meta, video, onClose }) {
                         </span>
                       </span>
                       {canCache ? <span className="source-cache-slot" aria-hidden="true" /> : null}
+                      <span className="source-dl-slot" aria-hidden="true" />
                       <span className="source-go" aria-hidden="true">
                         {starting === stream.key ? <LuLoaderCircle className="spin" /> : <LuPlay />}
                       </span>
                     </button>
                     {canCache ? <CacheControl stream={stream} item={item} onSend={() => sendCache(stream)} /> : null}
+                    {!stream.external && (!canCache || onTorbox) ? (
+                      <button
+                        className="source-dl"
+                        onClick={() => download(stream, onTorbox ? { torbox: true } : {})}
+                        disabled={saving != null}
+                        aria-label={`Download ${info.release || stream.name}`}
+                        title="Download to this PC"
+                      >
+                        {saving === stream.key ? <LuLoaderCircle className="spin" /> : <LuDownload />}
+                      </button>
+                    ) : null}
                   </div>
                 );
               })}

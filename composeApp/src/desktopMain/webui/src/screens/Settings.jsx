@@ -486,6 +486,7 @@ function Playback() {
   };
   if (!items) return <div className="panel skel" style={{ height: 240 }} />;
   return (
+    <>
     <Panel title="Player" description="How sources are picked and how playback starts." aside={<Saved show={saved} />}>
       {items.map(item => (
         <div key={item.key} className="toggle-row">
@@ -499,6 +500,29 @@ function Playback() {
         </div>
       ))}
       <button className="btn btn-glass btn-sm settings-classic" onClick={() => call("legacy.open", { page: "playback" })}><LuMonitorPlay /> All player settings</button>
+    </Panel>
+    <DownloadsFolder />
+    </>
+  );
+}
+
+/** Where downloads are saved (Downloads\Nuvio unless you pick another folder). */
+function DownloadsFolder() {
+  const { toast } = useApp();
+  const [path, setPath] = useState("");
+  const [saved, stamp] = useSavedStamp();
+  useEffect(() => { call("downloads.folder").then(r => setPath(r?.path || ""), () => {}); }, []);
+  const save = value => call("downloads.setFolder", { path: value }).then(r => { setPath(r.path); stamp(); }, error => toast(error.message, { tone: "error" }));
+  return (
+    <Panel title="Downloads" description="Where downloaded movies and episodes are saved. Big files download over several connections at once and pick up where they stopped." aside={<Saved show={saved} />}>
+      <form className="install-row" onSubmit={event => { event.preventDefault(); save(path); }}>
+        <input className="field" value={path} onChange={event => setPath(event.target.value)} spellCheck={false} aria-label="Downloads folder" />
+        <button className="btn btn-glass">Use this folder</button>
+      </form>
+      <div className="classic-row">
+        <button className="btn btn-ghost btn-sm" onClick={() => call("downloads.reveal", {})}>Open the folder</button>
+        <button className="btn btn-ghost btn-sm" onClick={() => save("")}>Back to Downloads\Nuvio</button>
+      </div>
     </Panel>
   );
 }
