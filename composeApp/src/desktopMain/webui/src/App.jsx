@@ -10,6 +10,7 @@ import { ScreenActiveContext } from "./lib/screen.js";
 import Background from "./components/Background.jsx";
 import TopBar from "./components/TopBar.jsx";
 import Toasts from "./components/Toasts.jsx";
+import ProfileGate, { shouldShowGate } from "./components/ProfileGate.jsx";
 import ClickSpark from "./reactbits/ClickSpark/ClickSpark.jsx";
 import Home from "./screens/Home.jsx";
 import Browse from "./screens/Browse.jsx";
@@ -89,9 +90,10 @@ const appearanceSpark = appearance => (appearance?.colors?.length ? ["#ffffff", 
 function Shell() {
   const router = useRouter();
   const top = router.stack[router.stack.length - 1];
-  const { appearance, art } = useApp();
+  const { appearance, art, boot } = useApp();
   const home = useTopic("home", { hero: [] });
   const [scrolled, setScrolled] = useState(false);
+  const [gate, setGate] = useState(() => shouldShowGate(boot));
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 300);
@@ -140,9 +142,10 @@ function Shell() {
     <>
       <Background appearance={appearance} featured={home.hero} art={sceneArt} scrolled={scrolled && top.name === "home"} />
       <TopBar route={top} stack={router.stack} profile={useApp().profile} compact={compact} />
-      <ClickSpark sparkColor={appearanceSpark(appearance)} sparkCount={10} sparkRadius={26} sparkSize={12} duration={520} shape="streak" glow={0.6}>
+      <ClickSpark className={gate ? "app-stage is-gated" : "app-stage"} sparkColor={appearanceSpark(appearance)} sparkCount={10} sparkRadius={26} sparkSize={12} duration={520} shape="streak" glow={0.6}>
         <Screens />
       </ClickSpark>
+      {gate ? <ProfileGate onDone={() => setGate(false)} /> : null}
       <Toasts />
     </>
   );

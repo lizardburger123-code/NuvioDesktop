@@ -194,13 +194,15 @@ const isSection = entry => entry && (entry.name === "search" || NAV_ORDER.includ
  */
 export const goSection = (name, params = {}) => {
   const target = { name, params };
-  if (same(top(), target)) {
+  // A section is the same section whatever its view state (Discover filters, settings page).
+  const sameSection = e => (name === "settings" || name === "search" ? same(e, target) : sectionId(e) === sectionId(target));
+  if (sameSection(top())) {
     window.scrollTo({ top: 0, behavior: reduceMotion() ? "auto" : "smooth" });
     return;
   }
   saveScroll();
   const home = state.sections[0];
-  let entry = name === "home" ? home : state.sections.find(e => same(e, target));
+  let entry = name === "home" ? home : state.sections.find(sameSection);
   if (!entry) {
     seq += 1;
     entry = { name, params, key: seq, scroll: 0 };

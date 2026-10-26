@@ -51,6 +51,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 
@@ -181,6 +182,28 @@ internal class ShellRpc(private val host: ShellHost) {
             ShellJson.strings(emptyList())
         }
         "subtitles.match" -> matchSubtitles(params)
+        "torbox.summary" -> ShellTorbox.summary()
+        "torbox.connect.start" -> ShellTorbox.connectStart()
+        "torbox.connect.poll" -> ShellTorbox.connectPoll(params.string("deviceCode") ?: error("Missing code."))
+        "torbox.clear" -> ShellTorbox.clear()
+        "library.cloud" -> ShellDiscover.libraryItems()
+        "home.rows" -> ShellHomeRows.list()
+        "home.rows.set" -> {
+            ShellHomeRows.setEnabled(params.string("key") ?: error("Missing row."), params.bool("enabled") ?: false)
+            ShellHomeRows.list()
+        }
+        "discover.sources" -> ShellDiscover.sources(params.string("kind") ?: "movie")
+        "discover.page" -> ShellDiscover.page(
+            source = params.string("source") ?: error("Pick a catalog."),
+            filters = (params["filters"] as? JsonObject)?.mapNotNull { (k, v) -> (v as? JsonPrimitive)?.contentOrNull?.let { k to it } }?.toMap().orEmpty(),
+            skip = params.int("skip") ?: 0,
+        )
+        "store.list" -> ShellAddonStore.list()
+        "store.setAdult" -> ShellAddonStore.setShowAdult(params.bool("show") ?: true)
+        "addons.setEnabled" -> {
+            AddonRepository.setAddonEnabled(params.string("id") ?: error("Missing addon."), params.bool("enabled") ?: true)
+            JsonPrimitive(true)
+        }
         "search.query" -> search(params)
         "details.load" -> loadDetails(params)
         "streams.load" -> loadStreams(params)
@@ -280,6 +303,7 @@ internal class ShellRpc(private val host: ShellHost) {
 
     private suspend fun bootstrap(): JsonElement {
         runCatching { applyResumeDefaults() }.onFailure { log.w(it) { "resume defaults" } }
+        runCatching { ShellHousekeeping.cleanStreamCache() }
         // A (re)loaded page has an empty topic cache: restart every subscription so it gets current values.
         topicJobs.values.forEach { it.cancel() }
         topicJobs.clear()
@@ -323,6 +347,7 @@ internal class ShellRpc(private val host: ShellHost) {
         WatchedRepository.ensureLoaded()
         WatchLaterStore.ensureLoaded()
         watch("home", HomeRepository.uiState) { state ->
+            runCatching { ShellHomeRows.applyDefaults() }
             buildJsonObject {
                 put("loading", state.isLoading)
                 put("hero", buildJsonArray { state.heroItems.forEach { add(ShellJson.preview(it)) } })
@@ -629,6 +654,7 @@ internal class ShellRpc(private val host: ShellHost) {
             put("blur", value.blur)
             put("animate", value.animate)
             put("blurArt", value.blurArt)
+            put("profileGate", value.profileGate)
         }
     }
 
@@ -639,6 +665,7 @@ internal class ShellRpc(private val host: ShellHost) {
         params.double("blur")?.let { value = value.copy(blur = it.coerceIn(0.0, 40.0)) }
         params.bool("animate")?.let { value = value.copy(animate = it) }
         params.bool("blurArt")?.let { value = value.copy(blurArt = it) }
+        params.bool("profileGate")?.let { value = value.copy(profileGate = it) }
         (params["wallpaper"] as? JsonObject)?.let { wallpaper ->
             wallpaper.string("mode")?.takeIf { it in setOf("featured", "custom", "none") }?.let { value = value.copy(wallpaperMode = it) }
             if (wallpaper.containsKey("image")) {
@@ -767,6 +794,7 @@ internal class ShellRpc(private val host: ShellHost) {
                 addon.manifest?.logoUrl?.let { put("logo", it) }
                 put("types", ShellJson.strings(addon.manifest?.types.orEmpty()))
                 put("configurable", addon.manifest?.behaviorHints?.configurable == true)
+                put("adult", ShellAddonStore.adultFlag(addon.manifestUrl, addon.manifest))
                 put("enabled", addon.enabled)
                 addon.errorMessage?.let { put("error", it) }
             })

@@ -9,6 +9,7 @@ export const DEFAULT_APPEARANCE = {
   blur: 0,
   animate: true,
   blurArt: false,
+  profileGate: true,
 };
 
 export const PRESETS = [

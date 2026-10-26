@@ -81,6 +81,27 @@ const sections = [
   { key: "torbox.library", title: "TorBox library", subtitle: "AIOStreams", addonName: "AIOStreams", type: "other", items: library },
 ];
 
+let homeRows = [
+  { key: "aio:movie:popular", title: "Popular - Movies", addon: "SELection", enabled: true },
+  { key: "aio:series:popular", title: "Popular - Series", addon: "SELection", enabled: true },
+  { key: "aio:movie:library", title: "TorBox - Library", addon: "SELection", enabled: false },
+  { key: "cinemeta:movie:top", title: "Trending movies", addon: "Cinemeta", enabled: true },
+];
+let torboxConnected = false;
+let torboxItems = library.slice(0, 5);
+let storeAdult = true;
+let storeItems = [
+  { key: "Cinemeta", category: "Catalogs", name: "Cinemeta", blurb: "The official catalog and metadata: popular, top rated and new movies and series.", version: "3.0.14", available: true, manifest: "https://v3-cinemeta.strem.io/manifest.json", installed: "https://v3-cinemeta.strem.io/manifest.json" },
+  { key: "TMDB", category: "Catalogs", name: "The Movie Database", blurb: "TMDB catalogs, trending lists and rich metadata in your language.", version: "3.1.4", available: true, manifest: "x", configure: "y" },
+  { key: "Streaming", category: "Catalogs", name: "Streaming Catalogs", blurb: "What's on Netflix, Disney+, Max, Prime Video, Apple TV+ and more.", version: "1.4.0", available: true, manifest: "x", configure: "y" },
+  { key: "AIOMetadata", category: "Catalogs", name: "AIOMetadata", blurb: "One addon for TMDB, TVDB, MAL and Trakt catalogs with full control over metadata.", needsSetup: true, configure: "y" },
+  { key: "Kitsu", category: "Anime", name: "Anime Kitsu", blurb: "Anime catalogs and metadata from Kitsu: trending, airing, top rated.", version: "0.0.10", available: true, manifest: "x", installed: "kitsu", enabled: true },
+  { key: "Torrentio", category: "Streams", name: "Torrentio", blurb: "The classic torrent source with debrid support.", available: true, manifest: "x", configure: "y" },
+  { key: "USA TV", category: "Live TV", name: "USA TV", blurb: "Free live US TV channels.", available: false, manifest: "x" },
+  { key: "OS", category: "Subtitles", name: "OpenSubtitles v3", blurb: "The official OpenSubtitles addon.", available: true, manifest: "x" },
+  { key: "OnlyPorn", category: "Adult", name: "OnlyPorn", blurb: "Adult videos from several sites, as catalogs and streams.", available: true, manifest: "x", adult: true, installed: "op", enabled: true },
+  { key: "4K", category: "Adult", name: "4K Porn TPB", blurb: "4K and 1080p adult torrents, with debrid support.", needsSetup: true, configure: "y", adult: true },
+];
 let searchHistory = ["the hunt", "fem", "persona", "death", "Slow Horses"];
 
 let appearance = {
@@ -89,6 +110,7 @@ let appearance = {
   dim: 0.35,
   blur: 0,
   animate: true,
+  profileGate: true,
 };
 
 let subtitles = {
@@ -197,6 +219,35 @@ export const createMockBackend = deliver => {
     },
     "home.refresh": () => { pushHome(); return true; },
     "search.history": () => searchHistory,
+    "discover.sources": ({ kind }) => {
+      const genres = ["Action", "Comedy", "Drama", "Horror", "Sci-Fi", "Thriller", "Romance", "Animation"];
+      const years = Array.from({ length: 30 }, (_, i) => String(2026 - i));
+      const base = kind === "anime"
+        ? [["kitsu-trending", "Trending", "Anime Kitsu"], ["kitsu-airing", "Airing now", "Anime Kitsu"], ["kitsu-top", "Top rated", "Anime Kitsu"], ["mal-season", "This season", "Animeo"]]
+        : [["tmdb-popular", "Popular", "The Movie Database"], ["tmdb-top", "Top rated", "The Movie Database"], ["tmdb-trending", "Trending", "The Movie Database"], ["netflix", "Netflix", "Streaming Catalogs"], ["disney", "Disney+", "Streaming Catalogs"], ["cinemeta-new", "New", "Cinemeta"]];
+      return base.map(([id, name, addon], i) => ({
+        id: `mock|${kind}|${id}`, name, addon, type: kind === "anime" ? "anime" : kind, paged: true,
+        filters: [{ name: "genre", required: false, options: genres }, ...(i % 2 === 0 ? [{ name: "year", required: false, options: years }] : [])],
+      }));
+    },
+    "discover.page": ({ source, filters = {}, skip = 0 }) => new Promise(resolve => setTimeout(() => {
+      const pool = all.filter(item => !filters.genre || item.genres.includes(filters.genre));
+      const page = Array.from({ length: 24 }, (_, i) => {
+        const item = pool[(skip + i + source.length) % Math.max(1, pool.length)];
+        return item ? { ...item, id: `${item.id}-${skip + i}` } : null;
+      }).filter(Boolean);
+      resolve({ items: skip > 120 ? [] : page, next: skip > 120 ? -1 : skip + page.length });
+    }, 500)),
+    "home.rows": () => homeRows,
+    "home.rows.set": ({ key, enabled }) => { homeRows = homeRows.map(r => (r.key === key ? { ...r, enabled } : r)); return homeRows; },
+    "library.cloud": () => new Promise(resolve => setTimeout(() => resolve({ sources: 1, items: torboxItems }), 400)),
+    "torbox.summary": () => new Promise(resolve => setTimeout(() => resolve(torboxConnected ? { connected: true, count: torboxItems.length, size: 182e9 } : { connected: false }), 400)),
+    "torbox.connect.start": () => ({ deviceCode: "dev", code: "K7Q2PX", url: "https://torbox.app/device", interval: 3 }),
+    "torbox.connect.poll": () => { torboxConnected = true; return { status: "connected" }; },
+    "torbox.clear": () => new Promise(resolve => setTimeout(() => { const removed = torboxItems.length; torboxItems = []; resolve({ removed, failed: 0 }); }, 1200)),
+    "store.list": () => new Promise(resolve => setTimeout(() => resolve({ showAdult: storeAdult, items: storeItems.map(item => ({ ...item, enabled: item.installed ? item.enabled !== false : undefined })) }), 600)),
+    "store.setAdult": ({ show }) => { storeAdult = show; let changed = 0; storeItems = storeItems.map(i => (i.adult && i.installed && i.enabled !== show ? (changed++, { ...i, enabled: show }) : i)); return { showAdult: show, changed }; },
+    "addons.setEnabled": ({ id, enabled }) => { storeItems = storeItems.map(i => (i.installed === id ? { ...i, enabled } : i)); return true; },
     "search.history.remove": ({ query }) => { searchHistory = searchHistory.filter(item => item !== query); return searchHistory; },
     "search.history.clear": () => { searchHistory = []; return searchHistory; },
     "subtitles.match": ({ query, languages, title }) => new Promise(resolve => setTimeout(() => {

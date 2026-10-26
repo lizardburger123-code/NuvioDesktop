@@ -5,6 +5,9 @@ import { useApp } from "../AppContext.jsx";
 import { ContinueCard, PosterCard } from "../components/Cards.jsx";
 import { navigate } from "../lib/router.js";
 import { useSegmentPill } from "../lib/motion.js";
+import { useScreenActive } from "../lib/screen.js";
+import TorboxClear from "../components/TorboxClear.jsx";
+import { LuRefreshCw, LuTrash2 } from "react-icons/lu";
 import "./Library.css";
 
 const TABS = [
@@ -22,20 +25,26 @@ export default function Library({ params }) {
   const library = useTopic("library", { items: [], cloud: [] });
   const continueWatching = useTopic("continue", []);
   const [sort, setSort] = useState("recent");
+  const active = useScreenActive();
+  // TorBox: read straight from the library catalogs (they may be hidden from Home).
+  const [cloud, setCloud] = useState(null);
+  const [clearing, setClearing] = useState(false);
+  const loadCloud = () => call("library.cloud", {}, { timeoutMs: 30000 }).then(r => setCloud(r?.items || []), () => setCloud([]));
+  useEffect(() => { if (active && tab === "cloud") loadCloud(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [active, tab]);
   const tabsRef = useRef(null);
   useSegmentPill(tabsRef);
 
   useEffect(() => { call("library.subscribe").catch(() => {}); }, []);
 
   const items = useMemo(() => {
-    const source = tab === "later" ? watchLater : tab === "saved" ? library.items || [] : tab === "cloud" ? library.cloud || [] : [];
+    const source = tab === "later" ? watchLater : tab === "saved" ? library.items || [] : tab === "cloud" ? cloud || library.cloud || [] : [];
     const list = [...source];
     if (sort === "name") list.sort((a, b) => a.name.localeCompare(b.name));
     if (sort === "year") list.sort((a, b) => String(b.releaseInfo || "").localeCompare(String(a.releaseInfo || "")));
     return list;
-  }, [tab, watchLater, library, sort]);
+  }, [tab, watchLater, library, sort, cloud]);
 
-  const counts = { later: watchLater.length, continue: continueWatching.length, saved: (library.items || []).length, cloud: (library.cloud || []).length };
+  const counts = { later: watchLater.length, continue: continueWatching.length, saved: (library.items || []).length, cloud: (cloud || library.cloud || []).length };
 
   return (
     <main className="screen library">
@@ -49,6 +58,12 @@ export default function Library({ params }) {
               </button>
             ))}
           </div>
+          {tab === "cloud" ? (
+            <div className="library-cloud-tools">
+              <button className="btn btn-ghost btn-sm" onClick={loadCloud} aria-label="Reload TorBox library" title="Reload"><LuRefreshCw /></button>
+              <button className="btn btn-glass btn-sm library-clear" onClick={() => setClearing(true)}><LuTrash2 /> Clear TorBox library</button>
+            </div>
+          ) : null}
           {tab !== "continue" ? (
             <label className="library-sort">
               <span className="t-meta">Sort</span>
@@ -83,11 +98,12 @@ export default function Library({ params }) {
               : tab === "continue"
                 ? "Anything you start watching shows up here with the time you have left."
                 : tab === "cloud"
-                  ? "Files in your TorBox account appear here once the TorBox integration is set up."
+                  ? "What you play through TorBox collects here. It's hidden from Home; clear it any time with the button above."
                   : "Titles you add to your library appear here."}
           </p>
         </section>
       ) : null}
+      {clearing ? <TorboxClear onClose={() => setClearing(false)} onCleared={() => { setCloud([]); window.setTimeout(loadCloud, 2500); }} /> : null}
       <div className="screen-end" />
     </main>
   );

@@ -7,11 +7,13 @@ import Row from "../components/Row.jsx";
 import { ContinueCard, PosterCard, SkeletonPosters } from "../components/Cards.jsx";
 import { ResumeTile, SpotlightTile, UpNextTile, WatchLaterTile } from "../components/Tiles.jsx";
 import { navigate } from "../lib/router.js";
+import { hideRow } from "../lib/rows.js";
+import { LuEyeOff } from "react-icons/lu";
 import { EASE, reduceMotion } from "../lib/motion.js";
 import "./Home.css";
 
 export default function Home() {
-  const { watchLater, laterIds, toggleLater, openDetails, resume, removeContinue } = useApp();
+  const { watchLater, laterIds, toggleLater, openDetails, resume, removeContinue, toast } = useApp();
   const home = useTopic("home", { loading: true, hero: [], sections: [] });
   const continueWatching = useTopic("continue", []);
   const upcoming = useTopic("upcoming", []);
@@ -23,16 +25,19 @@ export default function Home() {
   // (transform only, so the glass keeps blurring the real backdrop the whole time).
   const rootRef = useRef(null);
   useEffect(() => {
+    let played = false;
     const onIntroOut = () => {
       const root = rootRef.current;
-      if (!root || reduceMotion()) return;
+      // Behind "Who's watching?" the rise would go unseen: it plays when that page lifts.
+      if (played || !root || reduceMotion() || document.querySelector(".gate")) return;
+      played = true;
       const parts = [root.querySelector(".home-hero"), ...root.querySelectorAll(".home-tiles > *"), ...[...root.querySelectorAll(".row")].slice(0, 2)].filter(Boolean);
       parts.forEach((part, i) => part.animate(
         [{ transform: "translate3d(0, 34px, 0) scale(.985)" }, { transform: "none" }],
         { duration: 1100, delay: 40 + i * 55, easing: EASE.out, fill: "backwards" },
       ));
     };
-    window.addEventListener("nuvio:intro-out", onIntroOut, { once: true });
+    window.addEventListener("nuvio:intro-out", onIntroOut);
     return () => window.removeEventListener("nuvio:intro-out", onIntroOut);
   }, []);
 
@@ -75,7 +80,12 @@ export default function Home() {
       ) : null}
 
       {home.sections.map(section => (
-        <Row key={section.key} title={section.title} subtitle={section.addonName}>
+        <Row
+          key={section.key}
+          title={section.title}
+          subtitle={section.addonName}
+          action={<button className="row-hide" onClick={() => hideRow(section, toast)} aria-label={`Hide ${section.title} from Home`} title="Hide this row"><LuEyeOff /></button>}
+        >
           {section.items.map(item => <PosterCard key={`${item.type}:${item.id}`} {...cardProps(item)} />)}
         </Row>
       ))}

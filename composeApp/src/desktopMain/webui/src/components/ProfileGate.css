@@ -1,0 +1,96 @@
+/* "Who's watching?": over the living background, below the intro. */
+.gate {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 44px;
+  padding: 40px;
+  background:
+    radial-gradient(90% 70% at 50% 42%, color-mix(in srgb, var(--g2) 12%, transparent), transparent 70%),
+    radial-gradient(120% 90% at 50% 40%, rgb(8 8 12 / .55), rgb(5 5 8 / .9));
+}
+/* Home waits behind the page (hidden, not unmounted) and rises in once a profile is picked. */
+.app-stage.is-gated, body:has(.gate) .topbar { visibility: hidden; }
+.gate-title {
+  font-size: clamp(32px, 4.4vw, 54px);
+  font-weight: 800;
+  letter-spacing: -.03em;
+  text-align: center;
+}
+.gate-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 34px; max-width: 1100px; }
+
+.gate-profile {
+  width: 160px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  border-radius: 28px;
+  padding: 10px 0 6px;
+  color: var(--ink-2);
+  transition: color 200ms ease;
+}
+.gate-profile:focus-visible { outline: none; }
+.gate-ring {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  transition: transform 260ms var(--ease-out, ease), box-shadow 260ms ease;
+}
+/* The ring appears in the user's gradient on hover and focus. */
+.gate-ring::before {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  background: conic-gradient(from 200deg, var(--g1), var(--g2), var(--g3), var(--g1));
+  opacity: 0;
+  transform: scale(.94);
+  transition: opacity 220ms ease, transform 300ms var(--ease-out, ease);
+  z-index: -1;
+}
+.gate-ring::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: rgb(8 8 12);
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+.gate-ring .avatar { box-shadow: 0 20px 50px rgb(0 0 0 / .45); }
+.gate-profile:hover:not(:disabled) .gate-ring,
+.gate-profile:focus-visible .gate-ring { transform: translate3d(0, -6px, 0) scale(1.04); }
+.gate-profile:hover:not(:disabled) .gate-ring::before,
+.gate-profile:focus-visible .gate-ring::before,
+.gate-profile:hover:not(:disabled) .gate-ring::after,
+.gate-profile:focus-visible .gate-ring::after { opacity: 1; transform: none; }
+.gate-profile:hover:not(:disabled), .gate-profile:focus-visible { color: var(--ink); }
+.gate-profile:active:not(:disabled) .gate-ring { transform: scale(.97); }
+.gate-profile:disabled { cursor: default; opacity: .55; }
+.gate-name { max-width: 100%; font-size: var(--fs-16); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.gate-lock, .gate-busy {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / .45);
+  color: #fff;
+}
+.gate-lock svg { width: 30px; height: 30px; }
+.gate-busy svg { width: 34px; height: 34px; }
+.gate-foot { min-height: 34px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .gate-ring, .gate-ring::before { transition: none; }
+}

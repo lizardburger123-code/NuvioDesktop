@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
-import { LuInfo, LuPlay } from "react-icons/lu";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { LuEyeOff, LuInfo, LuPlay } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
 import { useApp } from "../AppContext.jsx";
 import Row from "../components/Row.jsx";
 import { PosterCard, SkeletonPosters } from "../components/Cards.jsx";
 import { navigate } from "../lib/router.js";
+import { hideRow } from "../lib/rows.js";
+import { useSegmentPill } from "../lib/motion.js";
+import Discover from "../components/Discover.jsx";
 import { year } from "../lib/format.js";
 import "./Browse.css";
 
@@ -15,7 +18,10 @@ export const sectionKind = section => section.kind || (section.type === "movie" 
 
 export default function Browse({ params }) {
   const kind = params.kind || "movie";
-  const { laterIds, toggleLater, openDetails } = useApp();
+  const mode = params.mode === "discover" ? "discover" : "highlights";
+  const { laterIds, toggleLater, openDetails, toast } = useApp();
+  const modeRef = useRef(null);
+  useSegmentPill(modeRef);
   const home = useTopic("home", { loading: true, hero: [], sections: [] });
   const [genre, setGenre] = useState(null);
 
@@ -37,7 +43,11 @@ export default function Browse({ params }) {
     <main className="screen browse">
       <section className="browse-head">
         <h1 className="t-page">{TITLES[kind] || "Browse"}</h1>
-        {genres.length ? (
+        <div ref={modeRef} className="seg glass-flat browse-mode" role="tablist" aria-label="View">
+          <button role="tab" aria-pressed={mode === "highlights"} onClick={() => navigate("browse", { kind }, { replace: true })}>Highlights</button>
+          <button role="tab" aria-pressed={mode === "discover"} onClick={() => navigate("browse", { kind, mode: "discover" }, { replace: true })}>Discover</button>
+        </div>
+        {mode === "highlights" && genres.length ? (
           <div className="browse-genres" role="group" aria-label="Genre">
             <button className="chip" aria-pressed={genre == null} onClick={() => setGenre(null)}>All</button>
             {genres.map(g => <button key={g} className="chip" aria-pressed={genre === g} onClick={() => setGenre(g === genre ? null : g)}>{g}</button>)}
@@ -45,7 +55,9 @@ export default function Browse({ params }) {
         ) : null}
       </section>
 
-      {featured ? (
+      {mode === "discover" ? <Discover kind={kind} /> : null}
+
+      {mode === "highlights" && featured ? (
         <section className="browse-feature" style={{ backgroundImage: `url("${featured.banner || featured.poster}")` }}>
           <div className="browse-feature-scrim" />
           <div className="browse-feature-body">
@@ -60,15 +72,20 @@ export default function Browse({ params }) {
         </section>
       ) : null}
 
-      {home.loading && !sections.length ? <Row title="Loading"><SkeletonPosters /></Row> : null}
-      {filtered.map(section => (
-        <Row key={section.key} title={section.title} subtitle={section.addonName}>
+      {mode === "highlights" && home.loading && !sections.length ? <Row title="Loading"><SkeletonPosters /></Row> : null}
+      {mode === "highlights" && filtered.map(section => (
+        <Row
+          key={section.key}
+          title={section.title}
+          subtitle={section.addonName}
+          action={<button className="row-hide" onClick={() => hideRow(section, toast)} aria-label={`Hide ${section.title}`} title="Hide this row"><LuEyeOff /></button>}
+        >
           {section.items.map(item => (
             <PosterCard key={`${item.type}:${item.id}`} item={item} onOpen={openDetails} onToggleLater={toggleLater} saved={laterIds.has(`${item.type}:${item.id}`)} />
           ))}
         </Row>
       ))}
-      {!home.loading && !sections.length ? (
+      {mode === "highlights" && !home.loading && !sections.length ? (
         <p className="browse-empty">None of your addons has a {TITLES[kind]?.toLowerCase() || kind} catalog on Home. Turn one on in Settings, or install a catalog addon.</p>
       ) : null}
       <div className="screen-end" />

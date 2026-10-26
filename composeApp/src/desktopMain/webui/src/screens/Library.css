@@ -6,3 +6,5 @@
 .library-grid { padding: 30px var(--gutter) 0; display: flex; flex-wrap: wrap; gap: 26px 18px; }
 .library-grid-wide { gap: 26px 20px; }
 .library-empty { margin: 30px var(--gutter); padding: 26px; border-radius: var(--r-l); background: rgb(255 255 255 / .045); display: flex; flex-direction: column; gap: 8px; max-width: 70ch; }
+.library-cloud-tools { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.library-clear:hover { background: rgb(255 69 58 / .2); color: #ffb4ad; }

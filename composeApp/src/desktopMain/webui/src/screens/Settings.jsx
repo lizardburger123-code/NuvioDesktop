@@ -4,6 +4,7 @@ import {
   LuTrash2, LuUser, LuInfo, LuCheck, LuRefreshCw, LuMonitorPlay, LuCamera,
 } from "react-icons/lu";
 import { call } from "../bridge.js";
+import AddonStore from "../components/AddonStore.jsx";
 import { useApp } from "../AppContext.jsx";
 import { PRESETS, applyAppearance, parseHex } from "../theme/appearance.js";
 import { navigate } from "../lib/router.js";
@@ -217,7 +218,34 @@ function Appearance() {
           <Toggle checked={appearance.animate !== false} onChange={value => update({ animate: value })} label="Animated background" />
         </div>
       </Panel>
+
+      <HomeRows />
     </>
+  );
+}
+
+/** Every catalog row: which ones show on Home and the Movies, Series and Anime pages. */
+function HomeRows() {
+  const { toast } = useApp();
+  const [rows, setRows] = useState(null);
+  useEffect(() => { call("home.rows").then(setRows, () => setRows([])); }, []);
+  const set = (row, enabled) => {
+    setRows(list => list.map(r => (r.key === row.key ? { ...r, enabled } : r)));
+    call("home.rows.set", { key: row.key, enabled }).then(setRows, error => toast(error.message, { tone: "error" }));
+  };
+  return (
+    <Panel title="Rows" description="Catalog rows on Home and the section pages. Hide one from its row with the eye button, bring it back here.">
+      {!rows ? <div className="skel" style={{ height: 120 }} /> : null}
+      {rows && !rows.length ? <p className="t-meta">No catalog rows yet.</p> : null}
+      <div className="rows-list">
+        {(rows || []).map(row => (
+          <div key={row.key} className="toggle-row">
+            <span>{row.title}<small>{row.addon}</small></span>
+            <Toggle checked={row.enabled} onChange={value => set(row, value)} label={row.title} />
+          </div>
+        ))}
+      </div>
+    </Panel>
   );
 }
 
@@ -475,27 +503,40 @@ function Addons() {
     }
   };
 
+  const setEnabled = async (addon, enabled) => {
+    try {
+      await call("addons.setEnabled", { id: addon.id, enabled });
+      load();
+    } catch (error) {
+      toast(error.message, { tone: "error" });
+    }
+  };
+
   return (
     <>
-      <Panel title="Install" description="Paste a manifest link (ends in manifest.json), for example from AIOStreams or an addon's configure page.">
+      <Panel title="Store" description="Suggested addons, checked live. One click installs; some need a quick setup in your browser first.">
+        <AddonStore onChanged={load} />
+      </Panel>
+      <Panel title="Install from a link" description="Paste a manifest link (ends in manifest.json), for example from AIOStreams or an addon's setup page.">
         <form className="install-row" onSubmit={event => { event.preventDefault(); install(); }}>
           <input className="field" value={url} onChange={event => setUrl(event.target.value)} placeholder="https://…/manifest.json" spellCheck={false} />
           <button className="btn btn-primary" disabled={busy || !url.trim()}>{busy ? <LuLoaderCircle className="spin" /> : null} Install</button>
         </form>
       </Panel>
-      <Panel title="Installed" description="Order matters: higher addons answer first for catalogs and sources.">
+      <Panel title="Installed" description="Order matters: higher addons answer first for catalogs and sources. The switch turns an addon off without removing it.">
         {!addons ? <div className="skel" style={{ height: 160 }} /> : null}
         <ul className="addon-list">
           {(addons || []).map(addon => (
-            <li key={addon.id} className="addon">
+            <li key={addon.id} className={`addon${addon.enabled === false ? " is-off" : ""}`}>
               <span className="addon-logo">{addon.logo ? <img src={addon.logo} alt="" /> : initials(addon.name)}</span>
               <span className="addon-text">
-                <strong>{addon.name}</strong>
+                <strong>{addon.name}{addon.adult ? <em className="addon-adult">18+</em> : null}</strong>
                 <span className="t-meta">{[addon.description, addon.version ? `v${addon.version}` : null].filter(Boolean).join(" · ")}</span>
               </span>
               <span className="addon-tools">
                 {addon.configurable ? <button className="btn btn-ghost btn-sm" onClick={() => call("addons.configure", { id: addon.id })}><LuExternalLink /> Configure</button> : null}
                 <button className="btn btn-ghost btn-sm" onClick={() => remove(addon)} aria-label={`Remove ${addon.name}`}><LuTrash2 /></button>
+                <Toggle checked={addon.enabled !== false} onChange={value => setEnabled(addon, value)} label={`${addon.name} on or off`} />
               </span>
             </li>
           ))}
@@ -508,7 +549,8 @@ function Addons() {
 /* ---------------------------------------------------------------- Profile & About */
 
 function Profile() {
-  const { boot, profile: me, toast } = useApp();
+  const { boot, profile: me, toast, appearance, setAppearance } = useApp();
+  const appearanceGate = appearance?.profileGate;
   const profiles = (boot.profiles || []).map(p => (p.id === me?.id ? { ...p, avatar: me.avatar, color: me.color || p.color } : p));
   return (
     <>
@@ -526,6 +568,12 @@ function Profile() {
               <span>{profile.name}</span>
             </button>
           ))}
+        </div>
+      </Panel>
+      <Panel title="At launch" description="Nuvio opens on a Who's watching? page after the intro.">
+        <div className="toggle-row">
+          <span>Ask who's watching<small>Off opens straight to Home with the last profile.</small></span>
+          <Toggle checked={appearanceGate !== false} onChange={value => setAppearance({ profileGate: value })} label="Ask who's watching" />
         </div>
       </Panel>
       <Panel title="Classic interface" description="Every older settings page (integrations, collections, layout, accounts) is still there.">

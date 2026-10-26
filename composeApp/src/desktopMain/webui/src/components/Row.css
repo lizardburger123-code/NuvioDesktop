@@ -48,3 +48,18 @@
 .row-placeholder { height: 300px; }
 .row-empty { color: var(--ink-2); font-size: var(--fs-14); padding: 18px 0; }
 
+
+/* Hide-row control: quiet until the row is hovered or it has focus. */
+.row-hide {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--ink-3);
+  opacity: 0;
+  transition: opacity var(--t-fast) ease, background-color var(--t-fast) ease, color var(--t-fast) ease;
+}
+.row-hide svg { width: 16px; height: 16px; }
+.row:hover .row-hide, .row-hide:focus-visible { opacity: 1; }
+.row-hide:hover { background: rgb(255 255 255 / .1); color: var(--ink); }

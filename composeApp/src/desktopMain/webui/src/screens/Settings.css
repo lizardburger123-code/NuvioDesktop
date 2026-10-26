@@ -163,3 +163,4 @@
   .settings { grid-template-columns: 220px minmax(0, 1fr); }
 }
 .panel-aside-btn { margin-top: 14px; }
+.rows-list { display: flex; flex-direction: column; gap: 4px; max-height: 420px; overflow-y: auto; }

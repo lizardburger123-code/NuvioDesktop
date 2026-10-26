@@ -501,6 +501,14 @@ std::wstring webViewUserDataDirectory() {
     return localAppDataDirectory(L"WebView2");
 }
 
+std::string mpvStreamCacheDirectory() {
+    try {
+        return toUtf8(localAppDataDirectory(L"Cache\\stream"));
+    } catch (...) {
+        return std::string();
+    }
+}
+
 std::string mpvShaderCacheDirectory() {
     try {
         return toUtf8(localAppDataDirectory(L"Cache\\mpv-shaders"));
@@ -1787,9 +1795,27 @@ private:
                 setMpvOptionStringLocked("scale", "spline36");
                 setMpvOptionStringLocked("cscale", "spline36");
             }
-            setMpvOptionStringLocked("demuxer-max-bytes", "150MiB");
-            setMpvOptionStringLocked("demuxer-max-back-bytes", "50MiB");
+            // Seek cache: keep a window behind and ahead of the playhead so 10 s back or forward
+            // plays from cache instead of rebuffering. It lives in a temporary file (mpv deletes
+            // it when the video closes) so a 4K remux can keep ~2 min each way without using RAM,
+            // and it is capped: never the whole film on disk, nothing left behind afterwards.
+            setMpvOptionStringLocked("cache", "yes");
+            std::string streamCacheDirectory = mpvStreamCacheDirectory();
+            if (!streamCacheDirectory.empty()) {
+                setMpvOptionStringLocked("cache-on-disk", "yes");
+                setMpvOptionStringLocked("demuxer-cache-dir", streamCacheDirectory.c_str());
+                setMpvOptionStringLocked("cache-dir", streamCacheDirectory.c_str());
+                setMpvOptionStringLocked("demuxer-max-bytes", "1024MiB");
+                setMpvOptionStringLocked("demuxer-max-back-bytes", "768MiB");
+            } else {
+                setMpvOptionStringLocked("demuxer-max-bytes", "400MiB");
+                setMpvOptionStringLocked("demuxer-max-back-bytes", "250MiB");
+            }
             setMpvOptionStringLocked("demuxer-seekable-cache", "yes");
+            setMpvOptionStringLocked("demuxer-donate-buffer", "yes");
+            // Read ahead well past the playhead, but don't stall startup waiting to fill it.
+            setMpvOptionStringLocked("demuxer-readahead-secs", "120");
+            setMpvOptionStringLocked("cache-pause-initial", "no");
             setMpvOptionStringLocked(
                 "stream-lavf-o",
                 "reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_on_http_error=%23%408,429,500,502,503,504,reconnect_delay_max=15"
