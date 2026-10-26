@@ -79,7 +79,7 @@ export const WideCard = memo(function WideCard({ image, logo, title, kicker, met
         captionText={title}
       >
         <span className="wide-scrim" />
-        {logo ? <img className="wide-logo" src={logo} alt="" /> : null}
+        {logo ? <img className="wide-logo" src={logo} alt="" loading="lazy" decoding="async" /> : null}
         {badge ? <span className="wide-badge">{badge}</span> : null}
         <span className="wide-play" aria-hidden="true"><LuPlay /></span>
         {watched ? <span className="wide-watched" aria-label="Watched"><LuCheck /></span> : null}

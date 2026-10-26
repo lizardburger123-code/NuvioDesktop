@@ -163,3 +163,4 @@
 .sp .btn-glass:hover { background: rgb(255 255 255 / .17); }
 .sp-m + .sp-m::before { content: "·"; margin-right: 8px; color: var(--ink-3); opacity: .7; }
 .sp-meta { column-gap: 8px; }
+.sp-search input:focus-visible { outline: none; }

@@ -525,6 +525,8 @@ const TiltedCard = ({
               src={imageSrc}
               alt={altText}
               draggable={false}
+              loading="lazy"
+              decoding="async"
               style={{
                 '--tc-depth': -24,
                 top: `-${bleed}px`,

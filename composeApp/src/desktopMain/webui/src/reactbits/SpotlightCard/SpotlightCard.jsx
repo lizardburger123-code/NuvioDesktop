@@ -108,6 +108,7 @@ const SpotlightCard = ({
     const drawn = { light: '', edge: '', noise: '' };
     let focus = null;
     let raf = 0;
+    let lastPaint = 0;
     let last = 0;
     let alive = true;
 
@@ -165,7 +166,9 @@ const SpotlightCard = ({
         if (gap === 0) target = 1;
         else if (s.proximity > 0) target = Math.max(0, 1 - gap / s.proximity) ** 2;
       }
+      let drifting = false;
       if (target < 0.6 && s.ambient && state.visible) {
+        drifting = true;
         if (!reduce) state.time += dt;
         const drift = 0.6 - target;
         tx += (rect.width * (0.5 + 0.34 * Math.sin(state.time * 0.43)) - tx) * (drift / 0.6);
@@ -185,7 +188,13 @@ const SpotlightCard = ({
       const press = state.pressed && s.flare && !reduce ? 1 : 0;
       state.flare += (press - state.flare) * (1 - Math.exp(-dt / (press ? 0.05 : 0.28)));
       if (Math.abs(press - state.flare) < 0.002) state.flare = press;
-      paint(s);
+      // Nuvio: the ambient drift is slow; 30 paints a second are enough there and halve the
+      // repaint of these large gradients. Anything the pointer or keyboard does paints every frame.
+      const ambientOnly = drifting && state.flare === 0 && Math.abs(target - state.presence) < 0.01;
+      if (!ambientOnly || now - lastPaint >= 32) {
+        lastPaint = now;
+        paint(s);
+      }
       const moving = Math.abs(tx - state.x) > 0.1 || Math.abs(ty - state.y) > 0.1;
       const settled = !moving && state.presence === target && state.flare === press;
       // Nuvio: an open glass overlay holds the ambient drift (see lib/hold.js).

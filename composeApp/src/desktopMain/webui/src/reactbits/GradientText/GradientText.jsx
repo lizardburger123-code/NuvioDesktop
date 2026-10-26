@@ -55,6 +55,7 @@ export default function GradientText({
     const state = { time: 0, inside: false, visible: true, x: 0.5, y: 0.5, px: 0.5, py: 0.5, vx: 0, vy: 0, pull: 0 };
     let raf = 0;
     let last = 0;
+    let lastPaint = 0;
     let alive = true;
 
     const paint = () => {
@@ -114,7 +115,13 @@ export default function GradientText({
       state.vy += ((state.y - state.py) * stiffness - state.vy * 2 * Math.sqrt(stiffness)) * dt;
       state.px += state.vx * dt;
       state.py += state.vy * dt;
-      paint();
+      // Nuvio: the idle drift is slow, so 20 paints a second look the same as 60 and cost a
+      // third of the style and paint work; pointer interaction still paints every frame.
+      const idle = state.pull < 0.001 && Math.abs(state.vx) + Math.abs(state.vy) < 0.001;
+      if (!idle || now - lastPaint >= 48) {
+        lastPaint = now;
+        paint();
+      }
       const settling = Math.abs(state.pull - target) > 0.001 || Math.abs(state.vx) + Math.abs(state.vy) > 0.001;
       if (!state.visible || (paused && !settling)) return;
       raf = requestAnimationFrame(tick);

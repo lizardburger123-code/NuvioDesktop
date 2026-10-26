@@ -269,3 +269,4 @@
 }
 .pc-note svg { flex: none; width: 14px; height: 14px; margin-top: 1px; }
 .pc-grid .pc-note { grid-column: 1 / -1; }
+.pc-link-input:focus-visible { outline: none; }

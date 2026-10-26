@@ -84,3 +84,9 @@
   transition: color var(--t-fast) ease, background-color var(--t-fast) ease;
 }
 .recent-clear:hover, .recent-clear:focus-visible { color: var(--ink); background: rgb(255 255 255 / .07); }
+
+/* The pill shows focus, not a box drawn inside it. */
+.search-input:focus-visible { outline: none; }
+.search-glass.glass-surface:focus-within {
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .34), inset 0 1px 0 rgb(255 255 255 / .2), 0 0 0 4px rgb(var(--accent-rgb) / .22), 0 20px 50px rgb(0 0 0 / .3);
+}

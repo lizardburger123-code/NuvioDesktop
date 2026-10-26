@@ -54,10 +54,9 @@
   border-radius: 999px;
   font-size: var(--fs-12);
   font-weight: 700;
-  background: rgb(0 0 0 / .32);
+  /* Solid, not frosted: the spotlight moving under these would make a blur redraw every frame. */
+  background: rgb(0 0 0 / .44);
   box-shadow: inset 0 0 0 1px rgb(255 255 255 / .14);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
 }
 .tile-kicker svg { width: 13px; height: 13px; }
 
