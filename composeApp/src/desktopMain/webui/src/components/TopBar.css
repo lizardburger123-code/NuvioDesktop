@@ -12,21 +12,6 @@
   gap: 16px;
 }
 
-.topbar::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  opacity: 0;
-  background: rgb(10 10 16 / .55);
-  -webkit-backdrop-filter: blur(30px) saturate(1.6);
-  backdrop-filter: blur(30px) saturate(1.6);
-  box-shadow: inset 0 -1px 0 rgb(255 255 255 / .07);
-  transition: opacity 320ms var(--ease-soft);
-}
-
-.topbar-compact::before { opacity: 1; }
-
 .topbar-left { position: relative; display: flex; align-items: center; min-width: 0; }
 
 /* Back appears without shoving the date: the button scales in where it sits and the date glides

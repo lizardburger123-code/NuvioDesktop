@@ -4,3 +4,15 @@
 .search-count { font-size: var(--fs-13); color: var(--ink-3); font-weight: 650; }
 .search-grid { display: flex; flex-wrap: wrap; gap: 26px 18px; }
 .search-none { padding: 44px var(--gutter); display: flex; flex-direction: column; gap: 8px; max-width: 70ch; }
+
+.search-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.search-addons { display: flex; flex-wrap: wrap; gap: 8px; }
+.search-chip-n { margin-left: 4px; font-size: 11.5px; font-weight: 700; opacity: .6; }
+.search-from {
+  font-size: var(--fs-12);
+  font-weight: 650;
+  color: var(--ink-3);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / .06);
+}

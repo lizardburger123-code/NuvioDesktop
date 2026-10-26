@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { LuCopy, LuExternalLink, LuLoaderCircle, LuTrash2, LuX } from "react-icons/lu";
+import { LuCloudDownload, LuCopy, LuExternalLink, LuLoaderCircle, LuTrash2, LuX } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useApp } from "../AppContext.jsx";
 import { EASE, reduceMotion } from "../lib/motion.js";
@@ -12,7 +12,8 @@ const size = bytes => (bytes >= 1e12 ? `${(bytes / 1e12).toFixed(1)} TB` : bytes
  * Empty the TorBox cloud: connect TorBox if this app has no key yet (device code, nothing to
  * type here), show what's there, confirm, delete.
  */
-export default function TorboxClear({ onClose, onCleared }) {
+export default function TorboxClear({ onClose, onCleared, mode = "clear", onConnected }) {
+  const connectOnly = mode === "connect";
   const { toast } = useApp();
   const [step, setStep] = useState("checking"); // checking | connect | confirm | clearing | done
   const [summary, setSummary] = useState(null);
@@ -26,6 +27,7 @@ export default function TorboxClear({ onClose, onCleared }) {
     setStep("checking");
     call("torbox.summary", {}, { timeoutMs: 30000 }).then(s => {
       setSummary(s);
+      if (s?.connected && connectOnly) { onConnected?.(); close(); return; }
       setStep(s?.connected ? "confirm" : "connect");
     }, error => { toast(error.message, { tone: "error" }); setStep("connect"); });
   };
@@ -90,10 +92,10 @@ export default function TorboxClear({ onClose, onCleared }) {
 
   return createPortal(
     <div className="tbx-layer" data-modal-open onClick={() => step !== "clearing" && close()}>
-      <div ref={ref} className="tbx glass-dark" role="dialog" aria-label="Clear TorBox library" onClick={event => event.stopPropagation()}>
+      <div ref={ref} className="tbx glass-dark" role="dialog" aria-label={connectOnly ? "Connect TorBox" : "Clear TorBox library"} onClick={event => event.stopPropagation()}>
         <header className="tbx-head">
-          <span className="tbx-icon"><LuTrash2 /></span>
-          <h2>Clear your TorBox library</h2>
+          <span className={`tbx-icon${connectOnly ? " is-calm" : ""}`}>{connectOnly ? <LuCloudDownload /> : <LuTrash2 />}</span>
+          <h2>{connectOnly ? "Connect TorBox" : "Clear your TorBox library"}</h2>
           <button className="btn btn-glass btn-icon btn-sm" onClick={close} disabled={step === "clearing"} aria-label="Close"><LuX /></button>
         </header>
 
@@ -101,7 +103,7 @@ export default function TorboxClear({ onClose, onCleared }) {
 
         {step === "connect" ? (
           <div className="tbx-body">
-            <p className="tbx-text">Nuvio needs to sign in to TorBox once to manage your files. Open the link, sign in, and enter this code:</p>
+            <p className="tbx-text">{connectOnly ? "To cache sources on TorBox, Nuvio signs in to TorBox once." : "Nuvio needs to sign in to TorBox once to manage your files."} Open the link, sign in, and enter this code:</p>
             <div className="tbx-code">
               {device ? <strong className="num">{device.code}</strong> : <LuLoaderCircle className="spin" />}
               {device ? <button className="btn btn-ghost btn-sm" onClick={() => navigator.clipboard?.writeText(device.code).then(() => toast("Code copied"), () => {})}><LuCopy /> Copy</button> : null}

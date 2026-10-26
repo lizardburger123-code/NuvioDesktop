@@ -141,12 +141,106 @@ internal object ShellTorbox {
             delay(120) // stay well inside TorBox's rate limit
         }
         log.i { "cleared TorBox: $removed removed, $failed failed" }
+        cacheJobs.clear()
         // The library catalog (AIOStreams) reads TorBox: refresh so the rows empty out.
         runCatching { HomeRepository.refresh(AddonRepository.uiState.value.addons.enabledAddons(), force = true) }
         buildJsonObject {
             put("removed", removed)
             put("failed", failed)
         }
+    }
+
+    // ---- Cache on TorBox: send a torrent that isn't cached yet, watch it download, play it ----
+
+    private val hashPattern = Regex("(?<![0-9a-fA-F])[0-9a-fA-F]{40}(?![0-9a-fA-F])")
+    private val cacheJobs = java.util.concurrent.ConcurrentHashMap<String, Long>() // hash -> torrent id
+
+    /** The torrent behind a source, when it has one (P2P sources, or a debrid link with the hash in it). */
+    fun hashOf(stream: com.nuvio.app.features.streams.StreamItem): String? =
+        (stream.infoHash ?: stream.clientResolve?.infoHash)?.trim()?.lowercase()?.takeIf { it.length == 40 }
+            ?: stream.url?.let { hashPattern.find(it)?.value?.lowercase() }
+
+    private fun authed(url: String, apiKey: String) = Request.Builder().url(url).header("Authorization", "Bearer $apiKey")
+
+    private fun call(request: Request): JsonObject = extrasHttp.newCall(request).execute().use { response ->
+        val text = response.body?.string().orEmpty()
+        if (response.code == 401 || response.code == 403) error("TorBox rejected the sign-in. Connect TorBox again.")
+        runCatching { extrasJson.parseToJsonElement(text).obj() }.getOrElse { JsonObject(emptyMap()) }.also { root ->
+            if (!response.isSuccessful && root.str("success") != "true") {
+                error(root.str("detail")?.takeIf { it.isNotBlank() } ?: "TorBox answered ${response.code}.")
+            }
+        }
+    }
+
+    suspend fun cache(hash: String, name: String?): JsonElement = withContext(Dispatchers.IO) {
+        val apiKey = key() ?: error("Connect TorBox first.")
+        val clean = hash.trim().lowercase()
+        require(clean.length == 40) { "That source has no torrent to send." }
+        val magnet = "magnet:?xt=urn:btih:$clean" + (name?.takeIf { it.isNotBlank() }?.let { "&dn=" + URLEncoder.encode(it, Charsets.UTF_8) } ?: "")
+        val form = okhttp3.MultipartBody.Builder().setType(okhttp3.MultipartBody.FORM)
+            .addFormDataPart("magnet", magnet)
+            .addFormDataPart("allow_zip", "false")
+            .build()
+        val root = call(authed("$Base/torrents/createtorrent", apiKey).post(form).build())
+        if (root.str("success") == "false") error(root.str("detail") ?: "TorBox didn't take it.")
+        val data = root["data"].obj()
+        data.str("torrent_id")?.toLongOrNull()?.let { cacheJobs[clean] = it }
+        status(listOf(clean))
+    }
+
+    /** Progress for the given hashes: { hash: { state, progress, speed, eta, ready } }. */
+    suspend fun status(hashes: List<String>): JsonElement = withContext(Dispatchers.IO) {
+        val apiKey = key() ?: return@withContext buildJsonObject { put("connected", false) }
+        val wanted = hashes.map { it.lowercase() }.toSet()
+        val data = call(authed("$Base/torrents/mylist?bypass_cache=true&limit=1000", apiKey).get().build())["data"] as? JsonArray
+        val found = data.orEmpty().map { it.obj() }.filter { it.str("hash")?.lowercase() in wanted }
+        buildJsonObject {
+            put("connected", true)
+            put("items", buildJsonObject {
+                found.forEach { item ->
+                    val hash = item.str("hash")!!.lowercase()
+                    item.str("id")?.toLongOrNull()?.let { cacheJobs[hash] = it }
+                    val finished = item.str("download_finished") == "true" || item.str("download_present") == "true"
+                    put(hash, buildJsonObject {
+                        put("state", item.str("download_state") ?: if (finished) "cached" else "queued")
+                        put("progress", item.str("progress")?.toDoubleOrNull() ?: if (finished) 1.0 else 0.0)
+                        put("speed", item.str("download_speed")?.toDoubleOrNull()?.toLong() ?: 0L)
+                        put("eta", item.str("eta")?.toDoubleOrNull()?.toLong() ?: 0L)
+                        put("seeds", item.str("seeds")?.toIntOrNull() ?: 0)
+                        put("ready", finished)
+                    })
+                }
+            })
+        }
+    }
+
+    private val videoExt = Regex("\\.(mkv|mp4|m4v|avi|webm|mov|wmv|ts|m2ts|mpg|mpeg|flv)$", RegexOption.IGNORE_CASE)
+
+    /** A direct TorBox link for the right file of a finished torrent. */
+    suspend fun link(hash: String, fileName: String?, season: Int?, episode: Int?): String = withContext(Dispatchers.IO) {
+        val apiKey = key() ?: error("Connect TorBox first.")
+        val clean = hash.lowercase()
+        val list = call(authed("$Base/torrents/mylist?bypass_cache=true&limit=1000", apiKey).get().build())["data"] as? JsonArray
+        val torrent = list.orEmpty().map { it.obj() }.firstOrNull { it.str("hash")?.lowercase() == clean }
+            ?: error("TorBox doesn't have it yet. Cache it first.")
+        if (torrent.str("download_finished") != "true" && torrent.str("download_present") != "true") error("Still downloading on TorBox.")
+        val id = torrent.str("id") ?: error("TorBox didn't say which torrent it is.")
+        val files = (torrent["files"] as? JsonArray).orEmpty().map { it.obj() }
+        val videos = files.filter { (it.str("mimetype")?.startsWith("video") == true) || videoExt.containsMatchIn(it.str("name").orEmpty()) }
+            .ifEmpty { files }
+        val episodeMatch = if (season != null && episode != null) {
+            val pattern = Regex("(?i)(s0*$season[ ._-]*e0*$episode(?!\\d))|(\\b0*$season" + "x0*$episode(?!\\d))")
+            videos.firstOrNull { pattern.containsMatchIn(it.str("name").orEmpty()) }
+        } else null
+        val byName = fileName?.takeIf { it.isNotBlank() }?.let { name ->
+            videos.firstOrNull { it.str("name").orEmpty().substringAfterLast('/').equals(name, ignoreCase = true) }
+        }
+        val file = episodeMatch ?: byName ?: videos.maxByOrNull { it.str("size")?.toDoubleOrNull() ?: 0.0 }
+            ?: error("No video file in that torrent.")
+        val fileId = file.str("id") ?: error("TorBox didn't list the file.")
+        val url = "$Base/torrents/requestdl?token=${URLEncoder.encode(apiKey, Charsets.UTF_8)}&torrent_id=$id&file_id=$fileId&redirect=false"
+        call(Request.Builder().url(url).get().build()).str("data")?.takeIf { it.startsWith("http") }
+            ?: error("TorBox didn't give a link.")
     }
 }
 
@@ -285,17 +379,21 @@ internal object ShellDiscover {
 // ---- Addon store -------------------------------------------------------------------------------
 
 /**
- * Suggested addons, checked live: each install link is fetched when the store opens, so a dead
- * addon shows as unavailable instead of failing on install. Addons that need settings first open
- * their configure page; the link it gives is pasted into Install.
+ * The addon store. "Featured" is a hand-picked shelf, checked live; "Browse" is the whole
+ * community catalogue of stremio-addons.net (hundreds of addons, by category, searchable), read
+ * live from the site. Install links come from the addon's own page there, so they stay current.
  */
 internal object ShellAddonStore {
+    private val log = Logger.withTag("ShellAddonStore")
+    private const val Site = "https://stremio-addons.net"
+
     private data class Pick(
         val category: String,
         val name: String,
         val blurb: String,
         val manifest: String? = null,
         val configure: String? = null,
+        val slug: String? = null,
         val adult: Boolean = false,
     )
 
@@ -305,55 +403,98 @@ internal object ShellAddonStore {
         Pick("Catalogs", "Streaming Catalogs", "What's on Netflix, Disney+, Max, Prime Video, Apple TV+ and more.", manifest = "https://7a82163c306e-stremio-netflix-catalog-addon.baby-beamup.club/manifest.json", configure = "https://7a82163c306e-stremio-netflix-catalog-addon.baby-beamup.club/configure"),
         Pick("Catalogs", "AIOMetadata", "One addon for TMDB, TVDB, MAL and Trakt catalogs with full control over metadata.", configure = "https://aiometadata.elfhosted.com/configure/"),
         Pick("Catalogs", "Trakt", "Your Trakt watchlist, lists and recommendations as catalogs.", configure = "https://2ecbbd610840-trakt.baby-beamup.club/configure/"),
-        Pick("Catalogs", "More Like This", "Similar titles on every details page.", configure = "https://bbab4a35b833-more-like-this.baby-beamup.club/configure"),
         Pick("Anime", "Anime Kitsu", "Anime catalogs and metadata from Kitsu: trending, airing, top rated.", manifest = "https://anime-kitsu.strem.fun/manifest.json"),
-        Pick("Anime", "Animeo", "Anime catalogs from MyAnimeList and AniList.", configure = "https://7a625ac658ec-animeo.baby-beamup.club/configure"),
         Pick("Streams", "Torrentio", "The classic torrent source with debrid support.", manifest = "https://torrentio.strem.fun/manifest.json", configure = "https://torrentio.strem.fun/configure"),
         Pick("Streams", "Comet", "Fast debrid streams from many trackers.", configure = "https://comet.elfhosted.com/configure"),
-        Pick("Streams", "MediaFusion", "Streams for movies, series, sports and live TV.", configure = "https://mediafusion.elfhosted.com/configure"),
-        Pick("Streams", "ThePirateBay+", "Torrent streams from The Pirate Bay.", manifest = "https://thepiratebay-plus.strem.fun/manifest.json"),
         Pick("Live TV", "USA TV", "Free live US TV channels.", manifest = "https://848b3516657c-usatv.baby-beamup.club/manifest.json"),
-        Pick("Live TV", "Pluto TV", "Free live channels and on-demand from Pluto TV.", manifest = "https://dev.nebulawp.org/stremio/pluto-tv-addon/manifest.json"),
-        Pick("Live TV", "Music Concerts", "Full concerts and live performances.", manifest = "https://7a82163c306e-stremio-concerts.baby-beamup.club/manifest.json"),
         Pick("Subtitles", "OpenSubtitles v3", "The official OpenSubtitles addon.", manifest = "https://opensubtitles-v3.strem.io/manifest.json"),
-        Pick("Subtitles", "OpenSubtitles PRO", "OpenSubtitles with language choices and AI translation.", configure = "https://opensubtitlesv3-pro.dexter21767.com/configure/"),
+        // Adult: metadata first (like TMDB, for adult titles), then sources.
+        Pick("Adult", "Porn Tube", "ThePornDB metadata and catalogs (the TMDB of adult titles), 4K and VR torrents with TorBox, Real-Debrid and Easynews.", slug = "porn-tube", adult = true),
+        Pick("Adult", "Adult Stremio Addon", "Adult catalogs with enhanced metadata and posters, lots of options.", slug = "adult-stremio-addon", adult = true),
+        Pick("Adult", "Adult Video HD", "One always-on adult library: rows, search and streams up to 1080p.", slug = "adult-video-hd", adult = true),
+        Pick("Adult", "TPB 4K Porn", "4K and 1080p adult torrents from many sites, with debrid support.", slug = "4k-adult", adult = true),
+        Pick("Adult", "Midnight", "Catalogs and streams for adult films and hentai.", slug = "midnight", adult = true),
         Pick("Adult", "OnlyPorn", "Adult videos from several sites, as catalogs and streams.", manifest = "https://07b88951aaab-jaxxx-v2.baby-beamup.club/manifest.json", adult = true),
-        Pick("Adult", "4K Porn TPB", "4K and 1080p adult torrents, with debrid support.", configure = "https://tpb-adult-addon.click/configure", adult = true),
-        Pick("Adult", "Hanime.TV", "Uncensored adult anime.", manifest = "https://94c8cb9f702d-hanime-tv-addon.baby-beamup.club/manifest.json", adult = true),
+        Pick("Adult", "Hanime", "Hentai and adult anime collection.", slug = "hanime", adult = true),
     )
 
     private val store by lazy { DesktopStorage.store("nuvio_shell") }
-    private val adultIds = mutableSetOf<String>()
+    private val adultIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val manifestCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, AddonManifest?>>()
+    private val slugCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, String?>>()
+    private val pageCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, JsonObject>>()
+    private const val Fresh = 30 * 60_000L
+    private val adultWords = Regex("""(?i)\b(porn\w*|xxx|adult|hentai|nsfw|18\+|jav|erotic\w*|sex\w*|onlyfans|camgirl|milf|hanime)\b""")
 
     fun showAdult(): Boolean = store.getBoolean("store_show_adult") ?: true
 
     private fun hostOf(url: String) = url.substringAfter("://").substringBefore("/").lowercase(Locale.ROOT)
 
-    private fun isAdult(manifestUrl: String, manifest: AddonManifest?): Boolean =
-        manifest?.behaviorHints?.adult == true || manifest?.id in adultIds ||
-            picks.any { it.adult && (it.manifest ?: it.configure)?.let(::hostOf) == hostOf(manifestUrl) }
+    /** Adult if it says so, or its name, types or catalogs clearly are. */
+    private fun isAdult(manifestUrl: String, manifest: AddonManifest?): Boolean {
+        if (manifest?.behaviorHints?.adult == true || (manifest != null && manifest.id in adultIds)) return true
+        if (picks.any { it.adult && (it.manifest ?: it.configure)?.let(::hostOf) == hostOf(manifestUrl) }) return true
+        if (manifest == null) return adultWords.containsMatchIn(manifestUrl)
+        val text = buildString {
+            // Not the description: plenty of normal addons mention an "adult content" option.
+            append(manifest.id).append(' ').append(manifest.name)
+            manifest.types.forEach { append(' ').append(it) }
+            manifest.catalogs.forEach { append(' ').append(it.name).append(' ').append(it.type) }
+        }
+        return adultWords.containsMatchIn(text)
+    }
 
-    suspend fun list(): JsonElement = coroutineScope {
+    private suspend fun manifestOf(url: String, force: Boolean): AddonManifest? {
+        val now = System.currentTimeMillis()
+        if (!force) manifestCache[url]?.let { (at, manifest) -> if (now - at < Fresh) return manifest }
+        val manifest = withTimeoutOrNull(9_000) {
+            runCatching { AddonManifestParser.parse(manifestUrl = url, payload = withContext(Dispatchers.IO) { fetchAddonResponseText(url) }) }.getOrNull()
+        }
+        manifestCache[url] = now to manifest
+        return manifest
+    }
+
+    private fun site(path: String): String {
+        val request = Request.Builder().url("$Site$path").header("User-Agent", ShellNet.BrowserAgent).header("Accept", "text/html").get().build()
+        return extrasHttp.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) error("The addon site answered ${response.code}.")
+            response.body?.string().orEmpty()
+        }
+    }
+
+    /** The install link on an addon's page at stremio-addons.net. */
+    private suspend fun manifestUrlFor(slug: String): String? {
+        val now = System.currentTimeMillis()
+        slugCache[slug]?.let { (at, url) -> if (now - at < Fresh && url != null) return url }
+        val url = withContext(Dispatchers.IO) {
+            runCatching {
+                val page = site("/addons/" + URLEncoder.encode(slug, Charsets.UTF_8)).replace("\\\"", "\"")
+                Regex("\"manifestUrl\":\"(https?://[^\"\\\\]+)\"").find(page)?.groupValues?.get(1)
+            }.getOrNull()
+        }
+        slugCache[slug] = now to url
+        return url
+    }
+
+    suspend fun list(force: Boolean = false): JsonElement = coroutineScope {
         val installed = AddonRepository.uiState.value.addons
         val checked = picks.map { pick ->
             async {
-                val manifest = pick.manifest?.let { url ->
-                    withTimeoutOrNull(9_000) {
-                        runCatching { AddonManifestParser.parse(manifestUrl = url, payload = withContext(Dispatchers.IO) { fetchAddonResponseText(url) }) }.getOrNull()
-                    }
-                }
-                pick to manifest
+                val url = pick.manifest ?: pick.slug?.let { manifestUrlFor(it) }
+                pick to (url to url?.let { manifestOf(it, force) })
             }
         }.awaitAll()
-        checked.forEach { (pick, manifest) -> if (pick.adult && manifest != null) adultIds += manifest.id }
+        checked.forEach { (pick, found) -> if (pick.adult) found.second?.let { adultIds += it.id } }
         buildJsonObject {
             put("showAdult", showAdult())
             put("items", buildJsonArray {
-                checked.forEach { (pick, manifest) ->
-                    val host = hostOf(pick.manifest ?: pick.configure.orEmpty())
+                checked.forEach { (pick, found) ->
+                    val (url, manifest) = found
+                    val host = hostOf(url ?: pick.configure.orEmpty())
                     val match = installed.firstOrNull { addon ->
-                        (manifest != null && addon.manifest?.id == manifest.id) || hostOf(addon.manifestUrl) == host
+                        (manifest != null && addon.manifest?.id == manifest.id) || (host.isNotEmpty() && hostOf(addon.manifestUrl) == host)
                     }
+                    val needsSetup = manifest?.behaviorHints?.configurationRequired == true || url == null
                     add(buildJsonObject {
                         put("key", pick.name)
                         put("category", pick.category)
@@ -362,14 +503,127 @@ internal object ShellAddonStore {
                         manifest?.logoUrl?.let { put("logo", it) }
                         manifest?.version?.let { put("version", it) }
                         put("adult", pick.adult || manifest?.behaviorHints?.adult == true)
-                        pick.manifest?.let { put("manifest", it) }
-                        pick.configure?.let { put("configure", it) }
+                        if (!needsSetup) url?.let { put("manifest", it) }
+                        (pick.configure ?: url?.takeIf { manifest?.behaviorHints?.configurable == true || needsSetup }?.let(::configureUrl))
+                            ?.let { put("configure", it) }
                         put("available", manifest != null)
-                        put("needsSetup", pick.manifest == null)
+                        put("needsSetup", needsSetup && (pick.configure != null || url != null))
                         match?.let { put("installed", it.manifestUrl); put("enabled", it.enabled) }
                     })
                 }
             })
+        }
+    }
+
+    private fun configureUrl(manifestUrl: String) = manifestUrl.replace(Regex("manifest\\.json(\\?.*)?$"), "configure")
+
+    /**
+     * One page of the community catalogue: category is the site's own (movies, anime, nsfw…),
+     * query searches names and descriptions there.
+     */
+    suspend fun community(category: String?, query: String?, page: Int): JsonElement = withContext(Dispatchers.IO) {
+        val params = buildList {
+            add("sort=popular")
+            category?.takeIf { it.isNotBlank() && it != "all" }?.let { add("categories=" + URLEncoder.encode(it, Charsets.UTF_8).replace("+", "%20")) }
+            query?.trim()?.takeIf { it.isNotEmpty() }?.let { add("query=" + URLEncoder.encode(it, Charsets.UTF_8).replace("+", "%20")) }
+            if (page > 1) add("page=$page")
+        }.joinToString("&")
+        val now = System.currentTimeMillis()
+        val parsed = pageCache[params]?.takeIf { now - it.first < Fresh }?.second ?: parseList(site("/addons?$params")).also { pageCache[params] = now to it }
+        val installed = AddonRepository.uiState.value.addons
+        val installedIds = installed.mapNotNull { addon -> addon.manifest?.id?.let { it to addon } }.toMap()
+        val showAdult = showAdult()
+        buildJsonObject {
+            put("page", page)
+            put("pageCount", parsed["pageCount"] ?: JsonPrimitive(1))
+            put("items", buildJsonArray {
+                (parsed["items"] as? JsonArray).orEmpty().forEach { element ->
+                    val item = element.obj()
+                    val adult = item.str("adult") == "true"
+                    if (adult && !showAdult) return@forEach
+                    val match = item.str("id")?.let { installedIds[it] }
+                    add(buildJsonObject {
+                        item.forEach { (k, v) -> put(k, v) }
+                        match?.let { put("installed", it.manifestUrl); put("enabled", it.enabled) }
+                    })
+                }
+            })
+        }
+    }
+
+    /** Reads the cards out of the site's page data (each card carries the addon's manifest). */
+    private fun parseList(html: String): JsonObject {
+        val s = html.replace("\\\\", "\u0000").replace("\\\"", "\"").replace("\u0000", "\\")
+        val items = mutableListOf<JsonObject>()
+        val seen = mutableSetOf<String>()
+        val card = Regex("\"href\":\"/addons/([^\"?]+)\",\"className\":\"block\"")
+        card.findAll(s).forEach { m ->
+            val slug = m.groupValues[1]
+            if (!seen.add(slug)) return@forEach
+            val at = s.indexOf("\"manifest\":{", m.range.last)
+            if (at < 0) return@forEach
+            val objectStart = at + "\"manifest\":".length
+            val objectEnd = matchBrace(s, objectStart)
+            if (objectEnd < 0) return@forEach
+            val manifest = runCatching { extrasJson.parseToJsonElement(s.substring(objectStart, objectEnd + 1)).obj() }.getOrNull() ?: return@forEach
+            val hints = manifest["behaviorHints"].obj()
+            val types = (manifest["types"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+            val resources = (manifest["resources"] as? JsonArray).orEmpty().mapNotNull { r -> (r as? JsonPrimitive)?.contentOrNull ?: r.obj().str("name") }
+            val catalogs = (manifest["catalogs"] as? JsonArray).orEmpty().map { it.obj() }
+            val text = listOfNotNull(manifest.str("id"), manifest.str("name"), manifest.str("description")).joinToString(" ") +
+                catalogs.joinToString(" ") { "${it.str("name")} ${it.str("type")}" }
+            val certain = hints.str("adult") == "true" || adultWords.containsMatchIn("${manifest.str("id")} ${manifest.str("name")} ${types.joinToString(" ")}")
+            val adult = certain || adultWords.containsMatchIn(text)
+            val id = manifest.str("id")
+            if (certain && id != null) adultIds += id
+            items += buildJsonObject {
+                put("slug", slug)
+                id?.let { put("id", it) }
+                put("name", manifest.str("name") ?: slug)
+                put("blurb", manifest.str("description").orEmpty().replace(Regex("<[^>]+>"), " ").trim().take(220))
+                manifest.str("logo")?.takeIf { it.startsWith("http") }?.let { put("logo", it) }
+                manifest.str("version")?.let { put("version", it) }
+                put("types", ShellJson.strings(types))
+                put("resources", ShellJson.strings(resources))
+                put("catalogs", catalogs.size)
+                put("adult", adult)
+                put("needsSetup", hints.str("configurationRequired") == "true")
+                put("configurable", hints.str("configurable") == "true")
+            }
+        }
+        val pageCount = Regex("\"pageCount\":(\\d+)").find(s)?.groupValues?.get(1)?.toIntOrNull() ?: 1
+        return buildJsonObject {
+            put("pageCount", pageCount)
+            put("items", JsonArray(items))
+        }
+    }
+
+    /** Index of the brace closing the object that opens at [start], skipping strings. */
+    private fun matchBrace(s: String, start: Int): Int {
+        if (start >= s.length || s[start] != '{') return -1
+        var depth = 0
+        var inString = false
+        var i = start
+        while (i < s.length) {
+            val c = s[i]
+            if (inString) {
+                if (c == '\\') i++ else if (c == '"') inString = false
+            } else when (c) {
+                '"' -> inString = true
+                '{' -> depth++
+                '}' -> { depth--; if (depth == 0) return i }
+            }
+            i++
+        }
+        return -1
+    }
+
+    /** Install link (and setup page) for a community addon. */
+    suspend fun resolve(slug: String): JsonElement {
+        val url = manifestUrlFor(slug) ?: error("Couldn't read that addon's install link. Try again in a moment.")
+        return buildJsonObject {
+            put("manifest", url)
+            put("configure", configureUrl(url))
         }
     }
 
@@ -383,6 +637,8 @@ internal object ShellAddonStore {
                 changed++
             }
         }
+        log.i { "adult content ${if (show) "on" else "off"}: $changed addons changed" }
+        runCatching { HomeRepository.refresh(AddonRepository.uiState.value.addons.enabledAddons(), force = true) }
         return buildJsonObject {
             put("showAdult", show)
             put("changed", changed)

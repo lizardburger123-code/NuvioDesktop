@@ -32,7 +32,12 @@ export default function SearchHero({ autoFocus = false, initial = "", onSubmit, 
     )).pop();
     last.onfinish = () => clearHistory();
   };
-  useEffect(() => { if (autoFocus) inputRef.current?.focus(); }, [autoFocus]);
+  // Coming back to search from a title must not yank the page up to the box: focus without
+  // scrolling, and only when the box is on screen anyway.
+  useEffect(() => {
+    if (!autoFocus || window.scrollY > 160) return;
+    inputRef.current?.focus({ preventScroll: true });
+  }, [autoFocus]);
   useEffect(() => { setQuery(initial); }, [initial]);
 
   const submit = text => {

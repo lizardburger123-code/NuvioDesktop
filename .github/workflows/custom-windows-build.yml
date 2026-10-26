@@ -61,6 +61,31 @@ jobs:
           EOF
           sed -i 's/^[[:space:]]*//' local.properties
 
+      - name: Fetch wireproxy (optional built-in WARP)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Optional: without it the app simply offers no WARP mode.
+          set +e
+          dest="$GITHUB_WORKSPACE/composeApp/src/desktopMain/resources/net"
+          work="$RUNNER_TEMP/wireproxy"
+          mkdir -p "$dest" "$work"
+          url="$(gh api repos/whyvl/wireproxy/releases/latest --jq '.assets[] | select(.name | test("windows"; "i")) | select(.name | test("amd64|x86_64"; "i")) | .browser_download_url' | head -n1)"
+          echo "wireproxy asset: ${url:-none}"
+          if [ -z "$url" ]; then echo "::warning::wireproxy release not found; WARP mode will be unavailable"; exit 0; fi
+          curl -fsSL "$url" -o "$work/pkg" || { echo "::warning::wireproxy download failed"; exit 0; }
+          cd "$work"
+          case "$url" in
+            *.zip) unzip -o -q pkg ;;
+            *.tar.gz|*.tgz) tar -xzf pkg ;;
+            *.exe) cp pkg wireproxy.exe ;;
+          esac
+          exe="$(find . -iname 'wireproxy*.exe' | head -n1)"
+          if [ -z "$exe" ]; then echo "::warning::no wireproxy.exe in the package"; exit 0; fi
+          cp "$exe" "$dest/wireproxy.exe"
+          ls -la "$dest"
+
       - name: Install WebView2 SDK
         shell: pwsh
         run: |

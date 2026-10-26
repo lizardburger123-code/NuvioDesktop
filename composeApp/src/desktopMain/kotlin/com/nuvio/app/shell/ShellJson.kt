@@ -195,6 +195,9 @@ internal object ShellJson {
             else if (status.state == com.nuvio.app.features.streams.StreamDebridCacheState.NOT_CACHED) put("cached", false)
         }
         put("external", stream.shouldOpenExternally)
+        // The torrent behind it, so an uncached source can be sent to TorBox from the list.
+        ShellTorbox.hashOf(stream)?.let { put("hash", it) }
+        if (stream.directPlaybackUrl == null && stream.infoHash != null) put("p2p", true)
     }
 
     fun streamGroup(group: AddonStreamGroup): JsonObject = buildJsonObject {

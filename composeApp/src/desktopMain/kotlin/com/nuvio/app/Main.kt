@@ -59,6 +59,8 @@ fun main(args: Array<String>) {
     if (System.getProperty("os.name", "").lowercase().contains("linux")) {
         runCatching { NativePlayerBridge.initGtkEarly() }
     }
+    // "Unblock sites" must be in place before any HTTP client or WebView starts.
+    runCatching { com.nuvio.app.shell.ShellNet.install() }
     applyDesktopRendererPreference()
     SentryInitializer.start()
     configureDesktopQuickJsLibrary()

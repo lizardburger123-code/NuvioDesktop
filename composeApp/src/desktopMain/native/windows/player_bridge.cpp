@@ -21,6 +21,7 @@
 #include <cstdio>
 #include <cwctype>
 #include <deque>
+#include <fstream>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -497,7 +498,39 @@ std::wstring localAppDataDirectory(const wchar_t *name) {
     return directory;
 }
 
+// "Unblock sites" (ShellNet.kt): Nuvio's local proxy writes its address here while it's on.
+std::string nuvioProxyUrl() {
+    try {
+        std::wstring path = localAppDataDirectory(L"net") + L"\\proxy.txt";
+        std::ifstream file(path.c_str());
+        if (!file) return std::string();
+        std::string value;
+        std::getline(file, value);
+        while (!value.empty() && (value.back() == '\r' || value.back() == '\n' || value.back() == ' ')) value.pop_back();
+        if (value.rfind("http://127.0.0.1:", 0) != 0) return std::string();
+        return value;
+    } catch (...) {
+        return std::string();
+    }
+}
+
+// Every WebView in the app shares one browser process, so the proxy goes in before the first
+// one starts and stays the same for the whole run (WebView2 requires identical options).
+void applyWebViewProxyOnce() {
+    static std::once_flag once;
+    std::call_once(once, []() {
+        std::string proxy = nuvioProxyUrl();
+        if (proxy.empty()) return;
+        std::wstring args = L"--proxy-server=" + std::wstring(proxy.begin(), proxy.end());
+        wchar_t existing[2048] = {};
+        DWORD length = GetEnvironmentVariableW(L"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", existing, 2048);
+        if (length > 0 && length < 2048) args = std::wstring(existing) + L" " + args;
+        SetEnvironmentVariableW(L"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", args.c_str());
+    });
+}
+
 std::wstring webViewUserDataDirectory() {
+    applyWebViewProxyOnce();
     return localAppDataDirectory(L"WebView2");
 }
 
@@ -1816,6 +1849,9 @@ private:
             // Read ahead well past the playhead, but don't stall startup waiting to fill it.
             setMpvOptionStringLocked("demuxer-readahead-secs", "120");
             setMpvOptionStringLocked("cache-pause-initial", "no");
+            // "Unblock sites": streams go through Nuvio's proxy too (https is tunnelled).
+            std::string proxyUrl = nuvioProxyUrl();
+            if (!proxyUrl.empty()) setMpvOptionStringLocked("http-proxy", proxyUrl.c_str());
             setMpvOptionStringLocked(
                 "stream-lavf-o",
                 "reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_on_http_error=%23%408,429,500,502,503,504,reconnect_delay_max=15"

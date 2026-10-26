@@ -38,3 +38,6 @@ iosApp/Configuration/DeviceSigning.local.json
 
 # Local MPVKit iOS build environment (sparse APFS image, see MPVKit docs)
 .mpvkit-build.sparseimage
+
+# Bundled by CI only (optional Cloudflare WARP helper)
+composeApp/src/desktopMain/resources/net/

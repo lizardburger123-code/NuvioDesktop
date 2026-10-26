@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   LuCaptions, LuExternalLink, LuImage, LuKeyRound, LuLoaderCircle, LuPalette, LuPlay, LuPuzzle,
-  LuTrash2, LuUser, LuInfo, LuCheck, LuRefreshCw, LuMonitorPlay, LuCamera,
+  LuTrash2, LuUser, LuInfo, LuCheck, LuRefreshCw, LuMonitorPlay, LuCamera, LuGlobe, LuShieldCheck, LuCloud, LuPlug, LuPower,
 } from "react-icons/lu";
 import { call } from "../bridge.js";
 import AddonStore from "../components/AddonStore.jsx";
@@ -17,6 +17,7 @@ const SECTIONS = [
   { id: "subtitles", label: "Subtitles", icon: LuCaptions },
   { id: "playback", label: "Playback", icon: LuPlay },
   { id: "addons", label: "Addons", icon: LuPuzzle },
+  { id: "network", label: "Network", icon: LuGlobe },
   { id: "profile", label: "Profile", icon: LuUser },
   { id: "about", label: "About", icon: LuInfo },
 ];
@@ -43,6 +44,7 @@ export default function Settings({ params }) {
         {current.id === "subtitles" ? <Subtitles /> : null}
         {current.id === "playback" ? <Playback /> : null}
         {current.id === "addons" ? <Addons /> : null}
+        {current.id === "network" ? <Network /> : null}
         {current.id === "profile" ? <Profile /> : null}
         {current.id === "about" ? <About /> : null}
       </section>
@@ -474,7 +476,11 @@ function Addons() {
   const [addons, setAddons] = useState(null);
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
-  const load = () => call("addons.list").then(setAddons, error => toast(error.message, { tone: "error" }));
+  const [showAdult, setShowAdult] = useState(true);
+  const load = () => {
+    call("store.showAdult").then(value => setShowAdult(value !== false), () => {});
+    return call("addons.list").then(setAddons, error => toast(error.message, { tone: "error" }));
+  };
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const install = async () => {
@@ -514,7 +520,7 @@ function Addons() {
 
   return (
     <>
-      <Panel title="Store" description="Suggested addons, checked live. One click installs; some need a quick setup in your browser first.">
+      <Panel title="Store" description="A featured shelf, plus the whole community catalogue to browse and search. One click installs; some need a quick setup in your browser first.">
         <AddonStore onChanged={load} />
       </Panel>
       <Panel title="Install from a link" description="Paste a manifest link (ends in manifest.json), for example from AIOStreams or an addon's setup page.">
@@ -525,8 +531,11 @@ function Addons() {
       </Panel>
       <Panel title="Installed" description="Order matters: higher addons answer first for catalogs and sources. The switch turns an addon off without removing it.">
         {!addons ? <div className="skel" style={{ height: 160 }} /> : null}
+        {!showAdult && (addons || []).some(addon => addon.adult) ? (
+          <p className="addon-hidden-note">{(addons || []).filter(addon => addon.adult).length} adult addons are off and hidden. Adult content in the Store brings them back.</p>
+        ) : null}
         <ul className="addon-list">
-          {(addons || []).map(addon => (
+          {(addons || []).filter(addon => showAdult || !addon.adult).map(addon => (
             <li key={addon.id} className={`addon${addon.enabled === false ? " is-off" : ""}`}>
               <span className="addon-logo">{addon.logo ? <img src={addon.logo} alt="" /> : initials(addon.name)}</span>
               <span className="addon-text">
@@ -541,6 +550,124 @@ function Addons() {
             </li>
           ))}
         </ul>
+      </Panel>
+    </>
+  );
+}
+
+/* ---------------------------------------------------------------- Network */
+
+const NET_MODES = [
+  { id: "off", icon: LuPower, title: "Off", text: "Nuvio connects normally." },
+  { id: "unblock", icon: LuShieldCheck, title: "Unblock", text: "Encrypted DNS plus a split TLS hello. Gets past most provider blocks without a VPN; fast, and your IP stays the same." },
+  { id: "warp", icon: LuCloud, title: "Cloudflare WARP", text: "A free VPN built in: everything goes through Cloudflare. For blocks Unblock can't get past." },
+  { id: "custom", icon: LuPlug, title: "My proxy or VPN", text: "Your own SOCKS5 or HTTP proxy. Many VPN apps offer one in their settings." },
+];
+
+function Network() {
+  const { toast } = useApp();
+  const [net, setNet] = useState(null);
+  const [proxy, setProxy] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [testUrl, setTestUrl] = useState("");
+  const [test, setTest] = useState(null);
+  const [saved, stamp] = useSavedStamp();
+
+  const load = () => call("net.get").then(value => { setNet(value); setProxy(p => p || value.proxy || ""); }, error => toast(error.message, { tone: "error" }));
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  // WARP takes a few seconds to come up: follow it.
+  useEffect(() => {
+    if (net?.mode !== "warp" || net?.warp?.state !== "starting") return undefined;
+    const timer = window.setTimeout(load, 1500);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [net]);
+
+  const choose = async (mode, proxyValue = proxy) => {
+    setBusy(true);
+    try {
+      const value = await call("net.set", { mode, proxy: proxyValue }, { timeoutMs: 20000 });
+      setNet(value);
+      setTest(null);
+      stamp();
+    } catch (error) {
+      toast(error.message, { tone: "error" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runTest = async () => {
+    setTest({ running: true });
+    try {
+      setTest(await call("net.test", { url: testUrl.trim() }, { timeoutMs: 45000 }));
+    } catch (error) {
+      setTest({ ok: false, error: error.message });
+    }
+  };
+
+  if (!net) return <div className="panel skel" style={{ height: 300 }} />;
+  const warpState = net.mode === "warp" ? net.warp?.state : null;
+  return (
+    <>
+      <Panel
+        title="Unblock sites"
+        description="For addons, posters or streams that won't load where you are. It applies to the whole app, the player included."
+        aside={<Saved show={saved} />}
+      >
+        <div className="net-modes" role="radiogroup" aria-label="Unblock mode">
+          {NET_MODES.map(mode => {
+            const Icon = mode.icon;
+            const unavailable = mode.id === "warp" && !net.warp?.available;
+            return (
+              <button
+                key={mode.id}
+                role="radio"
+                aria-checked={net.mode === mode.id}
+                className="net-mode"
+                disabled={busy || unavailable || (mode.id === "custom" && !proxy.trim() && net.mode !== "custom")}
+                onClick={() => net.mode !== mode.id && choose(mode.id)}
+                title={mode.id === "custom" && !proxy.trim() ? "Paste your proxy below first" : undefined}
+              >
+                <span className="net-mode-icon"><Icon /></span>
+                <span className="net-mode-text">
+                  <strong>{mode.title}</strong>
+                  <small>{unavailable ? "Not included in this build." : mode.text}</small>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <form className="install-row net-proxy" onSubmit={event => { event.preventDefault(); if (proxy.trim()) choose("custom", proxy.trim()); }}>
+          <input className="field" value={proxy} onChange={event => setProxy(event.target.value)} placeholder="socks5://127.0.0.1:1080 or http://user:pass@host:8080" spellCheck={false} />
+          <button className="btn btn-glass" disabled={busy || !proxy.trim()}>Use this proxy</button>
+        </form>
+
+        {net.mode !== "off" ? (
+          <p className="net-status">
+            {warpState === "starting" ? <><LuLoaderCircle className="spin" /> Connecting to WARP…</> : null}
+            {warpState === "on" ? <><LuCheck /> WARP is connected.</> : null}
+            {warpState === "failed" ? <>WARP didn't connect: {net.warp?.error || "unknown error"}. Unblock or your own proxy still work.</> : null}
+            {net.mode === "unblock" ? <><LuCheck /> On. Names resolve over encrypted DNS and blocked sites get a split hello.</> : null}
+            {net.mode === "custom" ? <><LuCheck /> Everything goes through your proxy.</> : null}
+          </p>
+        ) : null}
+        {net.restartForPictures ? <p className="net-note">Restart Nuvio once so posters and pictures follow this too. Addons and the player already do.</p> : null}
+      </Panel>
+
+      <Panel title="Test a link" description="Paste an addon or stream link that wouldn't load, and see whether it does now.">
+        <form className="install-row" onSubmit={event => { event.preventDefault(); runTest(); }}>
+          <input className="field" value={testUrl} onChange={event => setTestUrl(event.target.value)} placeholder="https://…/manifest.json" spellCheck={false} />
+          <button className="btn btn-primary" disabled={test?.running}>{test?.running ? <LuLoaderCircle className="spin" /> : null} Test</button>
+        </form>
+        {test && !test.running ? (
+          <p className={`net-test ${test.ok ? "is-ok" : "is-bad"}`}>
+            {test.ok
+              ? <><LuCheck /> Loaded in {test.ms} ms (status {test.status}).</>
+              : <>Didn't load{test.status ? ` (status ${test.status})` : ""}{test.error ? `: ${test.error}` : ""}. {net.mode === "off" ? "Try Unblock." : net.mode === "unblock" ? "Try Cloudflare WARP." : ""}</>}
+          </p>
+        ) : null}
       </Panel>
     </>
   );

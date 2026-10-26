@@ -186,6 +186,14 @@ internal class ShellRpc(private val host: ShellHost) {
         "torbox.connect.start" -> ShellTorbox.connectStart()
         "torbox.connect.poll" -> ShellTorbox.connectPoll(params.string("deviceCode") ?: error("Missing code."))
         "torbox.clear" -> ShellTorbox.clear()
+        "torbox.cache" -> ShellTorbox.cache(params.string("hash") ?: error("That source has no torrent to send."), params.string("name"))
+        "torbox.cacheStatus" -> ShellTorbox.status(params["hashes"].asStringList())
+        "net.get" -> ShellNet.settings()
+        "net.set" -> ShellNet.apply(ShellNet.Mode.of(params.string("mode")), params.string("proxy"))
+        "net.test" -> withContext(Dispatchers.IO) { ShellNet.test(params.string("url").orEmpty()) }
+        "store.community" -> ShellAddonStore.community(params.string("category"), params.string("query"), params.int("page") ?: 1)
+        "store.resolve" -> ShellAddonStore.resolve(params.string("slug") ?: error("Missing addon."))
+        "store.showAdult" -> JsonPrimitive(ShellAddonStore.showAdult())
         "library.cloud" -> ShellDiscover.libraryItems()
         "home.rows" -> ShellHomeRows.list()
         "home.rows.set" -> {
@@ -198,7 +206,7 @@ internal class ShellRpc(private val host: ShellHost) {
             filters = (params["filters"] as? JsonObject)?.mapNotNull { (k, v) -> (v as? JsonPrimitive)?.contentOrNull?.let { k to it } }?.toMap().orEmpty(),
             skip = params.int("skip") ?: 0,
         )
-        "store.list" -> ShellAddonStore.list()
+        "store.list" -> ShellAddonStore.list(params.bool("force") == true)
         "store.setAdult" -> ShellAddonStore.setShowAdult(params.bool("show") ?: true)
         "addons.setEnabled" -> {
             AddonRepository.setAddonEnabled(params.string("id") ?: error("Missing addon."), params.bool("enabled") ?: true)
@@ -594,7 +602,13 @@ internal class ShellRpc(private val host: ShellHost) {
     private suspend fun play(params: JsonObject): JsonElement {
         val actions = host.actions() ?: error("Playback isn't ready yet. Try again in a moment.")
         val key = params.string("streamKey") ?: error("Missing source.")
-        val stream = streamIndex[key] ?: error("That source is no longer listed. Reload the sources and pick again.")
+        var stream = streamIndex[key] ?: error("That source is no longer listed. Reload the sources and pick again.")
+        // Cached on TorBox from the list: play TorBox's copy of the file directly.
+        if (params.bool("torbox") == true) {
+            val hash = ShellTorbox.hashOf(stream) ?: error("That source has no torrent.")
+            val link = ShellTorbox.link(hash, stream.behaviorHints.filename, params.int("season"), params.int("episode"))
+            stream = stream.copy(url = link, infoHash = null, fileIdx = null, externalUrl = null, clientResolve = null, debridCacheStatus = null, sources = emptyList())
+        }
         // A subtitle picked in the window is saved first; the player loads it as it starts.
         if (params.containsKey("subtitle")) ShellSubtitlePicker.choose(params.string("subtitle"), subtitleTarget(params))
         actions.launchPlayback(request(params, stream))

@@ -50,8 +50,11 @@ function SectionNav({ active }) {
     return { left: button.offsetLeft, right: nav.clientWidth - button.offsetLeft - button.offsetWidth };
   };
 
+  // Where the pill is right now, mid-animation included (read from its live clip-path).
   const currentEdges = () => {
     const style = getComputedStyle(pillRef.current);
+    const live = /inset\(\s*[\d.]+px\s+([\d.-]+)px\s+[\d.]+px\s+([\d.-]+)px/.exec(style.clipPath || "");
+    if (live) return { left: parseFloat(live[2]) || 0, right: parseFloat(live[1]) || 0 };
     return {
       left: parseFloat(style.getPropertyValue("--pill-l")) || 0,
       right: parseFloat(style.getPropertyValue("--pill-r")) || 0,
@@ -69,8 +72,19 @@ function SectionNav({ active }) {
     const movingRight = edges.left > from.left;
     const leftSpring = movingRight ? TRAIL : LEAD;
     const rightSpring = movingRight ? LEAD : TRAIL;
-    pill.animate([{ "--pill-l": `${from.left}px` }, { "--pill-l": `${edges.left}px` }], { duration: leftSpring.duration, easing: leftSpring.easing });
-    pill.animate([{ "--pill-r": `${from.right}px` }, { "--pill-r": `${edges.right}px` }], { duration: rightSpring.duration, easing: rightSpring.easing });
+    // One clip-path animation sampled from both springs: it runs as a single compositor-friendly
+    // track instead of two custom-property animations re-styling every frame (that stuttered
+    // while Home was coming back in behind it).
+    const duration = Math.max(leftSpring.duration, rightSpring.duration);
+    const steps = 36;
+    const frames = [];
+    for (let i = 0; i <= steps; i += 1) {
+      const ms = (i / steps) * duration;
+      const l = from.left + (edges.left - from.left) * leftSpring.at(ms);
+      const r = from.right + (edges.right - from.right) * rightSpring.at(ms);
+      frames.push({ clipPath: `inset(4px ${r.toFixed(2)}px 4px ${l.toFixed(2)}px round 999px)` });
+    }
+    pill.animate(frames, { duration, easing: "linear" });
   };
 
   useLayoutEffect(() => {

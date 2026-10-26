@@ -202,6 +202,8 @@ export const createMockBackend = deliver => {
     return { id: `av${i}`, name, url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, category: i < 8 ? "character" : "abstract", color: `hsl(${h} 60% 45%)`, member: i > 9 };
   });
 
+  const mockCache = {};
+  let net = { mode: "off", proxy: "", port: 47231, restartForPictures: false, warp: { available: true, state: "off" } };
   const handlers = {
     "app.bootstrap": () => ({
       profile: { id: 1, name: "ren amamiya lol", avatar: null },
@@ -245,6 +247,36 @@ export const createMockBackend = deliver => {
     "torbox.connect.start": () => ({ deviceCode: "dev", code: "K7Q2PX", url: "https://torbox.app/device", interval: 3 }),
     "torbox.connect.poll": () => { torboxConnected = true; return { status: "connected" }; },
     "torbox.clear": () => new Promise(resolve => setTimeout(() => { const removed = torboxItems.length; torboxItems = []; resolve({ removed, failed: 0 }); }, 1200)),
+    "store.showAdult": () => storeAdult,
+    "store.community": ({ category, query, page }) => new Promise(resolve => setTimeout(() => {
+      const cats = ["movies", "anime", "torrents", "nsfw", "subtitles", "live tv"];
+      const all = Array.from({ length: 64 }, (_, i) => {
+        const cat = cats[i % cats.length];
+        return {
+          slug: `addon-${i}`, id: `org.addon${i}`, name: `${["Stream", "Catalog", "Anime", "Adult", "Subs", "Live"][i % 6]} Hub ${i + 1}`,
+          blurb: "A community addon with catalogs, metadata and streams. Configure it once and it works everywhere.",
+          version: `1.${i}.0`, types: i % 3 ? ["movie", "series"] : ["anime"], resources: i % 2 ? ["catalog", "meta", "stream"] : ["stream"],
+          adult: cat === "nsfw", needsSetup: i % 4 === 1, configurable: i % 2 === 0, category: cat,
+          ...(i === 2 ? { installed: "https://x/manifest.json", enabled: true } : {}),
+        };
+      }).filter(item => (storeAdult || !item.adult) && (!category || category === "all" || item.category === category)
+        && (!query || item.name.toLowerCase().includes(String(query).toLowerCase())));
+      const pageCount = Math.max(1, Math.ceil(all.length / 10));
+      resolve({ page, pageCount, items: all.slice((page - 1) * 10, page * 10) });
+    }, 350)),
+    "store.resolve": ({ slug }) => ({ manifest: `https://example.org/${slug}/manifest.json`, configure: `https://example.org/${slug}/configure` }),
+    "torbox.cacheStatus": ({ hashes }) => ({ connected: true, items: Object.fromEntries((hashes || []).filter(h => mockCache[h]).map(h => {
+      const job = mockCache[h];
+      const progress = Math.min(1, (Date.now() - job.at) / 9000);
+      return [h, { state: progress >= 1 ? "cached" : "downloading", progress, speed: 8e6, eta: Math.round((1 - progress) * 9), seeds: 12, ready: progress >= 1 }];
+    })) }),
+    "torbox.cache": ({ hash }) => new Promise(resolve => setTimeout(() => {
+      mockCache[hash] = { at: Date.now() };
+      resolve({ connected: true, items: { [hash]: { state: "downloading", progress: 0, ready: false, eta: 9, seeds: 12 } } });
+    }, 500)),
+    "net.get": () => ({ ...net }),
+    "net.set": ({ mode, proxy }) => { net = { ...net, mode, proxy: proxy || net.proxy, restartForPictures: mode !== "off", warp: { ...net.warp, state: mode === "warp" ? "on" : "off" } }; return { ...net }; },
+    "net.test": ({ url }) => new Promise(resolve => setTimeout(() => resolve(net.mode === "off" ? { ok: false, ms: 5012, error: "Connection reset" } : { ok: true, status: 200, ms: 412, bytes: 2048, url }), 600)),
     "store.list": () => new Promise(resolve => setTimeout(() => resolve({ showAdult: storeAdult, items: storeItems.map(item => ({ ...item, enabled: item.installed ? item.enabled !== false : undefined })) }), 600)),
     "store.setAdult": ({ show }) => { storeAdult = show; let changed = 0; storeItems = storeItems.map(i => (i.adult && i.installed && i.enabled !== show ? (changed++, { ...i, enabled: show }) : i)); return { showAdult: show, changed }; },
     "addons.setEnabled": ({ id, enabled }) => { storeItems = storeItems.map(i => (i.installed === id ? { ...i, enabled } : i)); return true; },
@@ -275,9 +307,10 @@ export const createMockBackend = deliver => {
       push("search", { query, loading: true, sections: [] });
       const hits = all.filter(item => item.name.toLowerCase().includes(q) || item.genres.some(g => g.toLowerCase().includes(q)));
       const groups = [
-        { key: "movies", title: "Movies", type: "movie", items: hits.filter(item => item.type === "movie") },
-        { key: "series", title: "Series", type: "series", items: hits.filter(item => item.type === "series" && !item.id.startsWith("kitsu")) },
-        { key: "anime", title: "Anime", type: "anime", items: hits.filter(item => item.id.startsWith("kitsu")) },
+        { key: "movies", title: "Movies", type: "movie", addonName: "Cinemeta", items: hits.filter(item => item.type === "movie") },
+        { key: "tmdb-movies", title: "TMDB Movies", type: "movie", addonName: "AIOMetadata", items: hits.filter(item => item.type === "movie").slice(0, 3) },
+        { key: "series", title: "Series", type: "series", addonName: "Cinemeta", items: hits.filter(item => item.type === "series" && !item.id.startsWith("kitsu")) },
+        { key: "anime", title: "Anime", type: "anime", addonName: "Anime Kitsu", items: hits.filter(item => item.id.startsWith("kitsu")) },
       ].filter(group => group.items.length);
       push("search", { query, loading: false, sections: groups }, 300);
       return true;
@@ -298,6 +331,7 @@ export const createMockBackend = deliver => {
           streams: streamRows.map(([quality, addon, title, size, cached], i) => ({
             key: `${videoId}#${i}`, name: `${quality} ${cached ? "⚡" : ""}`, title, description: `${title}\n💾 ${size}  ⚙️ TorBox`,
             filename: `${title}.mkv`, size, cached, addonName: addon,
+            ...(cached ? {} : { hash: (`${i}abcdef0123456789`.repeat(4)).slice(0, 40), p2p: i % 2 === 0 }),
           })),
         }, { addonId: "torbox", addonName: "TorBox library", loading: false, streams: [] }],
       }, 700);

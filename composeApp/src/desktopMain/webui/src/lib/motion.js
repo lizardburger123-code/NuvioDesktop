@@ -49,7 +49,15 @@ export const spring = ({ stiffness = 260, damping = 24, samples = 48 } = {}) => 
     points.push(sample[1]);
   }
   points[points.length - 1] = 1;
-  return { easing: `linear(${points.map(p => +p.toFixed(4)).join(", ")})`, duration: Math.round(total * 1000) };
+  const duration = Math.round(total * 1000);
+  // at(ms): the spring's progress at that time, for building combined keyframes.
+  const at = ms => {
+    if (ms >= duration) return 1;
+    const f = Math.max(0, ms / duration) * samples;
+    const i = Math.floor(f);
+    return points[i] + (points[Math.min(i + 1, samples)] - points[i]) * (f - i);
+  };
+  return { easing: `linear(${points.map(p => +p.toFixed(4)).join(", ")})`, duration, at };
 };
 
 export const PILL_SPRING = spring({ stiffness: 320, damping: 26 });
