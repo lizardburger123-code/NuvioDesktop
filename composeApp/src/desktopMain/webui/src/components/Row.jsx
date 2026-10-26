@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LuChevronLeft, LuChevronRight } from "react-icons/lu";
+import { LuArrowRight, LuChevronLeft, LuChevronRight } from "react-icons/lu";
 import { useScreenActive } from "../lib/screen.js";
 import "./Row.css";
 
 /** A titled horizontal shelf. Children render only once the row nears the viewport. */
-export default function Row({ title, subtitle, action, children, className = "", empty }) {
+export default function Row({ title, subtitle, action, children, className = "", empty, onMore, moreLabel = "See all" }) {
   const rowRef = useRef(null);
   const trackRef = useRef(null);
   const [near, setNear] = useState(false);
@@ -55,7 +55,7 @@ export default function Row({ title, subtitle, action, children, className = "",
     <section ref={rowRef} className={`row ${className}`}>
       <header className="row-head">
         <div className="row-titles">
-          <h2 className="row-title">{title}</h2>
+          {onMore ? <h2 className="row-title"><button className="row-title-link" onClick={onMore}>{title}</button></h2> : <h2 className="row-title">{title}</h2>}
           {subtitle ? <span className="row-sub">{subtitle}</span> : null}
         </div>
         <div className="row-tools">
@@ -66,6 +66,12 @@ export default function Row({ title, subtitle, action, children, className = "",
       </header>
       <div className="row-track" ref={trackRef} onScroll={measure}>
         {near ? children : <div className="row-placeholder" />}
+        {near && onMore ? (
+          <button className="row-end-more" onClick={onMore} aria-label={`${moreLabel}: ${title}`}>
+            <span className="row-end-more-icon"><LuArrowRight /></span>
+            <span>{moreLabel}</span>
+          </button>
+        ) : null}
         {near && empty ? <p className="row-empty">{empty}</p> : null}
       </div>
     </section>

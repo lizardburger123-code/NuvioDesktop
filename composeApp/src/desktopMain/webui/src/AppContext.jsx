@@ -5,6 +5,9 @@ import { navigate } from "./lib/router.js";
 
 const AppContext = createContext(null);
 export const useApp = () => useContext(AppContext);
+// Toasts live in their own context: showing one must not re-render every screen.
+const ToastContext = createContext([]);
+export const useToasts = () => useContext(ToastContext);
 
 export function AppProvider({ boot, children }) {
   const [appearance, setAppearanceState] = useState(boot.appearance);
@@ -15,13 +18,19 @@ export function AppProvider({ boot, children }) {
   const watchLater = useTopic("watchLater", []);
   const laterIds = useMemo(() => new Set(watchLater.map(item => `${item.type}:${item.id}`)), [watchLater]);
 
-  const toast = useCallback((message, { icon, tone } = {}) => {
+  /** A short note at the bottom. action: { label, run } adds a button (Undo...). */
+  const toast = useCallback((message, { icon, tone, action, duration } = {}) => {
     toastId.current += 1;
     const id = toastId.current;
-    setToasts(list => [...list.slice(-2), { id, message, icon, tone }]);
+    const stay = duration || (action ? 5200 : 3000);
+    const dismiss = () => {
+      setToasts(list => list.map(t => (t.id === id ? { ...t, leaving: true } : t)));
+      window.setTimeout(() => setToasts(list => list.filter(t => t.id !== id)), 240);
+    };
+    const wrapped = action ? { label: action.label, run: () => { action.run(); dismiss(); } } : null;
+    setToasts(list => [...list.slice(-2), { id, message, icon, tone, action: wrapped }]);
     // Mark it leaving first so it can animate out, then drop it.
-    window.setTimeout(() => setToasts(list => list.map(t => (t.id === id ? { ...t, leaving: true } : t))), 3000);
-    window.setTimeout(() => setToasts(list => list.filter(t => t.id !== id)), 3240);
+    window.setTimeout(dismiss, stay);
   }, []);
 
   const setAppearance = useCallback(patch => {
@@ -31,10 +40,12 @@ export function AppProvider({ boot, children }) {
 
   const toggleLater = useCallback(item => {
     const was = laterIds.has(`${item.type}:${item.id}`);
-    call("watchLater.toggle", {
-      item: { id: item.id, type: item.type, name: item.name, poster: item.poster, banner: item.banner, logo: item.logo, releaseInfo: item.releaseInfo, imdbRating: item.imdbRating, genres: item.genres },
-    }).then(
-      () => toast(was ? `Removed from Watch later` : `Added to Watch later`),
+    const payload = { id: item.id, type: item.type, name: item.name, poster: item.poster, banner: item.banner, logo: item.logo, releaseInfo: item.releaseInfo, imdbRating: item.imdbRating, genres: item.genres };
+    call("watchLater.toggle", { item: payload }).then(
+      () => toast(was ? `Removed ${item.name} from Watch later` : `Added ${item.name} to Watch later`, {
+        // Taking something off by accident is easy (the bookmark sits on every poster): one click undoes it.
+        action: was ? { label: "Undo", run: () => call("watchLater.toggle", { item: payload }).catch(() => {}) } : undefined,
+      }),
       error => toast(error.message, { tone: "error" }),
     );
   }, [laterIds, toast]);
@@ -66,9 +77,13 @@ export function AppProvider({ boot, children }) {
   }, [toast]);
 
   const value = useMemo(() => ({
-    boot, profile, setProfile, appearance, setAppearance, art, setArt, toast, toasts,
+    boot, profile, setProfile, appearance, setAppearance, art, setArt, toast,
     watchLater, laterIds, toggleLater, openDetails, resume, removeContinue,
-  }), [boot, profile, appearance, setAppearance, art, toast, toasts, watchLater, laterIds, toggleLater, openDetails, resume, removeContinue]);
+  }), [boot, profile, appearance, setAppearance, art, toast, watchLater, laterIds, toggleLater, openDetails, resume, removeContinue]);
 
-  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+  return (
+    <AppContext.Provider value={value}>
+      <ToastContext.Provider value={toasts}>{children}</ToastContext.Provider>
+    </AppContext.Provider>
+  );
 }

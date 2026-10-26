@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { LuLoaderCircle, LuSlidersHorizontal } from "react-icons/lu";
+import { LuLoaderCircle, LuSearch, LuSlidersHorizontal, LuX } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useApp } from "../AppContext.jsx";
 import { PosterCard, SkeletonPosters } from "./Cards.jsx";
@@ -9,51 +9,47 @@ import "./Discover.css";
 
 const LABELS = { genre: "Genre", year: "Year", rating: "Rating", sort: "Sort", language: "Language", country: "Country", network: "Network", status: "Status" };
 const label = name => LABELS[name] || name.charAt(0).toUpperCase() + name.slice(1);
-const remember = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* private window */ } };
-const recall = key => { try { return JSON.parse(localStorage.getItem(key) || "null"); } catch { return null; } };
+export const remember = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* private window */ } };
+export const recall = key => { try { return JSON.parse(localStorage.getItem(key) || "null"); } catch { return null; } };
 
 /**
- * Every catalog your addons offer for this section, with the filters each one supports
- * (genre, year, rating...), page after page as you scroll.
+ * One catalog as an endless grid: its own filters (genre, year, rating...), a search box when
+ * the catalog can search, and the next page loading as the end comes into view.
  */
-export default function Discover({ kind }) {
+export function CatalogGrid({ source, filters, onFilters, emptyText }) {
   const { laterIds, toggleLater, openDetails, toast } = useApp();
   const active = useScreenActive();
-  const [sources, setSources] = useState(null);
-  const [sourceId, setSourceId] = useState(null);
-  const [filters, setFilters] = useState({});
   const [items, setItems] = useState([]);
   const [next, setNext] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [text, setText] = useState(filters?.search || "");
   const run = useRef(0);
   const sentinel = useRef(null);
   const gridRef = useRef(null);
-  const storeKey = `nuvio.discover.${kind}`;
 
-  useEffect(() => {
-    setSources(null);
-    call("discover.sources", { kind }).then(list => {
-      const all = Array.isArray(list) ? list : [];
-      setSources(all);
-      const saved = recall(storeKey);
-      const start = all.find(s => s.id === saved?.source) || all[0];
-      setSourceId(start?.id || null);
-      setFilters(start && saved?.source === start.id ? saved.filters || {} : {});
-    }, () => setSources([]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind]);
-
-  const source = useMemo(() => sources?.find(s => s.id === sourceId) || null, [sources, sourceId]);
   // Required filters always carry a value (the catalog won't answer without one).
   const effective = useMemo(() => {
-    const out = { ...filters };
+    const out = { ...(filters || {}) };
     source?.filters.forEach(f => { if (f.required && !out[f.name]) out[f.name] = f.options[0]; });
+    if (!out.search) delete out.search;
     return out;
   }, [filters, source]);
+  const waitingForQuery = Boolean(source?.searchOnly && !effective.search);
+
+  // Search as you type (debounced) for catalogs that can search.
+  useEffect(() => { setText(filters?.search || ""); }, [source?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!source?.searchable) return undefined;
+    const value = text.trim();
+    if (value === (filters?.search || "")) return undefined;
+    const timer = window.setTimeout(() => onFilters({ ...(filters || {}), search: value }), 420);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text]);
 
   const load = reset => {
-    if (!source) return;
+    if (!source || waitingForQuery) return;
     const id = ++run.current;
     const skip = reset ? 0 : next;
     if (skip < 0) return;
@@ -75,10 +71,10 @@ export default function Discover({ kind }) {
   };
 
   useEffect(() => {
-    if (!source) return;
-    remember(storeKey, { source: source.id, filters });
+    run.current += 1;
     setItems([]);
     setNext(0);
+    setLoading(false);
     load(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source?.id, JSON.stringify(effective)]);
@@ -110,6 +106,103 @@ export default function Discover({ kind }) {
     shown.current = items.length;
   }, [items]);
 
+  const setOne = (name, value) => onFilters({ ...(filters || {}), [name]: value });
+  const anySet = Object.entries(filters || {}).some(([k, v]) => k !== "search" && v);
+
+  return (
+    <>
+      {source && (source.filters.length || source.searchable) ? (
+        <div className="discover-filters">
+          {source.searchable ? (
+            <label className="discover-search">
+              <LuSearch aria-hidden="true" />
+              <input
+                value={text}
+                onChange={event => setText(event.target.value)}
+                placeholder={`Search ${source.addon || "this catalog"}`}
+                spellCheck={false}
+                aria-label={`Search ${source.name}`}
+              />
+              {text ? <button className="discover-search-clear" onClick={() => setText("")} aria-label="Clear search"><LuX /></button> : null}
+            </label>
+          ) : null}
+          {source.filters.length ? <LuSlidersHorizontal className="discover-filters-icon" aria-hidden="true" /> : null}
+          {source.filters.map(f => (
+            <label key={f.name} className={`discover-filter${effective[f.name] ? " is-set" : ""}`}>
+              <span>{label(f.name)}</span>
+              <select className="field" value={effective[f.name] || ""} onChange={event => setOne(f.name, event.target.value)}>
+                {!f.required ? <option value="">Any</option> : null}
+                {f.options.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </label>
+          ))}
+          {anySet ? <button className="btn btn-ghost btn-sm" onClick={() => onFilters(filters?.search ? { search: filters.search } : {})}>Reset</button> : null}
+        </div>
+      ) : null}
+
+      <div ref={gridRef} className="discover-grid">
+        {items.map(item => (
+          <PosterCard key={`${item.type}:${item.id}`} item={item} onOpen={openDetails} onToggleLater={toggleLater} saved={laterIds.has(`${item.type}:${item.id}`)} />
+        ))}
+      </div>
+      {loading && !items.length ? <div className="discover-grid"><SkeletonPosters count={12} /></div> : null}
+      {waitingForQuery ? <p className="discover-note">This catalog only answers searches. Type what you're looking for above.</p> : null}
+      {!loading && !items.length && source && !waitingForQuery ? (
+        <p className="discover-note">{error || emptyText || "Nothing matches these filters. Try another genre or year."}</p>
+      ) : null}
+      <div ref={sentinel} className="discover-more" aria-hidden={!loading}>
+        {loading && items.length ? <><LuLoaderCircle className="spin" /> Loading more</> : null}
+      </div>
+    </>
+  );
+}
+
+/** A row of catalogs to pick from (name over the addon it comes from). */
+export function SourcePicker({ sources, value, onChange, label: ariaLabel = "Catalog" }) {
+  const listRef = useRef(null);
+  // Keep the chosen catalog in view when it changes (long lists scroll sideways).
+  useEffect(() => {
+    const el = listRef.current?.querySelector('[aria-pressed="true"]');
+    el?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [value]);
+  return (
+    <div ref={listRef} className="discover-sources" role="tablist" aria-label={ariaLabel} data-keep-scroll>
+      {!sources ? Array.from({ length: 6 }, (_, i) => <span key={i} className="discover-source skel" />) : sources.map(s => (
+        <button key={s.id} role="tab" className="discover-source" aria-pressed={s.id === value} onClick={() => onChange(s.id)} title={`${s.name} · ${s.addon}`}>
+          <span className="discover-source-name">{s.name}</span>
+          <span className="discover-source-addon">{s.addon}{s.searchOnly ? " · search" : ""}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Every catalog your addons offer for this section, with the filters each one supports
+ * (genre, year, rating...), page after page as you scroll.
+ */
+export default function Discover({ kind }) {
+  const [sources, setSources] = useState(null);
+  const [sourceId, setSourceId] = useState(null);
+  const [filters, setFilters] = useState({});
+  const storeKey = `nuvio.discover.${kind}`;
+
+  useEffect(() => {
+    setSources(null);
+    call("discover.sources", { kind }).then(list => {
+      const all = Array.isArray(list) ? list : [];
+      setSources(all);
+      const saved = recall(storeKey);
+      const start = all.find(s => s.id === saved?.source) || all[0];
+      setSourceId(start?.id || null);
+      setFilters(start && saved?.source === start.id ? saved.filters || {} : {});
+    }, () => setSources([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kind]);
+
+  const source = useMemo(() => sources?.find(s => s.id === sourceId) || null, [sources, sourceId]);
+  useEffect(() => { if (source) remember(storeKey, { source: source.id, filters }); }, [source, filters]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (sources && !sources.length) {
     return (
       <section className="discover-empty">
@@ -121,56 +214,8 @@ export default function Discover({ kind }) {
 
   return (
     <section className="discover">
-      <div className="discover-sources" role="tablist" aria-label="Catalog">
-        {!sources ? Array.from({ length: 6 }, (_, i) => <span key={i} className="discover-source skel" />) : sources.map(s => (
-          <button
-            key={s.id}
-            role="tab"
-            className="discover-source"
-            aria-pressed={s.id === sourceId}
-            onClick={() => { setSourceId(s.id); setFilters({}); }}
-            title={`${s.name} · ${s.addon}`}
-          >
-            <span className="discover-source-name">{s.name}</span>
-            <span className="discover-source-addon">{s.addon}</span>
-          </button>
-        ))}
-      </div>
-
-      {source?.filters.length ? (
-        <div className="discover-filters">
-          <LuSlidersHorizontal className="discover-filters-icon" aria-hidden="true" />
-          {source.filters.map(f => (
-            <label key={f.name} className={`discover-filter${effective[f.name] ? " is-set" : ""}`}>
-              <span>{label(f.name)}</span>
-              <select
-                className="field"
-                value={effective[f.name] || ""}
-                onChange={event => setFilters(prev => ({ ...prev, [f.name]: event.target.value }))}
-              >
-                {!f.required ? <option value="">Any</option> : null}
-                {f.options.map(o => <option key={o} value={o}>{o}</option>)}
-              </select>
-            </label>
-          ))}
-          {Object.values(filters).some(Boolean) ? (
-            <button className="btn btn-ghost btn-sm" onClick={() => setFilters({})}>Reset</button>
-          ) : null}
-        </div>
-      ) : null}
-
-      <div ref={gridRef} className="discover-grid">
-        {items.map(item => (
-          <PosterCard key={`${item.type}:${item.id}`} item={item} onOpen={openDetails} onToggleLater={toggleLater} saved={laterIds.has(`${item.type}:${item.id}`)} />
-        ))}
-      </div>
-      {loading && !items.length ? <div className="discover-grid"><SkeletonPosters count={12} /></div> : null}
-      {!loading && !items.length && source ? (
-        <p className="discover-note">{error || "Nothing matches these filters. Try another genre or year."}</p>
-      ) : null}
-      <div ref={sentinel} className="discover-more" aria-hidden={!loading}>
-        {loading && items.length ? <><LuLoaderCircle className="spin" /> Loading more</> : null}
-      </div>
+      <SourcePicker sources={sources} value={sourceId} onChange={id => { setSourceId(id); setFilters({}); }} />
+      <CatalogGrid source={source} filters={filters} onFilters={setFilters} />
     </section>
   );
 }

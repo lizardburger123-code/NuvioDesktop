@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from "react";
-import { useApp } from "../AppContext.jsx";
+import { useToasts } from "../AppContext.jsx";
 import { EASE, reduceMotion } from "../lib/motion.js";
 import "./Toasts.css";
 
@@ -21,13 +21,14 @@ function Toast({ toast }) {
   }, [toast.leaving]);
   return (
     <div ref={ref} className={`toast glass-dark${toast.tone === "error" ? " toast-error" : ""}`} role="status">
-      {toast.message}
+      <span>{toast.message}</span>
+      {toast.action ? <button className="toast-action" onClick={toast.action.run}>{toast.action.label}</button> : null}
     </div>
   );
 }
 
 export default function Toasts() {
-  const { toasts } = useApp();
+  const toasts = useToasts();
   return (
     <div className="toasts" aria-live="polite">
       {toasts.map(toast => <Toast key={toast.id} toast={toast} />)}

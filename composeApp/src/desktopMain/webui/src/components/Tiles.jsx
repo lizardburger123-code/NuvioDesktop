@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { EASE, reduceMotion } from "../lib/motion.js";
 import { useScreenActive } from "../lib/screen.js";
-import { LuBookmark, LuCalendarClock, LuInfo, LuLibrary, LuPlay, LuSkipForward } from "react-icons/lu";
+import { LuBookmark, LuCalendarClock, LuEyeOff, LuInfo, LuLibrary, LuPlay, LuSkipForward } from "react-icons/lu";
 import SpotlightCard from "../reactbits/SpotlightCard/SpotlightCard.jsx";
 import { episodeCode, minutesLeft, relativeAir, clockTime, year } from "../lib/format.js";
 import { goSection, navigate } from "../lib/router.js";
@@ -9,7 +9,7 @@ import "./Tiles.css";
 
 const openDetails = item => navigate("details", { type: item.type, id: item.id, name: item.name });
 
-function Tile({ className = "", children, style, onClick, label }) {
+function Tile({ className = "", children, style, onClick, label, onHide, hideLabel }) {
   const active = useScreenActive();
   return (
     <SpotlightCard
@@ -23,6 +23,11 @@ function Tile({ className = "", children, style, onClick, label }) {
     >
       {onClick ? <button className="tile-hit" onClick={onClick} aria-label={label} /> : null}
       {children}
+      {onHide ? (
+        <button className="tile-hide" onClick={event => { event.stopPropagation(); onHide(); }} aria-label={hideLabel || "Hide this tile"} title="Hide from Home">
+          <LuEyeOff />
+        </button>
+      ) : null}
     </SpotlightCard>
   );
 }
@@ -62,7 +67,7 @@ function TileArt({ src }) {
   );
 }
 
-export function SpotlightTile({ items = [], onPlay }) {
+export function SpotlightTile({ items = [], onPlay, onHide }) {
   const [index, setIndex] = useState(0);
   const bodyRef = useRef(null);
   const first = useRef(true);
@@ -93,7 +98,7 @@ export function SpotlightTile({ items = [], onPlay }) {
 
   if (!item) return <div className="tile tile-spotlight skel" />;
   return (
-    <Tile className="tile-spotlight" onClick={() => openDetails(item)} label={item.name}>
+    <Tile className="tile-spotlight" onClick={() => openDetails(item)} label={item.name} onHide={onHide} hideLabel="Hide Spotlight">
       <TileArt src={item.banner || item.poster} />
       <div className="tile-scrim" />
       <div className="tile-body" ref={bodyRef}>
@@ -129,10 +134,10 @@ export function SpotlightTile({ items = [], onPlay }) {
   );
 }
 
-export function ResumeTile({ entry, onResume }) {
+export function ResumeTile({ entry, onResume, onHide }) {
   if (!entry) {
     return (
-      <Tile className="tile-resume tile-empty">
+      <Tile className="tile-resume tile-empty" onHide={onHide} hideLabel="Hide Resume">
         <div className="tile-body">
           <span className="tile-kicker">Resume</span>
           <p className="tile-empty-text">Start something and it will wait for you here.</p>
@@ -141,7 +146,7 @@ export function ResumeTile({ entry, onResume }) {
     );
   }
   return (
-    <Tile className="tile-resume" style={{ backgroundImage: `url("${entry.thumbnail || entry.backdrop}")` }} onClick={() => onResume(entry)} label={`Resume ${entry.name}`}>
+    <Tile className="tile-resume" style={{ backgroundImage: `url("${entry.thumbnail || entry.backdrop}")` }} onClick={() => onResume(entry)} label={`Resume ${entry.name}`} onHide={onHide} hideLabel="Hide Resume">
       <div className="tile-scrim tile-scrim-strong" />
       <div className="tile-body">
         <span className="tile-kicker">Resume</span>
@@ -172,46 +177,69 @@ export function ResumeTile({ entry, onResume }) {
   );
 }
 
-export function WatchLaterTile({ items = [] }) {
-  const fan = items.slice(0, 3);
+const newestFirst = items => [...items].sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+
+/** Three posters from the shelf, newest first; each opens its title. */
+function Shelf({ items }) {
   return (
-    <Tile className="tile-later" onClick={() => goSection("library", { tab: "later" })} label="Watch later">
-      <div className="tile-body">
-        <span className="tile-kicker"><LuBookmark /> Watch later</span>
-        <span className="tile-count num">{items.length}</span>
-        <span className="tile-meta">{items.length === 1 ? "title saved" : "titles saved"}</span>
-      </div>
-      <div className="tile-fan" aria-hidden="true">
-        {fan.map((item, i) => (
-          <img key={item.id} src={item.poster} alt="" style={{ "--i": i }} />
-        ))}
-      </div>
-    </Tile>
+    <div className="tile-shelf">
+      {items.map((item, i) => (
+        <button
+          key={`${item.type}:${item.id}`}
+          className="tile-shelf-item"
+          style={{ "--i": i }}
+          onClick={event => { event.stopPropagation(); openDetails(item); }}
+          aria-label={item.name}
+          title={item.name}
+        >
+          {item.poster ? <img src={item.poster} alt="" loading="lazy" decoding="async" /> : <span className="tile-shelf-fallback" dir="auto">{item.name}</span>}
+        </button>
+      ))}
+    </div>
   );
 }
 
-export function UpNextTile({ upcoming = [], libraryCount = 0 }) {
-  const next = upcoming[0];
-  if (!next) {
-    return (
-      <Tile className="tile-schedule" onClick={() => goSection("library")} label="Library">
-        <div className="tile-body">
-          <span className="tile-kicker"><LuLibrary /> Library</span>
-          <span className="tile-count num">{libraryCount}</span>
-          <span className="tile-meta">saved titles</span>
-        </div>
-      </Tile>
-    );
-  }
-  const when = new Date(next.airsAt);
+/**
+ * Watch later or Library: what's inside at a glance — the count and the three most recently
+ * added — opening the full list.
+ */
+export function CollectionTile({ kind, items = [], upcoming = [], onHide }) {
+  const later = kind === "later";
+  const recent = newestFirst(items).slice(0, 8);
+  const next = later ? null : upcoming[0];
+  const Icon = later ? LuBookmark : LuLibrary;
+  const title = later ? "Watch later" : "Library";
+  const open = () => goSection("library", { tab: later ? "later" : "saved" });
   return (
-    <Tile className="tile-schedule" onClick={() => openDetails(next)} label={`${next.name} new episode`}>
-      <div className="tile-body">
-        <span className="tile-kicker"><LuCalendarClock /> New episode</span>
-        <h3 className="tile-name tile-name-sm">{next.name}</h3>
-        <span className="tile-meta">{episodeCode(next.season, next.episode)}</span>
-        <span className="tile-time num">{clockTime(when)}</span>
-        <span className="tile-meta">{relativeAir(next.airsAt)}</span>
+    <Tile
+      className={`tile-collection ${later ? "tile-later" : "tile-schedule"}`}
+      onClick={open}
+      label={`${title}: ${items.length} ${items.length === 1 ? "title" : "titles"}`}
+      onHide={onHide}
+      hideLabel={`Hide ${title}`}
+    >
+      <div className="tile-body tile-collection-body">
+        <span className="tile-collection-head">
+          <span className="tile-kicker"><Icon /> {title}</span>
+          <span className="tile-collection-count num">{items.length}</span>
+        </span>
+        {recent.length ? (
+          <Shelf items={recent} />
+        ) : (
+          <p className="tile-empty-text">{later ? "Tap the bookmark on any poster to keep it here." : "Titles you add to your library show here."}</p>
+        )}
+        {next ? (
+          <button
+            className="tile-next"
+            onClick={event => { event.stopPropagation(); openDetails(next); }}
+            title={`${next.name} ${episodeCode(next.season, next.episode)} · ${relativeAir(next.airsAt)}`}
+          >
+            <LuCalendarClock />
+            <span className="tile-next-text"><strong dir="auto">{next.name}</strong> {episodeCode(next.season, next.episode)} · {clockTime(new Date(next.airsAt))}</span>
+          </button>
+        ) : recent.length ? (
+          <span className="tile-latest" dir="auto">Latest · {recent[0].name}</span>
+        ) : null}
       </div>
     </Tile>
   );

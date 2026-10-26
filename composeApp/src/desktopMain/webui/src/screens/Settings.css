@@ -195,3 +195,5 @@
 .net-note { color: var(--ink-3); }
 .net-test.is-ok { color: #7ef0a0; }
 .net-test.is-bad { color: #ffb4ad; }
+.rows-tools { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
+.rows-tools .field { flex: 1; max-width: 360px; }

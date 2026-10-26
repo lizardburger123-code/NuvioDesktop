@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { LuEyeOff, LuInfo, LuPlay } from "react-icons/lu";
+import { LuInfo, LuPlay } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
 import { useApp } from "../AppContext.jsx";
 import Row from "../components/Row.jsx";
 import { PosterCard, SkeletonPosters } from "../components/Cards.jsx";
 import { navigate } from "../lib/router.js";
-import { hideRow } from "../lib/rows.js";
+import RowActions, { openCatalog } from "../components/RowActions.jsx";
 import { useSegmentPill } from "../lib/motion.js";
 import Discover from "../components/Discover.jsx";
 import { year } from "../lib/format.js";
@@ -19,7 +19,7 @@ export const sectionKind = section => section.kind || (section.type === "movie" 
 export default function Browse({ params }) {
   const kind = params.kind || "movie";
   const mode = params.mode === "discover" ? "discover" : "highlights";
-  const { laterIds, toggleLater, openDetails, toast } = useApp();
+  const { laterIds, toggleLater, openDetails } = useApp();
   const modeRef = useRef(null);
   useSegmentPill(modeRef);
   const home = useTopic("home", { loading: true, hero: [], sections: [] });
@@ -78,7 +78,8 @@ export default function Browse({ params }) {
           key={section.key}
           title={section.title}
           subtitle={section.addonName}
-          action={<button className="row-hide" onClick={() => hideRow(section, toast)} aria-label={`Hide ${section.title}`} title="Hide this row"><LuEyeOff /></button>}
+          action={<RowActions section={section} />}
+          onMore={section.source ? () => openCatalog(section) : undefined}
         >
           {section.items.map(item => (
             <PosterCard key={`${item.type}:${item.id}`} item={item} onOpen={openDetails} onToggleLater={toggleLater} saved={laterIds.has(`${item.type}:${item.id}`)} />

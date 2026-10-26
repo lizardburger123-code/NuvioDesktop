@@ -75,9 +75,9 @@ const continueWatching = [
 }));
 
 const sections = [
-  { key: "cinemeta.movie.top", title: "Trending movies", subtitle: "Cinemeta", addonName: "Cinemeta", type: "movie", kind: "movie", items: trendingMovies },
-  { key: "cinemeta.series.top", title: "Trending series", subtitle: "Cinemeta", addonName: "Cinemeta", type: "series", kind: "series", items: trendingSeries },
-  { key: "kitsu.trending", title: "Trending anime", subtitle: "Anime Kitsu", addonName: "Anime Kitsu", type: "series", kind: "anime", items: anime },
+  { key: "cinemeta.movie.top", title: "Trending movies", subtitle: "Cinemeta", addonName: "Cinemeta", type: "movie", kind: "movie", items: trendingMovies, source: "https://v3-cinemeta.strem.io/manifest.json|movie|top" },
+  { key: "cinemeta.series.top", title: "Trending series", subtitle: "Cinemeta", addonName: "Cinemeta", type: "series", kind: "series", items: trendingSeries, source: "https://v3-cinemeta.strem.io/manifest.json|series|top" },
+  { key: "kitsu.trending", title: "Trending anime", subtitle: "Anime Kitsu", addonName: "Anime Kitsu", type: "series", kind: "anime", items: anime, source: "https://anime-kitsu.strem.fun/manifest.json|anime|kitsu-trending" },
   { key: "torbox.library", title: "TorBox library", subtitle: "AIOStreams", addonName: "AIOStreams", type: "other", items: library },
 ];
 
@@ -213,6 +213,7 @@ export const createMockBackend = deliver => {
       native: false,
     }),
     "home.subscribe": () => {
+      push("library", { items: library.map((item, i) => ({ ...item, addedAt: Date.now() - i * 3600e3 })), cloud: library.slice(0, 3) }, 140);
       pushHome();
       push("continue", continueWatching, 120);
       push("watchLater", watchLater, 140);
@@ -232,8 +233,32 @@ export const createMockBackend = deliver => {
         filters: [{ name: "genre", required: false, options: genres }, ...(i % 2 === 0 ? [{ name: "year", required: false, options: years }] : [])],
       }));
     },
+    "discover.addons": () => {
+      const genres = ["Action", "Comedy", "Drama", "Horror", "Sci-Fi", "Thriller", "Romance", "Animation"];
+      const cat = (addon, type, id, name, extra = {}) => ({ id: `${addon}|${type}|${id}`, name, addon: "", addonId: addon, type, paged: true, searchable: Boolean(extra.searchable), searchOnly: Boolean(extra.searchOnly), filters: extra.filters || [{ name: "genre", required: false, options: genres }] });
+      return [
+        { id: "https://v3-cinemeta.strem.io/manifest.json", name: "Cinemeta", description: "The official catalog", types: ["movie", "series"], adult: false, catalogs: [
+          cat("https://v3-cinemeta.strem.io/manifest.json", "movie", "top", "Popular", { searchable: true }),
+          cat("https://v3-cinemeta.strem.io/manifest.json", "series", "top", "Popular", { searchable: true }),
+          cat("https://v3-cinemeta.strem.io/manifest.json", "movie", "year", "New", { filters: [{ name: "genre", required: true, options: ["2026", "2025", "2024"] }] }),
+        ] },
+        { id: "https://anime-kitsu.strem.fun/manifest.json", name: "Anime Kitsu", description: "Anime from Kitsu", types: ["anime"], adult: false, catalogs: [
+          cat("https://anime-kitsu.strem.fun/manifest.json", "anime", "kitsu-trending", "Trending"),
+          cat("https://anime-kitsu.strem.fun/manifest.json", "anime", "kitsu-airing", "Airing now"),
+          cat("https://anime-kitsu.strem.fun/manifest.json", "anime", "kitsu-search", "Search", { searchable: true, searchOnly: true, filters: [] }),
+        ] },
+        { id: "https://x/onlyporn/manifest.json", name: "OnlyPorn", description: "Adult videos", types: ["movie"], adult: true, catalogs: [
+          cat("https://x/onlyporn/manifest.json", "movie", "eporner", "Eporner"),
+          cat("https://x/onlyporn/manifest.json", "Porn", "trending", "Trending", { searchable: true }),
+        ] },
+        { id: "https://aio/manifest.json", name: "SELection", description: "AIOStreams", types: ["movie", "series"], adult: false, catalogs: [
+          cat("https://aio/manifest.json", "movie", "library", "TorBox - Library", { filters: [] }),
+        ] },
+      ];
+    },
     "discover.page": ({ source, filters = {}, skip = 0 }) => new Promise(resolve => setTimeout(() => {
-      const pool = all.filter(item => !filters.genre || item.genres.includes(filters.genre));
+      const q = String(filters.search || "").toLowerCase();
+      const pool = all.filter(item => (!filters.genre || item.genres.includes(filters.genre) || /^\d{4}$/.test(filters.genre)) && (!q || item.name.toLowerCase().includes(q)));
       const page = Array.from({ length: 24 }, (_, i) => {
         const item = pool[(skip + i + source.length) % Math.max(1, pool.length)];
         return item ? { ...item, id: `${item.id}-${skip + i}` } : null;

@@ -18,8 +18,9 @@ import Search from "./screens/Search.jsx";
 import Details from "./screens/Details.jsx";
 import Library from "./screens/Library.jsx";
 import Settings from "./screens/Settings.jsx";
+import Addons from "./screens/Addons.jsx";
 
-const SCREENS = { home: Home, browse: Browse, search: Search, details: Details, library: Library, settings: Settings };
+const SCREENS = { home: Home, browse: Browse, search: Search, details: Details, library: Library, settings: Settings, addons: Addons };
 
 /**
  * One kept-alive screen. Parked screens stay mounted (state, scroll, decoded images) but are

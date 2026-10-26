@@ -16,3 +16,20 @@
   border-radius: 999px;
   background: rgb(255 255 255 / .06);
 }
+.search-more {
+  margin: 40px var(--gutter) 0;
+  padding: 16px 18px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: 880px;
+  font-size: var(--fs-13);
+  color: var(--ink-2);
+  background: rgb(255 255 255 / .045);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .07);
+}
+.search-more > svg { width: 20px; height: 20px; flex: none; color: var(--ink-3); }
+.search-more span { flex: 1; line-height: 1.5; text-wrap: pretty; }
+.search-more strong { color: var(--ink); font-weight: 700; }
+.search-more .btn { flex: none; }

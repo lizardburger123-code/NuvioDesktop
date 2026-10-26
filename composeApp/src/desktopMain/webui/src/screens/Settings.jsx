@@ -221,8 +221,33 @@ function Appearance() {
         </div>
       </Panel>
 
+      <HomeTiles />
       <HomeRows />
     </>
+  );
+}
+
+const DASHBOARD = [
+  { id: "spotlight", label: "Spotlight", note: "Featured titles, rotating" },
+  { id: "resume", label: "Resume", note: "Your last title, one click to carry on" },
+  { id: "later", label: "Watch later", note: "Count and the three newest saves" },
+  { id: "library", label: "Library", note: "Count, newest titles and the next new episode" },
+];
+
+/** The four tiles at the top of Home: each can be hidden from its own eye button or here. */
+function HomeTiles() {
+  const { appearance, setAppearance } = useApp();
+  const hidden = appearance.hiddenTiles || [];
+  const set = (id, visible) => setAppearance({ hiddenTiles: visible ? hidden.filter(h => h !== id) : [...new Set([...hidden, id])] });
+  return (
+    <Panel title="Home dashboard" description="The tiles under the search box on Home. Hidden ones leave their space to the others.">
+      {DASHBOARD.map(tile => (
+        <div key={tile.id} className="toggle-row">
+          <span>{tile.label}<small>{tile.note}</small></span>
+          <Toggle checked={!hidden.includes(tile.id)} onChange={value => set(tile.id, value)} label={tile.label} />
+        </div>
+      ))}
+    </Panel>
   );
 }
 
@@ -235,12 +260,21 @@ function HomeRows() {
     setRows(list => list.map(r => (r.key === row.key ? { ...r, enabled } : r)));
     call("home.rows.set", { key: row.key, enabled }).then(setRows, error => toast(error.message, { tone: "error" }));
   };
+  const [filter, setFilter] = useState("");
+  const shown = (rows || []).filter(row => !filter.trim() || `${row.title} ${row.addon}`.toLowerCase().includes(filter.trim().toLowerCase()));
+  const hiddenCount = (rows || []).filter(row => !row.enabled).length;
   return (
     <Panel title="Rows" description="Catalog rows on Home and the section pages. Hide one from its row with the eye button, bring it back here.">
       {!rows ? <div className="skel" style={{ height: 120 }} /> : null}
       {rows && !rows.length ? <p className="t-meta">No catalog rows yet.</p> : null}
+      {rows && rows.length > 8 ? (
+        <div className="rows-tools">
+          <input className="field" value={filter} onChange={event => setFilter(event.target.value)} placeholder={`Find among ${rows.length} rows`} spellCheck={false} aria-label="Find a row" />
+          {hiddenCount ? <span className="t-meta">{hiddenCount} hidden</span> : null}
+        </div>
+      ) : null}
       <div className="rows-list">
-        {(rows || []).map(row => (
+        {shown.map(row => (
           <div key={row.key} className="toggle-row">
             <span>{row.title}<small>{row.addon}</small></span>
             <Toggle checked={row.enabled} onChange={value => set(row, value)} label={row.title} />

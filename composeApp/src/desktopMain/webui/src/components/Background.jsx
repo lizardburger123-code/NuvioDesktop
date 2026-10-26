@@ -74,12 +74,14 @@ export default function Background({ appearance, featured, art, scrolled }) {
           softness={1}
           silk={0.4}
           grainAmount={0.06}
-          grainAnimated={animate}
+          // Still grain and 24 fps: the drift is slow enough that more frames buy nothing,
+          // and the glass above it (search bar, buttons) re-blurs on every frame drawn.
+          grainAnimated={false}
           interactive={false}
           clickSwirl={false}
           intro={false}
           dpr={1}
-          fps={30}
+          fps={24}
         />
       </div>
       <div className="scene-walls">

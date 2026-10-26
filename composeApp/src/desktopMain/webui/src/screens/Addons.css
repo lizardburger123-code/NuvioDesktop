@@ -1,0 +1,62 @@
+.addons-head {
+  padding: 36px var(--gutter) 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+}
+.addons-titles { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.addons-titles .t-meta { max-width: 64ch; }
+
+.addons-strip {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 22px var(--gutter) 6px;
+  scrollbar-width: none;
+  scroll-padding-inline: var(--gutter);
+}
+.addons-strip::-webkit-scrollbar { display: none; }
+.addons-chip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 180px;
+  max-width: 280px;
+  height: 60px;
+  padding: 0 18px 0 12px;
+  border-radius: 18px;
+  text-align: left;
+  background: rgb(255 255 255 / .06);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .07);
+  transition: background-color var(--t-fast) ease, color var(--t-fast) ease, transform var(--t-fast) var(--ease-soft);
+}
+.addons-chip.skel { box-shadow: none; }
+.addons-chip:hover { background: rgb(255 255 255 / .11); }
+.addons-chip:active { transform: scale(.97); }
+.addons-chip[aria-pressed="true"] { background: #fff; color: #0a0a0c; box-shadow: none; }
+.addons-chip-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.addons-chip-text strong { display: flex; align-items: center; gap: 6px; font-size: var(--fs-14); font-weight: 750; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.addons-chip-text small { font-size: 11.5px; font-weight: 650; opacity: .6; }
+.addons-18 { font-style: normal; font-size: 10px; font-weight: 800; padding: 1px 5px; border-radius: 5px; background: rgb(255 69 58 / .22); color: #ff9b92; }
+.addons-chip[aria-pressed="true"] .addons-18 { color: #c62a1f; }
+
+.addon-mark {
+  position: relative;
+  flex: none;
+  border-radius: 11px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, var(--g2), var(--g3));
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .12);
+}
+.addon-mark img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: rgb(20 20 26); }
+
+.addons-catalogs { padding-top: 14px; }
+.addons-wait { display: flex; align-items: center; gap: 10px; padding: 28px var(--gutter); color: var(--ink-2); }
+.addons-wait svg { width: 18px; height: 18px; }

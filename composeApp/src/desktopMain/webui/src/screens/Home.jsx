@@ -5,15 +5,23 @@ import { useApp } from "../AppContext.jsx";
 import SearchHero from "../components/SearchHero.jsx";
 import Row from "../components/Row.jsx";
 import { ContinueCard, PosterCard, SkeletonPosters } from "../components/Cards.jsx";
-import { ResumeTile, SpotlightTile, UpNextTile, WatchLaterTile } from "../components/Tiles.jsx";
+import { CollectionTile, ResumeTile, SpotlightTile } from "../components/Tiles.jsx";
+import RowActions, { openCatalog } from "../components/RowActions.jsx";
+import AddonShelf from "../components/AddonShelf.jsx";
 import { navigate } from "../lib/router.js";
-import { hideRow } from "../lib/rows.js";
-import { LuEyeOff } from "react-icons/lu";
 import { EASE, reduceMotion } from "../lib/motion.js";
 import "./Home.css";
 
 export default function Home() {
-  const { watchLater, laterIds, toggleLater, openDetails, resume, removeContinue, toast } = useApp();
+  const { watchLater, laterIds, toggleLater, openDetails, resume, removeContinue, toast, appearance, setAppearance } = useApp();
+  const hidden = appearance?.hiddenTiles || [];
+  const TILE_NAMES = { spotlight: "Spotlight", resume: "Resume", later: "Watch later", library: "Library" };
+  const hideTile = id => {
+    const before = hidden;
+    setAppearance({ hiddenTiles: [...new Set([...hidden, id])] });
+    toast(`${TILE_NAMES[id]} hidden from Home`, { action: { label: "Undo", run: () => setAppearance({ hiddenTiles: before }) } });
+  };
+  const show = id => !hidden.includes(id);
   const home = useTopic("home", { loading: true, hero: [], sections: [] });
   const continueWatching = useTopic("continue", []);
   const upcoming = useTopic("upcoming", []);
@@ -56,12 +64,14 @@ export default function Home() {
         <SearchHero />
       </section>
 
-      <section className="home-tiles tiles" aria-label="Dashboard">
-        <SpotlightTile items={home.hero} onPlay={playFromSpotlight} />
-        <ResumeTile entry={continueWatching[0]} onResume={resume} />
-        <WatchLaterTile items={watchLater} />
-        <UpNextTile upcoming={upcoming} libraryCount={library.items?.length || 0} />
-      </section>
+      {hidden.length < 4 ? (
+        <section className="home-tiles tiles" aria-label="Dashboard">
+          {show("spotlight") ? <SpotlightTile items={home.hero} onPlay={playFromSpotlight} onHide={() => hideTile("spotlight")} /> : null}
+          {show("resume") ? <ResumeTile entry={continueWatching[0]} onResume={resume} onHide={() => hideTile("resume")} /> : null}
+          {show("later") ? <CollectionTile kind="later" items={watchLater} onHide={() => hideTile("later")} /> : null}
+          {show("library") ? <CollectionTile kind="library" items={library.items || []} upcoming={upcoming} onHide={() => hideTile("library")} /> : null}
+        </section>
+      ) : null}
 
       {continueWatching.length ? (
         <Row title="Continue watching" subtitle={`${continueWatching.length} in progress`}>
@@ -70,10 +80,12 @@ export default function Home() {
       ) : null}
 
       {watchLater.length ? (
-        <Row title="Watch later" action={<button className="btn btn-ghost btn-sm" onClick={() => navigate("library", { tab: "later" })}>See all</button>}>
+        <Row title="Watch later" onMore={() => navigate("library", { tab: "later" })}>
           {watchLater.map(item => <PosterCard key={`${item.type}:${item.id}`} {...cardProps(item)} />)}
         </Row>
       ) : null}
+
+      <AddonShelf />
 
       {home.sections.length === 0 && home.loading ? (
         <Row title="Loading your catalogs"><SkeletonPosters /></Row>
@@ -84,7 +96,8 @@ export default function Home() {
           key={section.key}
           title={section.title}
           subtitle={section.addonName}
-          action={<button className="row-hide" onClick={() => hideRow(section, toast)} aria-label={`Hide ${section.title} from Home`} title="Hide this row"><LuEyeOff /></button>}
+          action={<RowActions section={section} />}
+          onMore={section.source ? () => openCatalog(section) : undefined}
         >
           {section.items.map(item => <PosterCard key={`${item.type}:${item.id}`} {...cardProps(item)} />)}
         </Row>

@@ -76,6 +76,8 @@ internal data class ShellAppearance(
     val blurArt: Boolean = false,
     /** "Who's watching?" after the intro. */
     val profileGate: Boolean = true,
+    /** Home dashboard tiles the user hid (spotlight, resume, later, library). */
+    val hiddenTiles: List<String> = emptyList(),
 )
 
 /** Colours, wallpaper and motion of the shell. The custom wallpaper is a JPEG next to the prefs. */

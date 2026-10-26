@@ -201,6 +201,7 @@ internal class ShellRpc(private val host: ShellHost) {
             ShellHomeRows.list()
         }
         "discover.sources" -> ShellDiscover.sources(params.string("kind") ?: "movie")
+        "discover.addons" -> ShellDiscover.addons()
         "discover.page" -> ShellDiscover.page(
             source = params.string("source") ?: error("Pick a catalog."),
             filters = (params["filters"] as? JsonObject)?.mapNotNull { (k, v) -> (v as? JsonPrimitive)?.contentOrNull?.let { k to it } }?.toMap().orEmpty(),
@@ -669,6 +670,7 @@ internal class ShellRpc(private val host: ShellHost) {
             put("animate", value.animate)
             put("blurArt", value.blurArt)
             put("profileGate", value.profileGate)
+            put("hiddenTiles", ShellJson.strings(value.hiddenTiles))
         }
     }
 
@@ -680,6 +682,9 @@ internal class ShellRpc(private val host: ShellHost) {
         params.bool("animate")?.let { value = value.copy(animate = it) }
         params.bool("blurArt")?.let { value = value.copy(blurArt = it) }
         params.bool("profileGate")?.let { value = value.copy(profileGate = it) }
+        (params["hiddenTiles"] as? JsonArray)?.let { list ->
+            value = value.copy(hiddenTiles = list.asStringList().filter { it in setOf("spotlight", "resume", "later", "library") }.distinct())
+        }
         (params["wallpaper"] as? JsonObject)?.let { wallpaper ->
             wallpaper.string("mode")?.takeIf { it in setOf("featured", "custom", "none") }?.let { value = value.copy(wallpaperMode = it) }
             if (wallpaper.containsKey("image")) {

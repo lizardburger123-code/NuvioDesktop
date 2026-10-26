@@ -74,3 +74,24 @@
 
 /* Highlights / Discover switch in the section header. */
 .browse-mode { align-self: flex-start; }
+
+.discover-search {
+  flex: 1 1 260px;
+  max-width: 420px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  padding: 0 6px 0 14px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / .06);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .08);
+  transition: background-color var(--t-fast) ease, box-shadow var(--t-fast) ease;
+}
+.discover-search:focus-within { background: rgb(255 255 255 / .09); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .24); }
+.discover-search > svg { width: 16px; height: 16px; color: var(--ink-3); flex: none; }
+.discover-search input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: var(--fs-13); }
+.discover-search input::placeholder { color: var(--ink-3); }
+.discover-search-clear { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; color: var(--ink-2); background: rgb(255 255 255 / .08); }
+.discover-search-clear:hover { background: rgb(255 255 255 / .16); }
+.discover-search-clear svg { width: 14px; height: 14px; }

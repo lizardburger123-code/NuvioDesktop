@@ -39,6 +39,7 @@ export default function Library({ params }) {
   const items = useMemo(() => {
     const source = tab === "later" ? watchLater : tab === "saved" ? library.items || [] : tab === "cloud" ? cloud || library.cloud || [] : [];
     const list = [...source];
+    if (sort === "recent" && list.some(item => item.addedAt)) list.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
     if (sort === "name") list.sort((a, b) => a.name.localeCompare(b.name));
     if (sort === "year") list.sort((a, b) => String(b.releaseInfo || "").localeCompare(String(a.releaseInfo || "")));
     return list;

@@ -304,30 +304,57 @@ internal object ShellDiscover {
 
     private fun sourceId(manifestUrl: String, type: String, catalogId: String) = "$manifestUrl|$type|$catalogId"
 
+    private fun sourceJson(addon: com.nuvio.app.features.addons.ManagedAddon, catalog: com.nuvio.app.features.addons.AddonCatalog): JsonObject = buildJsonObject {
+        put("id", sourceId(addon.manifestUrl, catalog.type, catalog.id))
+        put("name", catalog.name.ifBlank { catalog.id })
+        put("addon", addon.displayTitle)
+        put("addonId", addon.manifestUrl)
+        put("type", catalog.type)
+        put("paged", catalog.extra.any { it.name == "skip" })
+        put("searchable", catalog.extra.any { it.name == "search" })
+        put("searchOnly", catalog.extra.any { it.name == "search" && it.isRequired })
+        put("filters", buildJsonArray {
+            catalog.extra.filter { it.name != "skip" && it.name != "search" && it.options.isNotEmpty() }.forEach { extra ->
+                add(buildJsonObject {
+                    put("name", extra.name)
+                    put("required", extra.isRequired)
+                    put("options", ShellJson.strings(extra.options))
+                })
+            }
+        })
+    }
+
+    /** A catalog can be browsed when every filter it insists on has choices (search aside). */
+    private fun browsable(catalog: com.nuvio.app.features.addons.AddonCatalog) =
+        catalog.extra.none { it.isRequired && it.name != "search" && it.options.isEmpty() }
+
     fun sources(kind: String): JsonElement = buildJsonArray {
         AddonRepository.uiState.value.addons.enabledAddons().forEach { addon ->
             val manifest = addon.manifest ?: return@forEach
             manifest.catalogs.forEach catalogs@{ catalog ->
                 if (kindOf(manifest, catalog.type, catalog.id, catalog.name) != kind) return@catalogs
                 // Search-only catalogs need a query; required filters need options to choose from.
-                if (catalog.extra.any { it.isRequired && (it.name == "search" || it.options.isEmpty()) }) return@catalogs
-                add(buildJsonObject {
-                    put("id", sourceId(addon.manifestUrl, catalog.type, catalog.id))
-                    put("name", catalog.name.ifBlank { catalog.id })
-                    put("addon", addon.displayTitle)
-                    put("type", catalog.type)
-                    put("paged", catalog.extra.any { it.name == "skip" })
-                    put("filters", buildJsonArray {
-                        catalog.extra.filter { it.name != "skip" && it.name != "search" && it.options.isNotEmpty() }.forEach { extra ->
-                            add(buildJsonObject {
-                                put("name", extra.name)
-                                put("required", extra.isRequired)
-                                put("options", ShellJson.strings(extra.options))
-                            })
-                        }
-                    })
-                })
+                if (catalog.extra.any { it.isRequired && it.name == "search" } || !browsable(catalog)) return@catalogs
+                add(sourceJson(addon, catalog))
             }
+        }
+    }
+
+    /** Every enabled addon with catalogs, each with all its catalogs (any type, search-only too). */
+    fun addons(): JsonElement = buildJsonArray {
+        AddonRepository.uiState.value.addons.enabledAddons().forEach { addon ->
+            val manifest = addon.manifest ?: return@forEach
+            val catalogs = manifest.catalogs.filter(::browsable)
+            if (catalogs.isEmpty()) return@forEach
+            add(buildJsonObject {
+                put("id", addon.manifestUrl)
+                put("name", addon.displayTitle)
+                manifest.logoUrl?.let { put("logo", it) }
+                put("description", manifest.description.take(180))
+                put("types", ShellJson.strings(manifest.types))
+                put("adult", ShellAddonStore.adultFlag(addon.manifestUrl, manifest))
+                put("catalogs", buildJsonArray { catalogs.forEach { add(sourceJson(addon, it)) } })
+            })
         }
     }
 

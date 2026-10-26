@@ -53,6 +53,7 @@ internal object ShellJson {
         putIfNotNull("releaseInfo", item.releaseInfo)
         putIfNotNull("imdbRating", item.imdbRating)
         put("genres", strings(item.genres))
+        put("addedAt", item.savedAtEpochMs)
     }
 
     /** Movies, series or anime: anime catalogs come from anime addons (Kitsu, MAL, AniList). */
@@ -76,6 +77,11 @@ internal object ShellJson {
         put("type", section.target.contentType)
         put("kind", sectionKind(section))
         put("hasMore", section.hasMore)
+        // "See all": the catalog behind the row, browsable page after page with its filters.
+        (section.target as? com.nuvio.app.features.catalog.CatalogTarget.Addon)?.let { target ->
+            put("source", "${target.manifestUrl}|${target.contentType}|${target.catalogId}")
+            target.genre?.let { put("genre", it) }
+        }
         put("items", buildJsonArray { section.items.forEach { add(preview(it)) } })
     }
 

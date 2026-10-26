@@ -8,6 +8,7 @@ import { navigate } from "../lib/router.js";
 import { useScreenActive } from "../lib/screen.js";
 import { loadHistory } from "../lib/searchHistory.js";
 import { useSegmentPill } from "../lib/motion.js";
+import { LuPuzzle } from "react-icons/lu";
 import "./Search.css";
 
 const TYPE_LABELS = { movie: "Movies", series: "Series", anime: "Anime", tv: "TV", channel: "Channels" };
@@ -144,6 +145,14 @@ export default function Search({ params }) {
         <section className="search-none">
           <h2 className="t-title">Nothing for “<span dir="auto">{query}</span>”</h2>
           <p className="t-meta">Try the original title, fewer words, or the Arabic or English name. Search covers the catalogs of your installed addons.</p>
+        </section>
+      ) : null}
+
+      {query && !current.loading ? (
+        <section className="search-more">
+          <LuPuzzle aria-hidden="true" />
+          <span>Some addons can't be searched from here. Their own catalogs (with their own search) are in <strong>Your addons</strong>.</span>
+          <button className="btn btn-glass btn-sm" onClick={() => navigate("addons")}>Browse your addons</button>
         </section>
       ) : null}
       <div className="screen-end" />
