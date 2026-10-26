@@ -180,9 +180,11 @@ internal object ShellHomeRows {
         if (store.getBoolean("hid_torbox_library_v1") == true) return
         HomeCatalogSettingsRepository.snapshot()
         val items = HomeCatalogSettingsRepository.uiState.value.items
-        if (items.isEmpty()) return
-        items.filter { torboxLibrary.containsMatchIn(it.defaultTitle) || torboxLibrary.containsMatchIn(it.displayTitle) }
-            .forEach { HomeCatalogSettingsRepository.setEnabled(it.key, false) }
+        // Wait until the row exists (its addon may still be loading); once hidden, a manual
+        // "show" in Settings sticks.
+        val matches = items.filter { torboxLibrary.containsMatchIn(it.defaultTitle) || torboxLibrary.containsMatchIn(it.displayTitle) }
+        if (matches.isEmpty()) return
+        matches.forEach { HomeCatalogSettingsRepository.setEnabled(it.key, false) }
         store.putBoolean("hid_torbox_library_v1", true)
     }
 }
