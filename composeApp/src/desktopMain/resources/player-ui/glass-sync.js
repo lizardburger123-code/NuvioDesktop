@@ -9,15 +9,18 @@
   const bridge = window.chrome && window.chrome.webview;
   if (!bridge) return;
 
+  // Most important first: only MAX_RECTS are frosted at once.
   const SURFACES = [
-    ".header-actions",
-    ".ornament",
-    ".opening-actions",
-    ".next-episode-card",
     ".player-rail-modal:not([hidden]) .track-panel",
     ".player-side-modal:not([hidden]) .player-side-panel",
+    ".ornament",
+    ".header-actions",
+    ".opening-actions",
+    ".next-episode-card",
+    ".skip-prompt",
+    ".player-toast",
   ];
-  const POLL_MS = 120;
+  const POLL_MS = 90;
   const MAX_RECTS = 6;
 
   let sent = "";
@@ -34,12 +37,20 @@
     return opacity;
   };
 
-  // The visible part of the video picture (the subtitle layer is sized to it).
+  // The visible part of the video picture. The subtitle layer is sized to it, but it is also
+  // nudged up (a transform) while the controls show, so read its laid-out box, not its drawn one.
   const pictureRect = () => {
     const layer = document.querySelector(".sub-layer");
     const width = window.innerWidth;
     const height = window.innerHeight;
-    const rect = layer ? layer.getBoundingClientRect() : { left: 0, top: 0, width, height };
+    let rect = { left: 0, top: 0, width, height };
+    if (layer) {
+      const left = parseFloat(layer.style.left);
+      const top = parseFloat(layer.style.top);
+      const w = parseFloat(layer.style.width);
+      const h = parseFloat(layer.style.height);
+      if ([left, top, w, h].every(Number.isFinite) && w > 1 && h > 1) rect = { left, top, width: w, height: h };
+    }
     const left = Math.max(0, rect.left);
     const top = Math.max(0, rect.top);
     const right = Math.min(width, rect.left + rect.width);

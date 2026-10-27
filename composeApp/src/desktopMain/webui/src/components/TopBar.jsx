@@ -190,7 +190,13 @@ export default function TopBar({ route, stack, profile, compact }) {
         </div>
       </div>
 
-      <SectionNav active={section} />
+      <div className="topbar-center">
+        {/* The frost lives on this underlay, not on the nav: the nav is a named view-transition
+            layer, and a named layer is captured without its backdrop, so its blur dropped out
+            mid-transition. The underlay stays in the page snapshot and keeps blurring. */}
+        <span className="topbar-nav-glass" aria-hidden="true" />
+        <SectionNav active={section} />
+      </div>
 
       <div className="topbar-right">
         <button

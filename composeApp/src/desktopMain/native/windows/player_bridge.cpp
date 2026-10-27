@@ -2060,7 +2060,7 @@ private:
             "bool glass_near(vec2 p) {\n"
             "    for (int i = 0; i < GLASS_COUNT; i++) {\n"
             "        vec4 r = GLASS_RECT[i];\n"
-            "        if (p.x > r.x - 0.06 && p.x < r.x + r.z + 0.06 && p.y > r.y - 0.08 && p.y < r.y + r.w + 0.08) return true;\n"
+            "        if (p.x > r.x - 0.09 && p.x < r.x + r.z + 0.09 && p.y > r.y - 0.15 && p.y < r.y + r.w + 0.15) return true;\n"
             "    }\n"
             "    return false;\n"
             "}\n";
@@ -2083,46 +2083,36 @@ private:
         const std::string kernel =
             "const float GO[4] = float[4](0.0, 1.4117647, 3.2941176, 5.1764706);\n"
             "const float GW[4] = float[4](0.1964825501, 0.2969069646, 0.0944703979, 0.0103813624);\n";
-        // Pass 2 and 3: separable 13-tap Gaussian at quarter resolution (spread 1.6x).
-        shader +=
-            "//!HOOK OUTPUT\n"
-            "//!BIND NUVIOGLASSA\n"
-            "//!SAVE NUVIOGLASSB\n"
-            "//!WIDTH HOOKED.w 4 /\n"
-            "//!HEIGHT HOOKED.h 4 /\n"
-            "//!DESC Nuvio glass blur x\n" + common + kernel +
-            "vec4 hook() {\n"
-            "    vec2 p = NUVIOGLASSA_pos;\n"
-            "    if (!glass_near(p)) return vec4(0.0);\n"
-            "    vec4 c = NUVIOGLASSA_tex(p) * GW[0];\n"
-            "    for (int i = 1; i < 4; i++) {\n"
-            "        vec2 o = vec2(GO[i] * 1.6 * NUVIOGLASSA_pt.x, 0.0);\n"
-            "        c += (NUVIOGLASSA_tex(p + o) + NUVIOGLASSA_tex(p - o)) * GW[i];\n"
-            "    }\n"
-            "    return c;\n"
-            "}\n\n";
-        shader +=
-            "//!HOOK OUTPUT\n"
-            "//!BIND NUVIOGLASSB\n"
-            "//!SAVE NUVIOGLASSC\n"
-            "//!WIDTH HOOKED.w 4 /\n"
-            "//!HEIGHT HOOKED.h 4 /\n"
-            "//!DESC Nuvio glass blur y\n" + common + kernel +
-            "vec4 hook() {\n"
-            "    vec2 p = NUVIOGLASSB_pos;\n"
-            "    if (!glass_near(p)) return vec4(0.0);\n"
-            "    vec4 c = NUVIOGLASSB_tex(p) * GW[0];\n"
-            "    for (int i = 1; i < 4; i++) {\n"
-            "        vec2 o = vec2(0.0, GO[i] * 1.6 * NUVIOGLASSB_pt.y);\n"
-            "        c += (NUVIOGLASSB_tex(p + o) + NUVIOGLASSB_tex(p - o)) * GW[i];\n"
-            "    }\n"
-            "    return c;\n"
-            "}\n\n";
-        // Pass 4: rounded-rect masks, a little vibrancy, composited over the picture.
+        // Passes 2-5: a separable 13-tap Gaussian at quarter resolution, run twice (x, y, x, y) for
+        // a wide, smooth frost (about 25px at 1080p) at almost no cost.
+        const char *chain[5] = {"NUVIOGLASSA", "NUVIOGLASSB", "NUVIOGLASSC", "NUVIOGLASSD", "NUVIOGLASSE"};
+        for (int step = 0; step < 4; ++step) {
+            const std::string from = chain[step];
+            const std::string to = chain[step + 1];
+            const bool horizontal = (step % 2) == 0;
+            shader +=
+                "//!HOOK OUTPUT\n"
+                "//!BIND " + from + "\n"
+                "//!SAVE " + to + "\n"
+                "//!WIDTH HOOKED.w 4 /\n"
+                "//!HEIGHT HOOKED.h 4 /\n"
+                "//!DESC Nuvio glass blur " + std::string(horizontal ? "x" : "y") + "\n" + common + kernel +
+                "vec4 hook() {\n"
+                "    vec2 p = " + from + "_pos;\n"
+                "    if (!glass_near(p)) return vec4(0.0);\n"
+                "    vec4 c = " + from + "_tex(p) * GW[0];\n"
+                "    for (int i = 1; i < 4; i++) {\n"
+                "        vec2 o = " + std::string(horizontal ? "vec2(GO[i] * 1.8 * " + from + "_pt.x, 0.0)" : "vec2(0.0, GO[i] * 1.8 * " + from + "_pt.y)") + ";\n"
+                "        c += (" + from + "_tex(p + o) + " + from + "_tex(p - o)) * GW[i];\n"
+                "    }\n"
+                "    return c;\n"
+                "}\n\n";
+        }
+        // Last pass: rounded-rect masks, a little vibrancy, composited over the picture.
         shader +=
             "//!HOOK OUTPUT\n"
             "//!BIND HOOKED\n"
-            "//!BIND NUVIOGLASSC\n"
+            "//!BIND NUVIOGLASSE\n"
             "//!DESC Nuvio glass composite\n" + common +
             "vec4 hook() {\n"
             "    vec4 base = HOOKED_texOff(vec2(0.0));\n"
@@ -2138,9 +2128,9 @@ private:
             "        cover = max(cover, clamp(0.5 - dist, 0.0, 1.0));\n"
             "    }\n"
             "    if (cover <= 0.0) return base;\n"
-            "    vec3 g = NUVIOGLASSC_tex(HOOKED_pos).rgb;\n"
+            "    vec3 g = NUVIOGLASSE_tex(HOOKED_pos).rgb;\n"
             "    float l = dot(g, vec3(0.2126, 0.7152, 0.0722));\n"
-            "    g = clamp(mix(vec3(l), g, 1.45), 0.0, 1.0);\n"
+            "    g = clamp(mix(vec3(l), g, 1.55), 0.0, 1.0);\n"
             "    return vec4(mix(base.rgb, g, cover), base.a);\n"
             "}\n";
         return shader;
