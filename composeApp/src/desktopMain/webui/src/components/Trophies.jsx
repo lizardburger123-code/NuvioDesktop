@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { LuTrophy } from "react-icons/lu";
+import { LuTrophy, LuX } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
 import { useApp } from "../AppContext.jsx";
@@ -13,9 +13,13 @@ const monthKey = ms => {
 const monthLabel = key => new Date(`${key}-01T00:00:00`).toLocaleDateString([], { month: "long", year: "numeric" });
 
 /** One finished film or series as a case on a shelf. */
-export function Case({ item, onOpen, size = "m" }) {
+export function Case({ item, onOpen, onRemove, size = "m" }) {
   return (
-    <button className={`case case-${size}`} onClick={() => onOpen?.(item)} title={item.name} aria-label={item.name}>
+    <div className={`case case-${size}`}>
+      {onRemove ? (
+        <button className="case-remove" onClick={() => onRemove(item)} aria-label={`Remove ${item.name} from trophies`} title="Remove from trophies"><LuX /></button>
+      ) : null}
+      <button className="case-hit" onClick={() => onOpen?.(item)} title={item.name} aria-label={item.name}>
       <span className="case-box">
         {item.poster ? <img src={item.poster} alt="" loading="lazy" decoding="async" /> : <span className="case-blank">{item.name}</span>}
         <span className="case-spine" />
@@ -24,13 +28,14 @@ export function Case({ item, onOpen, size = "m" }) {
       <span className="case-ring" aria-hidden="true" />
       <span className="case-name" dir="auto">{item.name}</span>
       <span className="case-year num">{[item.type === "series" ? "Series" : null, year(item.releaseInfo)].filter(Boolean).join(" · ")}</span>
-    </button>
+      </button>
+    </div>
   );
 }
 
 /** Everything watched to the end, shelved by month, newest first. */
 export default function Trophies() {
-  const { openDetails } = useApp();
+  const { openDetails, toast } = useApp();
   const items = useTopic("completed", []);
   useEffect(() => { call("home.subscribe").catch(() => {}); }, []);
 
@@ -43,6 +48,12 @@ export default function Trophies() {
     });
     return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]));
   }, [items]);
+
+  // Taking a case off the shelf keeps it off, even if the title is watched again.
+  const remove = item => {
+    call("completed.remove", { type: item.type, id: item.id }).catch(error => toast(error.message, { tone: "error" }));
+    toast(`${item.name} removed from trophies`, { action: { label: "Undo", run: () => call("completed.restore", { type: item.type, id: item.id }) } });
+  };
 
   const films = items.filter(i => i.type !== "series").length;
   const series = items.length - films;
@@ -68,7 +79,7 @@ export default function Trophies() {
         <section className="shelf" key={key}>
           <h2 className="shelf-title">{monthLabel(key)} <span className="num">{list.length}</span></h2>
           <div className="shelf-row">
-            {list.map(item => <Case key={`${item.type}:${item.id}`} item={item} onOpen={openDetails} />)}
+            {list.map(item => <Case key={`${item.type}:${item.id}`} item={item} onOpen={openDetails} onRemove={remove} />)}
           </div>
           <div className="shelf-board" aria-hidden="true" />
         </section>

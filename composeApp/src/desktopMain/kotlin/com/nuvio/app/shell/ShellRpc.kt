@@ -252,6 +252,14 @@ internal class ShellRpc(private val host: ShellHost) {
         "search.query" -> search(params)
         "details.load" -> loadDetails(params)
         "streams.load" -> loadStreams(params)
+        "completed.remove" -> {
+            ShellTrophyStore.hide(params.string("type") ?: "movie", params.string("id") ?: "")
+            JsonPrimitive(true)
+        }
+        "completed.restore" -> {
+            ShellTrophyStore.restore(params.string("type") ?: "movie", params.string("id") ?: "")
+            JsonPrimitive(true)
+        }
         "play" -> play(params)
         "play.resume" -> resume(params)
         "watchLater.toggle" -> {
@@ -411,15 +419,16 @@ internal class ShellRpc(private val host: ShellHost) {
         }
         watch("watchLater", WatchLaterStore.items) { items -> watchLaterJson(items) }
         WatchedRepository.ensureLoaded()
-        watch("completed", combine(WatchedRepository.uiState, WatchedRepository.fullyWatchedSeriesKeys) { state, series -> state to series }) { (state, series) ->
-            completedJson(state.items, series)
+        watch("completed", combine(WatchedRepository.uiState, WatchedRepository.fullyWatchedSeriesKeys, ShellTrophyStore.hidden) { state, series, hidden -> Triple(state, series, hidden) }) { (state, series, hidden) ->
+            completedJson(state.items, series, hidden)
         }
         subscribeLibrary()
         return JsonPrimitive(true)
     }
 
     /** Trophies: every film watched to the end, and every series with all its episodes seen. */
-    private fun completedJson(items: List<WatchedItem>, fullSeries: Set<String>): JsonArray {
+    private fun completedJson(items: List<WatchedItem>, fullSeries: Set<String>, hidden: Set<String>): JsonArray {
+        val items = items.filter { "${it.type}:${it.id}" !in hidden }
         val films = items.filter { !it.isEpisode && it.type != "series" }
         val series = items.filter { it.type == "series" }
             .groupBy { it.id }

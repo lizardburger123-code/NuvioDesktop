@@ -155,3 +155,26 @@ internal object ShellSubtitleStore {
         return next
     }
 }
+
+/** Titles taken off the Trophies shelf. Staying hidden even if they are watched again. */
+internal object ShellTrophyStore {
+    private const val Key = "trophies_hidden"
+    private val store by lazy { DesktopStorage.store("nuvio_shell") }
+    private val _hidden = MutableStateFlow(load())
+    val hidden: StateFlow<Set<String>> = _hidden.asStateFlow()
+
+    private fun load(): Set<String> =
+        store.getString(Key)?.split('\n')?.filter { it.isNotBlank() }?.toSet() ?: emptySet()
+
+    @Synchronized
+    fun hide(type: String, id: String) {
+        _hidden.value = _hidden.value + "$type:$id"
+        store.putString(Key, _hidden.value.joinToString("\n"))
+    }
+
+    @Synchronized
+    fun restore(type: String, id: String) {
+        _hidden.value = _hidden.value - "$type:$id"
+        store.putString(Key, _hidden.value.joinToString("\n"))
+    }
+}

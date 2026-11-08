@@ -401,6 +401,8 @@ export const createMockBackend = deliver => {
       push("watchLater", watchLater);
       return !exists;
     },
+    "completed.remove": () => true,
+    "completed.restore": () => true,
     "library.subscribe": () => { push("library", { items: library, cloud: library.slice(0, 3) }, 120); push("watchLater", watchLater); push("continue", continueWatching); return true; },
     "settings.appearance.get": () => appearance,
     "settings.appearance.set": patch => { appearance = { ...appearance, ...patch }; push("appearance", appearance); return appearance; },

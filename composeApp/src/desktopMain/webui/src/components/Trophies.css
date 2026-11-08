@@ -17,7 +17,16 @@
   box-shadow: 0 14px 30px rgb(0 0 0 / .45), inset 0 1px 0 rgb(255 255 255 / .12);
 }
 
-.case { position: relative; display: flex; flex-direction: column; align-items: flex-start; width: 118px; padding: 0 0 16px; text-align: left; background: none; }
+.case { position: relative; width: 118px; padding: 0 0 16px; }
+.case-hit { display: flex; flex-direction: column; align-items: flex-start; width: 100%; text-align: left; background: none; padding: 0; }
+.case-remove {
+  position: absolute; top: -10px; right: -10px; z-index: 3; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+  color: #fff; background: rgb(10 10 14 / .8); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .18);
+  opacity: 0; transform: scale(.8); transition: opacity var(--t-fast) ease, transform var(--t-med) var(--ease-out), background-color var(--t-fast) ease;
+}
+.case-remove svg { width: 14px; height: 14px; }
+.case:hover .case-remove, .case:focus-within .case-remove { opacity: 1; transform: scale(1); }
+.case-remove:hover { background: rgb(255 69 58 / .9); }
 .case-box {
   position: relative; display: block; width: 118px; aspect-ratio: 2 / 2.82; border-radius: 4px 8px 8px 4px; overflow: hidden;
   background: #0d1118;
