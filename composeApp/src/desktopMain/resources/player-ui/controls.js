@@ -2532,7 +2532,119 @@ const render = (modalOpened = false) => {
   applyTheme();
   renderChrome();
   renderActiveModal(modalOpened);
+  renderEndCard();
 };
+
+// ---- Film end card ------------------------------------------------------------------------
+// When a film plays to its end, the player becomes a title card: the film's backdrop and logo,
+// "Completed", and the next film in its series when there is one. Never for episodes.
+const endCard = document.getElementById("endCard");
+const endCardBackdrop = document.getElementById("endCardBackdrop");
+const endCardLogo = document.getElementById("endCardLogo");
+const endCardTitle = document.getElementById("endCardTitle");
+const endCardMeta = document.getElementById("endCardMeta");
+const endCardChip = document.getElementById("endCardChip");
+const endCardNext = document.getElementById("endCardNext");
+const endCardNextPoster = document.getElementById("endCardNextPoster");
+const endCardNextTitle = document.getElementById("endCardNextTitle");
+const endCardNextInfo = document.getElementById("endCardNextInfo");
+const endCardPrimary = document.getElementById("endCardPrimary");
+const endCardPrimaryLabel = document.getElementById("endCardPrimaryLabel");
+const endCardPrimaryIcon = document.getElementById("endCardPrimaryIcon");
+const endCardSecondary = document.getElementById("endCardSecondary");
+const endCardSecondaryLabel = document.getElementById("endCardSecondaryLabel");
+const endCardSecondaryIcon = document.getElementById("endCardSecondaryIcon");
+const END_CARD_SECONDS = 20;
+let endCardShown = false;
+let endCardTimer = 0;
+let endCardDismissed = false;
+
+const endCardDue = () => Boolean(state.endCardEnabled) && Boolean(state.isEnded) && !state.isLoading && state.durationMs > 0;
+
+const renderEndCard = () => {
+  if (!endCard) return;
+  const due = endCardDue();
+  if (!due) {
+    if (endCardShown) hideEndCard();
+    endCardDismissed = false;
+    return;
+  }
+  if (endCardShown || endCardDismissed) return;
+  endCardShown = true;
+  const hasNext = Boolean(state.endCardNextId);
+  setImageSource(endCardBackdrop, state.openingArtwork);
+  const logoUrl = setImageSource(endCardLogo, state.openingLogo || state.pauseOverlayLogo);
+  endCardLogo.hidden = !logoUrl;
+  endCardTitle.hidden = Boolean(logoUrl);
+  endCardTitle.textContent = String(state.openingTitle || state.title || "").trim();
+  endCardMeta.replaceChildren();
+  [state.endCardYear, state.endCardGenres, state.endCardDirector].filter(Boolean).forEach((part, index) => {
+    if (index) { const dot = document.createElement("i"); endCardMeta.appendChild(dot); }
+    const span = document.createElement("span"); span.textContent = part; endCardMeta.appendChild(span);
+  });
+  endCardChip.textContent = hasNext ? "The story continues" : "Completed";
+  endCard.classList.toggle("has-next", hasNext);
+  endCardNext.hidden = !hasNext;
+  if (hasNext) {
+    setImageSource(endCardNextPoster, state.endCardNextPoster);
+    endCardNextTitle.textContent = state.endCardNextTitle || "";
+    endCardNextInfo.textContent = state.endCardNextInfo ? `Next in the series · ${state.endCardNextInfo}` : "Next in the series";
+  }
+  endCardPrimaryLabel.textContent = hasNext ? "Play next" : "Back to Home";
+  endCardPrimaryIcon.setAttribute("href", hasNext ? "#icon-play" : "#icon-home");
+  endCardPrimary.dataset.endAction = hasNext ? "endCardNext" : "endCardHome";
+  endCardSecondaryLabel.textContent = hasNext ? "Back to Home" : "Play again";
+  endCardSecondaryIcon.setAttribute("href", hasNext ? "#icon-home" : "#icon-replay");
+  endCardSecondary.dataset.endAction = hasNext ? "endCardHome" : "endCardReplay";
+  endCard.style.setProperty("--end-secs", `${END_CARD_SECONDS}s`);
+  endCard.hidden = false;
+  endCard.classList.remove("visible");
+  void endCard.offsetWidth;
+  endCard.classList.add("visible");
+  root.classList.add("end-card-active");
+  window.clearTimeout(endCardTimer);
+  endCardTimer = window.setTimeout(() => { if (endCardShown) runEndAction(endCardPrimary.dataset.endAction); }, (END_CARD_SECONDS + 1.2) * 1000);
+};
+
+const hideEndCard = () => {
+  endCardShown = false;
+  window.clearTimeout(endCardTimer);
+  endCard.classList.remove("visible");
+  endCard.hidden = true;
+  root.classList.remove("end-card-active");
+};
+
+const runEndAction = action => {
+  if (!action) return;
+  if (action === "endCardReplay") { endCardDismissed = true; hideEndCard(); }
+  send(action);
+};
+
+// The film's look: the accent is the backdrop's warmest bright colour (bronze for The Odyssey,
+// neon pink for a synthwave poster). Cross-origin stills that refuse sampling keep the default.
+const tintEndCard = () => {
+  try {
+    const k = document.createElement("canvas"); k.width = 32; k.height = 20;
+    const x = k.getContext("2d"); x.drawImage(endCardBackdrop, 0, 0, 32, 20);
+    const d = x.getImageData(0, 0, 32, 20).data; let best = null, bs = -1;
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i + 1], b = d[i + 2], max = Math.max(r, g, b), min = Math.min(r, g, b);
+      const sat = max ? (max - min) / max : 0, v = max / 255, score = sat * v;
+      if (v > .35 && score > bs) { bs = score; best = [r, g, b]; }
+    }
+    if (!best) return;
+    const m = n => Math.min(255, Math.round(n * .55 + 120));
+    endCard.style.setProperty("--end-accent", `rgb(${m(best[0])} ${m(best[1])} ${m(best[2])})`);
+    const [r, g, b] = best;
+    endCard.style.setProperty("--end-accent-ink", `rgb(${Math.round(r * .18)} ${Math.round(g * .18)} ${Math.round(b * .18)})`);
+  } catch (error) { /* tainted canvas: keep the default accent */ }
+};
+endCardBackdrop?.addEventListener("load", tintEndCard);
+
+endCard?.addEventListener("click", event => {
+  const button = event.target.closest("[data-end-action]");
+  if (button) { event.preventDefault(); runEndAction(button.dataset.endAction); }
+});
 
 const focusShortcutRoot = () => {
   if (document.activeElement !== root) {
@@ -3243,6 +3355,7 @@ window.playerUpdate = update => {
     bufferedPositionMs,
     isPlaying: pendingIsPlaying === null ? nativeIsPlaying : pendingIsPlaying,
     isLoading: Boolean(update.loading || update.isLoading),
+    isEnded: Boolean(update.ended),
     volumeLevel,
     audioTracks,
     subtitleTracks,
@@ -3262,6 +3375,7 @@ window.playerUpdate = update => {
     }
   }
   renderChrome();
+  renderEndCard();
   if ((audioTracksChanged && activeModal === "audio") ||
       (subtitleTracksChanged && activeModal === "subtitles")) {
     renderActiveModal();

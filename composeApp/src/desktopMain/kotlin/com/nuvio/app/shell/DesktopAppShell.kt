@@ -50,6 +50,10 @@ internal class DesktopAppShell(private val window: Window) : AppShellOverride, S
     private val log = Logger.withTag("DesktopAppShell")
     private val rpc = ShellRpc(this)
 
+    init {
+        ShellNav.sink = { topic, data -> rpc.push(topic, data) }
+    }
+
     @Volatile private var handle: Long = 0L
     @Volatile private var actions: AppShellActions? = null
     @Volatile private var visible = false

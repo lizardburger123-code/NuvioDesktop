@@ -15,6 +15,7 @@ import com.nuvio.app.features.player.AudioTrack
 import com.nuvio.app.features.player.ParentalWarning
 import com.nuvio.app.features.player.PlayerControlsAction
 import com.nuvio.app.features.player.PlayerControlsState
+import com.nuvio.app.shell.ShellNav
 import com.nuvio.app.features.player.PlayerEngineController
 import com.nuvio.app.features.player.PlayerMediaInfo
 import com.nuvio.app.features.player.mpvMediaInfo
@@ -605,6 +606,22 @@ internal class NativePlayerController(
             "subtitleResetPosition" -> {
                 DesktopSubtitleLayoutStorage.resetPosition()
                 updateControls(controlsState)
+            }
+            "endCardReplay" -> {
+                val current = handle
+                if (current != 0L) {
+                    NativePlayerBridge.seekTo(current, 0L)
+                    NativePlayerBridge.setPaused(current, false)
+                }
+            }
+            "endCardHome" -> {
+                ShellNav.open("home")
+                if (!onAction(PlayerControlsAction.Back)) handleFallbackAction(PlayerControlsAction.Back)
+            }
+            "endCardNext" -> {
+                val id = controlsState.endCardNextId
+                if (id.isNotBlank()) ShellNav.openDetails(id, controlsState.endCardNextType.ifBlank { "movie" })
+                if (!onAction(PlayerControlsAction.Back)) handleFallbackAction(PlayerControlsAction.Back)
             }
             "volumeChange" -> setFallbackVolume(value.toFloat())
             "volumeChangeTemporary" -> setTemporaryVolume(value.toFloat())
@@ -1765,6 +1782,24 @@ private fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageRea
         appendJsonField("skipPromptEndMs", skipPromptEndMs)
         append(',')
         appendJsonField("skipPromptDismissed", skipPromptDismissed)
+        append(',')
+        appendJsonField("endCardEnabled", endCardEnabled)
+        append(',')
+        appendJsonField("endCardYear", endCardYear)
+        append(',')
+        appendJsonField("endCardGenres", endCardGenres)
+        append(',')
+        appendJsonField("endCardDirector", endCardDirector)
+        append(',')
+        appendJsonField("endCardNextId", endCardNextId)
+        append(',')
+        appendJsonField("endCardNextType", endCardNextType)
+        append(',')
+        appendJsonField("endCardNextTitle", endCardNextTitle)
+        append(',')
+        appendJsonField("endCardNextPoster", endCardNextPoster)
+        append(',')
+        appendJsonField("endCardNextInfo", endCardNextInfo)
         append(',')
         appendJsonField("nextEpisodeVisible", nextEpisodeVisible)
         append(',')

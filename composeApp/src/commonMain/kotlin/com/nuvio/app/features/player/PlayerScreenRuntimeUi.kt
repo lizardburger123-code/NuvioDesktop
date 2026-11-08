@@ -30,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import com.nuvio.app.features.home.MetaPreview
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.core.ui.NuvioStatusModal
 import com.nuvio.app.features.p2p.P2pStreamingState
@@ -263,6 +264,23 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
     }
     val partyControls = if (isDesktop) rememberPartyControlsState() else PlayerControlPartyState()
     val playerBadges = if (isDesktop) rememberPlayerBadges() else emptyList()
+    // Film end card: this film's own metadata, and the film that follows it in its collection.
+    val endCardMeta = metaUiState.meta?.takeIf { it.id == parentMetaId }
+    val endCardNext = remember(endCardMeta) {
+        val items = endCardMeta?.collectionItems.orEmpty()
+        if (items.isEmpty()) null else {
+            // Collection parts carry TMDB ids while the film itself may be an IMDb id, so match by
+            // id first and by name and year after that.
+            val ordered = items.sortedBy { it.rawReleaseDate ?: it.releaseInfo ?: "" }
+            val year = endCardMeta?.releaseInfo?.let { Regex("\\d{4}").find(it)?.value }
+            val sameFilm = { item: MetaPreview ->
+                item.id == parentMetaId ||
+                    (item.name.equals(endCardMeta?.name, ignoreCase = true) && (year == null || item.releaseInfo == year))
+            }
+            val at = ordered.indexOfFirst(sameFilm)
+            if (at >= 0) ordered.getOrNull(at + 1) else null
+        }
+    }
     val playerControlsState = PlayerControlsState(
         title = title,
         episodeText = episodeText,
@@ -461,6 +479,15 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
         skipPromptStartMs = ((nativeSkipInterval?.startTime ?: 0.0) * 1000).toLong().coerceAtLeast(0L),
         skipPromptEndMs = nativeSkipAction?.targetMs?.coerceAtLeast(0L) ?: 0L,
         skipPromptDismissed = skipIntervalDismissed,
+        endCardEnabled = !isSeries && endCardMeta != null,
+        endCardYear = endCardMeta?.releaseInfo?.let { Regex("\\d{4}").find(it)?.value }.orEmpty(),
+        endCardGenres = endCardMeta?.genres?.take(3)?.joinToString(" · ").orEmpty(),
+        endCardDirector = endCardMeta?.director?.firstOrNull().orEmpty(),
+        endCardNextId = endCardNext?.id.orEmpty(),
+        endCardNextType = endCardNext?.type.orEmpty(),
+        endCardNextTitle = endCardNext?.name.orEmpty(),
+        endCardNextPoster = endCardNext?.poster.orEmpty(),
+        endCardNextInfo = endCardNext?.releaseInfo?.let { Regex("\\d{4}").find(it)?.value }.orEmpty(),
         nextEpisodeVisible = nextEpisodeForControls != null && !playerControlsLocked,
         nextEpisodeHeaderLabel = stringResource(Res.string.player_next_episode),
         nextEpisodeTitle = nextEpisodeForControls?.let {

@@ -11,6 +11,8 @@
 </head>
 <body>
   <svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute">
+    <symbol id="icon-replay" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7M3 3v5h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="icon-home" viewBox="0 0 24 24"><path d="M3 11l9-8 9 8M5 10v10h14V10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="icon-play" viewBox="0 0 24 24">
       <path d="M21.4086 9.35258C23.5305 10.5065 23.5305 13.4935 21.4086 14.6474L8.59662 21.6145C6.53435 22.736 4 21.2763 4 18.9671L4 5.0329C4 2.72368 6.53435 1.26402 8.59661 2.38548L21.4086 9.35258Z"/>
     </symbol>
@@ -129,6 +131,24 @@
     <button class="pip-lock-badge" id="pipLockBadge" type="button" aria-label="Unlock player controls" hidden>
       <svg><use href="#icon-lock-open"></use></svg>
     </button>
+    <section class="end-card" id="endCard" aria-label="Film finished" hidden>
+      <img class="end-card-backdrop" id="endCardBackdrop" alt="" crossorigin="anonymous">
+      <div class="end-card-shade"></div>
+      <div class="end-card-body">
+        <div class="end-card-chip" id="endCardChip">Completed</div>
+        <img class="end-card-logo" id="endCardLogo" alt="" hidden>
+        <h1 class="end-card-title" id="endCardTitle"></h1>
+        <div class="end-card-meta" id="endCardMeta"></div>
+        <div class="end-card-next" id="endCardNext" hidden>
+          <img class="end-card-next-poster" id="endCardNextPoster" alt="">
+          <div><small>Up next</small><strong id="endCardNextTitle"></strong><span id="endCardNextInfo"></span></div>
+        </div>
+        <div class="end-card-actions">
+          <button class="end-card-button primary" id="endCardPrimary" type="button"><svg><use id="endCardPrimaryIcon" href="#icon-close"></use></svg><span id="endCardPrimaryLabel">Back to Home</span></button>
+          <button class="end-card-button" id="endCardSecondary" type="button"><svg><use id="endCardSecondaryIcon" href="#icon-replay"></use></svg><span id="endCardSecondaryLabel">Play again</span></button>
+        </div>
+      </div>
+    </section>
     <section class="opening-overlay" id="openingOverlay" aria-label="Opening player" aria-hidden="true">
       <img class="opening-artwork" id="openingArtwork" alt="">
       <div class="opening-scrim"></div>

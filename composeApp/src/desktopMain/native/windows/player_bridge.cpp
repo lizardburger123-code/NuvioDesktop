@@ -1989,6 +1989,7 @@ private:
                << ",volumeLevel:" << volumeLevel
                << ",paused:" << (paused ? "true" : "false")
                << ",loading:" << (loading ? "true" : "false")
+               << ",ended:" << (isEnded() ? "true" : "false")
                << ",audioTracks:" << audioTracks
                << ",subtitleTracks:" << subtitleTracks
                << ",videoAspect:" << doubleProperty("video-params/aspect", 0.0)

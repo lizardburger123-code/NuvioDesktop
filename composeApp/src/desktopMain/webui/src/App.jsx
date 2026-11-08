@@ -4,7 +4,7 @@ import { call, on } from "./bridge.js";
 import { useTopic } from "./store.js";
 import { AppProvider, useApp } from "./AppContext.jsx";
 import { applyAppearance } from "./theme/appearance.js";
-import { BEFORE_NAV, aliveEntries, back, forward, goSection, useRouter } from "./lib/router.js";
+import { BEFORE_NAV, aliveEntries, back, forward, goSection, navigate, useRouter } from "./lib/router.js";
 import { playScreenEntrance } from "./lib/motion.js";
 import { ScreenActiveContext } from "./lib/screen.js";
 import Background from "./components/Background.jsx";
@@ -127,7 +127,12 @@ function Shell() {
     window.addEventListener("keydown", onKey);
     window.addEventListener("mouseup", onMouse);
     const offBack = on("nav.back", () => back());
-    const offOpen = on("nav.open", data => data?.name && goSection(data.name, data.params || {}));
+    const offOpen = on("nav.open", data => {
+      if (!data?.name) return;
+      // Titles push onto the stack (back returns to where you were); sections switch tabs.
+      if (data.name === "details") navigate("details", data.params || {});
+      else goSection(data.name, data.params || {});
+    });
     return () => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("mouseup", onMouse);
