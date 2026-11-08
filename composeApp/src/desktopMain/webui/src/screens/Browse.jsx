@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { LuInfo, LuPlay } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
 import { useApp } from "../AppContext.jsx";
 import Row from "../components/Row.jsx";
+import Showcase from "../components/Showcase.jsx";
 import { PosterCard, SkeletonPosters } from "../components/Cards.jsx";
 import { navigate } from "../lib/router.js";
 import RowActions, { openCatalog } from "../components/RowActions.jsx";
@@ -37,7 +37,8 @@ export default function Browse({ params }) {
   const filtered = useMemo(() => sections
     .map(section => ({ ...section, items: genre ? section.items.filter(item => item.genres?.includes(genre)) : section.items }))
     .filter(section => section.items.length), [sections, genre]);
-  const featured = filtered[0]?.items.find(item => item.banner) || filtered[0]?.items[0];
+  // The showcase rotates through the first row's titles that have artwork (five at most).
+  const featuredList = useMemo(() => (filtered[0]?.items || []).filter(item => item.banner).slice(0, 5), [filtered]);
 
   return (
     <main className="screen browse">
@@ -57,19 +58,10 @@ export default function Browse({ params }) {
 
       {mode === "discover" ? <Discover kind={kind} /> : null}
 
-      {mode === "highlights" && featured ? (
-        <section className="browse-feature" style={{ backgroundImage: `url("${featured.banner || featured.poster}")` }}>
-          <div className="browse-feature-scrim" />
-          <div className="browse-feature-body">
-            {featured.logo ? <img src={featured.logo} alt={featured.name} className="browse-feature-logo" /> : <h2 className="browse-feature-title">{featured.name}</h2>}
-            <span className="t-meta">{[year(featured.releaseInfo), featured.genres?.slice(0, 3).join(" · "), featured.imdbRating ? `IMDb ${featured.imdbRating}` : null].filter(Boolean).join("  ·  ")}</span>
-            {featured.description ? <p className="browse-feature-desc">{featured.description}</p> : null}
-            <div className="browse-feature-actions">
-              <button className="btn btn-primary" onClick={() => navigate("details", { type: featured.type, id: featured.id, name: featured.name, autoplay: true })}><LuPlay /> Play</button>
-              <button className="btn btn-glass" onClick={() => openDetails(featured)}><LuInfo /> Details</button>
-            </div>
-          </div>
-        </section>
+      {mode === "highlights" && featuredList.length ? (
+        <div className="browse-showcase">
+          <Showcase items={featuredList} onPlay={item => navigate("details", { type: item.type, id: item.id, name: item.name, autoplay: true })} onToggleLater={toggleLater} laterIds={laterIds} />
+        </div>
       ) : null}
 
       {mode === "highlights" && home.loading && !sections.length ? <Row title="Loading"><SkeletonPosters /></Row> : null}

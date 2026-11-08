@@ -1,10 +1,18 @@
 .browse-head {
-  padding: 36px var(--gutter) 0;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  padding: 28px var(--gutter) 0;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 14px 20px;
 }
+.browse-head .t-page { grid-column: 1; }
+.browse-mode { grid-column: 2; justify-self: end; }
+.browse-genres { grid-column: 1 / -1; }
 .browse-genres { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.browse-showcase { padding-top: 18px; }
+.browse-showcase .showcase { height: clamp(360px, 52vh, 520px); }
+.browse-showcase + .row { margin-top: clamp(28px, 5vh, 48px); }
 
 .browse-feature {
   position: relative;
