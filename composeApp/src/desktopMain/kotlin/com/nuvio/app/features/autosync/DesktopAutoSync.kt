@@ -66,6 +66,9 @@ internal object DesktopAutoSync {
         /** The chosen subtitle already matches the video; nothing to change. */
         data class AlreadySynced(val subtitleUrl: String, val summary: String) : Result
 
+        /** The timelines only agree on a constant offset: apply it as the subtitle delay. */
+        data class DelayOnly(val subtitleUrl: String, val delayMs: Int, val summary: String) : Result
+
         data object NoReference : Result
         data object NoMatch : Result
     }
@@ -193,6 +196,50 @@ internal object DesktopAutoSync {
             filePath = file.absolutePath,
             summary = summary,
         )
+    }
+
+    /**
+     * "Match to this subtitle": retime [selectedUrl] onto the timing of one chosen [reference]
+     * subtitle (typically the English file for the same cut), whatever the video itself carries.
+     * Dialogue starts and ends line up across languages, so the alignment is language-blind.
+     */
+    suspend fun runWithReference(
+        selected: AutoSyncSubtitleCandidate,
+        reference: AutoSyncSubtitleCandidate,
+    ): Result = withContext(Dispatchers.IO) {
+        val (target, ref) = coroutineScope {
+            val a = async { loadSubtitle(selected) }
+            val b = async { loadSubtitle(reference) }
+            a.await() to b.await()
+        }
+        if (target == null || target.cues.size < MIN_TARGET_CUES) return@withContext Result.NoMatch
+        if (ref == null || ref.cues.size < MIN_TARGET_CUES) return@withContext Result.NoReference
+        val referenceModel = Reference(
+            key = "chosen:${reference.url.hashCode()}",
+            label = reference.name ?: reference.language,
+            cues = ref.cues,
+            estimatedEndStartsMs = emptySet(),
+            sdh = isSdh(reference.name, 0),
+        )
+        val match = bestMatch(listOf(target), listOf(referenceModel))
+        if (match != null && match.timeline.confident) {
+            val retimed = AutoSyncSubtitleTextRetimer.retime(target.body, match.timeline)
+            if (retimed != null) {
+                val file = writeRetimed(selected.url, retimed)
+                return@withContext Result.Applied(selected.url, file.absolutePath, describe(match.timeline))
+            }
+        }
+        // Not confident line by line: settle for the single offset the two files agree on best.
+        val refActivity = referenceModel.activity ?: return@withContext Result.NoMatch
+        val targetActivity = AutoSyncTimelineRetimer.prepareUnitActivity(target.cues) ?: return@withContext Result.NoMatch
+        val alignment = AutoSyncTimelineRetimer.findDelayOnlyAlignmentPrepared(
+            referenceActivity = refActivity,
+            targetActivity = targetActivity,
+            targetSize = target.cues.size,
+            allowAmbiguousMargin = true,
+        ) ?: return@withContext Result.NoMatch
+        val delay = alignment.offsetMs.roundToLong().toInt()
+        Result.DelayOnly(selected.url, delay, "shifted ${if (delay >= 0) "+" else ""}${delay} ms")
     }
 
     private suspend fun bestMatch(

@@ -1392,7 +1392,70 @@ const renderSwatches = (container, colors, selectedColor, eventType) => {
   });
 };
 
+// ---- Match timing to another subtitle ------------------------------------------------------
+const syncRefSection = document.getElementById("syncRefSection");
+const syncRefEnglish = document.getElementById("syncRefEnglish");
+const syncRefMore = document.getElementById("syncRefMore");
+const syncRefList = document.getElementById("syncRefList");
+let syncRefOpen = false;
+const LANGUAGE_NAMES = { en: "English", ar: "Arabic", fr: "French", es: "Spanish", de: "German", it: "Italian", pt: "Portuguese", tr: "Turkish", ru: "Russian", ja: "Japanese", ko: "Korean", zh: "Chinese", hi: "Hindi", nl: "Dutch", pl: "Polish", sv: "Swedish", id: "Indonesian", fa: "Persian", he: "Hebrew", el: "Greek" };
+const languageTitle = code => {
+  const key = String(code || "").toLowerCase().slice(0, 2);
+  return LANGUAGE_NAMES[key] || (code ? String(code).toUpperCase() : "Unknown");
+};
+const isEnglish = code => /^en/i.test(String(code || ""));
+
+const renderSyncRefs = () => {
+  if (!syncRefSection) return;
+  const refs = normalizeItems(state.subtitleStyle?.syncRefs);
+  const usable = state.hasSelectedAddonSubtitle && refs.length > 1;
+  syncRefSection.hidden = !usable;
+  if (!usable) return;
+  const english = refs.find(ref => isEnglish(ref.language));
+  syncRefEnglish.hidden = !english;
+  syncRefEnglish.dataset.index = english ? String(english.index) : "";
+  syncRefMore.setAttribute("aria-expanded", String(syncRefOpen));
+  syncRefList.hidden = !syncRefOpen;
+  if (!syncRefOpen) return;
+  syncRefList.textContent = "";
+  const ordered = [...refs].sort((a, b) => Number(isEnglish(b.language)) - Number(isEnglish(a.language)) || languageTitle(a.language).localeCompare(languageTitle(b.language)));
+  ordered.forEach(ref => {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "sync-ref-row";
+    row.dataset.index = String(ref.index);
+    const lang = document.createElement("span");
+    lang.className = "sync-ref-lang";
+    lang.textContent = String(ref.language || "?").slice(0, 2).toUpperCase();
+    const text = document.createElement("span");
+    text.className = "sync-ref-text";
+    text.textContent = ref.label && ref.label !== ref.language ? `${languageTitle(ref.language)} · ${ref.label}` : languageTitle(ref.language);
+    row.append(lang, text);
+    syncRefList.appendChild(row);
+  });
+};
+
+syncRefEnglish?.addEventListener("click", event => {
+  event.stopPropagation();
+  const index = Number(syncRefEnglish.dataset.index);
+  if (Number.isFinite(index)) send("subtitleSyncToReference", index);
+});
+syncRefMore?.addEventListener("click", event => {
+  event.stopPropagation();
+  syncRefOpen = !syncRefOpen;
+  renderSyncRefs();
+});
+syncRefList?.addEventListener("click", event => {
+  const row = event.target.closest(".sync-ref-row");
+  if (!row) return;
+  event.stopPropagation();
+  send("subtitleSyncToReference", Number(row.dataset.index) || 0);
+  syncRefOpen = false;
+  renderSyncRefs();
+});
+
 const renderAutoSyncCues = () => {
+  renderSyncRefs();
   autoSyncCueList.textContent = "";
   autoSyncReload.disabled = !state.hasSelectedAddonSubtitle;
   autoSyncCapture.disabled = !state.hasSelectedAddonSubtitle;

@@ -593,6 +593,7 @@ internal class NativePlayerController(
                 DesktopSubtitleLayoutStorage.savePosition(layout.x, value.toFloat())
             }
             "subtitleAutoSyncRun" -> runAutoSyncNow()
+            "subtitleSyncToReference" -> syncToReference(value.toInt())
             "subtitleFont" -> {
                 DesktopSubtitleFonts.names.getOrNull(value.toInt())?.let { font -> ShellSubtitleStore.update { it.copy(font = font) } }
                 pushControlsNow()
@@ -1121,6 +1122,74 @@ internal class NativePlayerController(
 
     override fun setAutoSyncSubtitleCandidates(candidates: List<AutoSyncSubtitleCandidate>) {
         autoSyncCandidates = candidates.distinctBy { it.url }
+        DesktopSyncReferenceUi.items = autoSyncCandidates.map { candidate ->
+            DesktopSyncReferenceUi.Item(
+                url = candidate.url,
+                language = candidate.language,
+                label = candidate.name?.takeIf { it.isNotBlank() } ?: candidate.language,
+            )
+        }
+        pushControlsNow()
+    }
+
+    /** "Match to this subtitle": retime the current addon subtitle onto a chosen other one. */
+    private fun syncToReference(index: Int) {
+        val url = lastAddonSubtitleUrl
+        if (url == null) {
+            postAutoSyncNotice("Select an addon subtitle first")
+            return
+        }
+        val reference = autoSyncCandidates.getOrNull(index) ?: return
+        if (reference.url == url) {
+            postAutoSyncNotice("Pick a different subtitle to match against")
+            return
+        }
+        cancelAutoSync()
+        val token = autoSyncToken
+        val selected = autoSyncCandidates.firstOrNull { it.url == url } ?: AutoSyncSubtitleCandidate(url = url, language = "")
+        postAutoSyncNotice("Matching timing to ${reference.name ?: reference.language}…")
+        autoSyncJob = autoSyncScope.launch {
+            val result = try {
+                DesktopAutoSync.runWithReference(selected, reference)
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (error: Throwable) {
+                log.w(error) { "sync to reference failed" }
+                DesktopAutoSync.Result.NoMatch
+            }
+            SwingUtilities.invokeLater {
+                if (token != autoSyncToken) return@invokeLater
+                applyAutoSyncResult(result, fromReference = reference.name ?: reference.language)
+            }
+        }
+    }
+
+    private fun applyAutoSyncResult(result: DesktopAutoSync.Result, fromReference: String? = null) {
+        when (result) {
+            is DesktopAutoSync.Result.Applied -> {
+                handle.takeIf { it != 0L }?.let { current ->
+                    NativePlayerBridge.clearExternalSubtitles(current)
+                    NativePlayerBridge.addSubtitleUrl(current, result.filePath)
+                }
+                setSubtitleDelayMs(0)
+                autoSyncAppliedListener?.invoke(result.subtitleUrl, 0)
+                postAutoSyncNotice(
+                    if (fromReference != null) "Timing matched to $fromReference (${result.summary})"
+                    else "Subtitles synced to the video (${result.summary})",
+                )
+            }
+            is DesktopAutoSync.Result.DelayOnly -> {
+                setSubtitleDelayMs(result.delayMs)
+                autoSyncAppliedListener?.invoke(result.subtitleUrl, result.delayMs)
+                postAutoSyncNotice("Timing matched to ${fromReference ?: "reference"} (${result.summary})")
+            }
+            is DesktopAutoSync.Result.AlreadySynced ->
+                postAutoSyncNotice("Subtitles already match the video")
+            DesktopAutoSync.Result.NoReference ->
+                postAutoSyncNotice(if (fromReference != null) "Couldn't read $fromReference" else "Auto-sync: this video has no timing reference")
+            DesktopAutoSync.Result.NoMatch ->
+                postAutoSyncNotice(if (fromReference != null) "Couldn't line these subtitles up with $fromReference" else "Auto-sync couldn't match these subtitles")
+        }
     }
 
     override fun setSubtitleUriWithAutoSync(url: String) = startAutoSync(url, force = false)
@@ -1175,23 +1244,7 @@ internal class NativePlayerController(
             }
             SwingUtilities.invokeLater {
                 if (token != autoSyncToken) return@invokeLater
-                when (result) {
-                    is DesktopAutoSync.Result.Applied -> {
-                        handle.takeIf { it != 0L }?.let { current ->
-                            NativePlayerBridge.clearExternalSubtitles(current)
-                            NativePlayerBridge.addSubtitleUrl(current, result.filePath)
-                        }
-                        setSubtitleDelayMs(0)
-                        autoSyncAppliedListener?.invoke(result.subtitleUrl, 0)
-                        postAutoSyncNotice("Subtitles synced to the video (${result.summary})")
-                    }
-                    is DesktopAutoSync.Result.AlreadySynced ->
-                        postAutoSyncNotice("Subtitles already match the video")
-                    DesktopAutoSync.Result.NoReference ->
-                        postAutoSyncNotice("Auto-sync: this video has no timing reference")
-                    DesktopAutoSync.Result.NoMatch ->
-                        postAutoSyncNotice("Auto-sync couldn't match these subtitles")
-                }
+                applyAutoSyncResult(result)
             }
         }
     }
@@ -2187,6 +2240,19 @@ private fun StringBuilder.appendSubtitleStyleJson(style: SubtitleStyleState) {
     append(',')
     append("\"search\":")
     appendSubtitleSearchJson()
+    append(',')
+    append("\"syncRefs\":[")
+    DesktopSyncReferenceUi.items.forEachIndexed { index, item ->
+        if (index > 0) append(',')
+        append('{')
+        appendJsonField("index", index)
+        append(',')
+        appendJsonField("language", item.language)
+        append(',')
+        appendJsonField("label", item.label)
+        append('}')
+    }
+    append(']')
     layout.x?.let {
         append(',')
         append("\"x\":").append(it)

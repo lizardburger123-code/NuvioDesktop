@@ -417,6 +417,15 @@
                     <div class="stream-subtitle" id="autoSyncStatus"></div>
                     <div id="autoSyncCueList"></div>
                   </div>
+                  <div class="style-section sync-ref-section" id="syncRefSection" hidden>
+                    <span class="style-label">Match timing to</span>
+                    <div class="style-control-row">
+                      <button class="panel-button primary" id="syncRefEnglish" type="button">English subtitle</button>
+                      <button class="panel-button" id="syncRefMore" type="button" aria-expanded="false">Choose…</button>
+                    </div>
+                    <div class="stream-subtitle sync-hint">Badly timed subtitles take the timing of another file for the same cut, line by line. The English file is usually the one cut to the video.</div>
+                    <div class="sync-ref-list" id="syncRefList" hidden></div>
+                  </div>
                   <div class="style-section">
                     <button class="panel-button" id="subtitleStyleReset" type="button">Reset Defaults</button>
                   </div>

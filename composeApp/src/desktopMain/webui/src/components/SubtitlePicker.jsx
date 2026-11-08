@@ -192,6 +192,11 @@ export default function SubtitlePicker({ request, onPlay, onClose }) {
           <button className="btn btn-glass btn-sm" onClick={() => choose("auto")} disabled={Boolean(busy)} title="Play now; the player picks subtitles the way it usually does">
             {busy === "auto" ? <LuLoaderCircle className="spin" /> : null} Let the player choose
           </button>
+          {best && !loading ? (
+            <button className="btn btn-primary btn-sm" onClick={() => choose(best.key)} disabled={Boolean(busy)} title={best.release}>
+              {busy === best.key ? <LuLoaderCircle className="spin" /> : <LuSparkles />} Play best match
+            </button>
+          ) : null}
         </footer>
       </div>
     </div>,
