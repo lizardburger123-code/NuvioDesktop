@@ -2622,10 +2622,18 @@ const runEndAction = action => {
 
 // The film's look: the accent is the backdrop's warmest bright colour (bronze for The Odyssey,
 // neon pink for a synthwave poster). Cross-origin stills that refuse sampling keep the default.
+// The visible backdrop loads plainly (a CORS request was refused by some hosts and left the card
+// black); sampling uses a second, CORS-tagged copy that may fail without consequence.
 const tintEndCard = () => {
+  const probe = new Image();
+  probe.crossOrigin = "anonymous";
+  probe.onload = () => tintEndCardFrom(probe);
+  probe.src = endCardBackdrop.currentSrc || endCardBackdrop.src;
+};
+const tintEndCardFrom = image => {
   try {
     const k = document.createElement("canvas"); k.width = 32; k.height = 20;
-    const x = k.getContext("2d"); x.drawImage(endCardBackdrop, 0, 0, 32, 20);
+    const x = k.getContext("2d"); x.drawImage(image, 0, 0, 32, 20);
     const d = x.getImageData(0, 0, 32, 20).data; let best = null, bs = -1;
     for (let i = 0; i < d.length; i += 4) {
       const r = d[i], g = d[i + 1], b = d[i + 2], max = Math.max(r, g, b), min = Math.min(r, g, b);
