@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { LuBookmark, LuBookmarkCheck, LuClapperboard, LuListVideo, LuPlay, LuStar } from "react-icons/lu";
+import { LuBookmark, LuBookmarkCheck, LuCheck, LuClapperboard, LuListVideo, LuPlay, LuStar, LuTrophy } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
 import { useApp } from "../AppContext.jsx";
@@ -154,6 +154,18 @@ export default function Details({ params }) {
           >
             {saved ? <LuBookmarkCheck /> : <LuBookmark />}
           </button>
+          {meta.type !== "series" ? (
+            <button
+              data-rise
+              className={`btn btn-glass btn-icon${topic.watched ? " is-on" : ""}`}
+              onClick={() => call("watched.toggle", { id: meta.id, type: meta.type, name: meta.name, poster: meta.poster, releaseInfo: meta.releaseInfo }).then(on => toast(on ? `${meta.name} added to your trophies` : `${meta.name} taken off the shelf`), error => toast(error.message, { tone: "error" }))}
+              aria-pressed={Boolean(topic.watched)}
+              aria-label={topic.watched ? "Remove from trophies" : "Mark as watched"}
+              title={topic.watched ? "On your Trophies shelf" : "Mark as watched"}
+            >
+              {topic.watched ? <LuTrophy /> : <LuCheck />}
+            </button>
+          ) : null}
           {meta.trailers?.length ? (
             <button data-rise className="btn btn-glass btn-icon" aria-label="Trailer" title="Trailer" onClick={() => call("app.openTrailer", { trailer: meta.trailers[0] })}>
               <LuClapperboard />

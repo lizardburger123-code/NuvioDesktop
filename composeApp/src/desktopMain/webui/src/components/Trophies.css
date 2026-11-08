@@ -1,46 +1,134 @@
-.trophies { padding: 26px var(--gutter) 0; }
-.trophies-stats { display: flex; gap: 28px; margin-bottom: 8px; }
-.trophies-stats div { display: flex; align-items: baseline; gap: 8px; }
-.trophies-stats strong { font-size: var(--fs-28); font-weight: 800; letter-spacing: -.02em; }
-.trophies-stats span { font-size: var(--fs-13); color: var(--ink-3); }
-.trophies-empty { align-items: flex-start; }
-.trophies-empty svg { width: 26px; height: 26px; color: var(--ink-3); }
+/* Trophies: cases on lit shelves, the badges they earn, and the year they add up to. Figures are
+   type on the ground; the only colour is the metal of an earned badge and the warm shelf light. */
 
-/* A shelf: cases stand on a board with their own shadow. */
-.shelf { position: relative; padding: 26px 0 0; }
+.trophies { padding: 22px var(--gutter) 0; }
+
+/* ---- Figures: one strip split by hairlines ------------------------------------------------ */
+.trophies-figures {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(220px, 1.3fr);
+  border-radius: var(--r-l);
+  background: rgb(255 255 255 / .035);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .07);
+}
+.trophies-figures > div { display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 18px 22px; min-width: 0; }
+.trophies-figures > div + div { box-shadow: inset 1px 0 0 rgb(255 255 255 / .07); }
+.trophies-figures strong { font-size: var(--fs-28); font-weight: 650; letter-spacing: -.02em; line-height: 1.1; }
+.trophies-figures span { font-size: var(--fs-13); font-weight: 600; color: var(--ink-2); }
+.trophies-figures small { font-size: var(--fs-12); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.trophies-latest { flex-direction: row !important; align-items: center; gap: 14px !important; }
+.trophies-latest img { width: 44px; height: 64px; border-radius: 6px; object-fit: cover; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .12), 0 10px 24px -8px rgb(0 0 0 / .8); }
+.trophies-latest > span { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.trophies-latest small { font-weight: 600; }
+.trophies-latest strong { font-size: var(--fs-16) !important; font-weight: 700 !important; letter-spacing: -.01em !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.trophies-latest em { font-style: normal; font-size: var(--fs-12); color: var(--ink-3); }
+
+.trophies-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 30px; }
+.trophies-h { font-size: var(--fs-20); font-weight: 700; letter-spacing: -.01em; display: flex; align-items: baseline; gap: 10px; }
+.trophies-h span { font-size: var(--fs-13); font-weight: 600; color: var(--ink-3); }
+
+/* ---- Badges ------------------------------------------------------------------------------ */
+.badge-rail { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 10px; margin-top: 14px; }
+.badge {
+  --metal-a: rgb(255 255 255 / .14); --metal-b: rgb(255 255 255 / .05); --metal-ink: var(--ink-3);
+  display: grid; grid-template-columns: 44px 1fr; grid-template-rows: auto auto; column-gap: 12px; row-gap: 10px; align-items: center;
+  padding: 12px 14px 12px 12px; border-radius: var(--r-m);
+  background: rgb(255 255 255 / .035); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .07);
+  transition: background-color var(--t-fast) ease, transform var(--t-fast) var(--ease-soft);
+}
+.badge:hover { background: rgb(255 255 255 / .06); }
+.badge-medal {
+  grid-row: 1; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; color: var(--metal-ink);
+  background: radial-gradient(circle at 35% 30%, var(--metal-a), var(--metal-b) 70%);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .14), inset 0 -2px 6px rgb(0 0 0 / .35);
+}
+.badge-medal svg { width: 20px; height: 20px; }
+.badge-text { grid-row: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.badge-text strong { font-size: var(--fs-14); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.badge-text span { font-size: var(--fs-12); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.badge-progress { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; }
+.badge-bar { flex: 1; height: 3px; border-radius: 3px; background: rgb(255 255 255 / .1); overflow: hidden; }
+.badge-bar i { display: block; height: 100%; background: var(--metal-ink); opacity: .9; }
+.badge-count { font-size: 11px; font-weight: 600; color: var(--ink-3); flex: none; }
+
+.badge-locked .badge-medal svg { opacity: .55; }
+.badge-locked .badge-bar i { background: rgb(255 255 255 / .35); }
+.badge-bronze { --metal-a: #e9a56b; --metal-b: #7a3f1c; --metal-ink: #ffd2ad; }
+.badge-silver { --metal-a: #e8edf5; --metal-b: #6f7786; --metal-ink: #f3f6fb; }
+.badge-gold { --metal-a: #ffe08a; --metal-b: #9a6a10; --metal-ink: #ffe9a8; }
+.badge-platinum { --metal-a: #c8f3ff; --metal-b: #3f6f8f; --metal-ink: #dcf6ff; }
+.badge-bronze .badge-medal, .badge-silver .badge-medal, .badge-gold .badge-medal, .badge-platinum .badge-medal { color: #15110a; }
+.badge-silver .badge-medal, .badge-platinum .badge-medal { color: #0e1620; }
+.badge-platinum { box-shadow: inset 0 0 0 1px rgb(200 243 255 / .25), 0 0 30px -10px rgb(140 220 255 / .5); }
+
+/* ---- Year grid --------------------------------------------------------------------------- */
+.trophies-year { margin-top: 20px; padding: 20px 22px 18px; border-radius: var(--r-l); background: rgb(255 255 255 / .035); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .07); }
+.ygrid { display: flex; flex-direction: column; gap: 6px; }
+.ygrid-months { display: grid; grid-template-columns: repeat(52, 1fr); gap: 3px; font-size: 11px; color: var(--ink-3); height: 14px; }
+.ygrid-months span { white-space: nowrap; }
+.ygrid-cells { display: grid; grid-template-columns: repeat(52, 1fr); grid-template-rows: repeat(7, 15px); grid-auto-flow: column; gap: 3px; }
+.ygrid-cells i { display: block; border-radius: 2px; background: rgb(255 255 255 / .07); }
+.ygrid-cells i.is-future { background: transparent; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .05); }
+.ygrid-cells i.l1 { background: rgb(var(--accent-rgb) / .35); }
+.ygrid-cells i.l2 { background: rgb(var(--accent-rgb) / .55); }
+.ygrid-cells i.l3 { background: rgb(var(--accent-rgb) / .8); }
+.ygrid-cells i.l4 { background: var(--accent); box-shadow: 0 0 8px rgb(var(--accent-rgb) / .6); }
+.trophies-year .t-meta { margin-top: 14px; }
+
+/* ---- Shelves ----------------------------------------------------------------------------- */
+.shelf { position: relative; padding: 30px 0 0; }
 .shelf-title { font-size: var(--fs-16); font-weight: 700; letter-spacing: -.01em; display: flex; gap: 8px; align-items: baseline; }
 .shelf-title span { font-size: var(--fs-12); color: var(--ink-3); font-weight: 600; }
-.shelf-row { display: flex; flex-wrap: wrap; gap: 0 22px; padding: 22px 12px 0; }
-.shelf-board {
-  height: 10px; margin: 0 -4px; border-radius: 3px;
-  background: linear-gradient(180deg, rgb(255 255 255 / .12), rgb(255 255 255 / .04));
-  box-shadow: 0 14px 30px rgb(0 0 0 / .45), inset 0 1px 0 rgb(255 255 255 / .12);
+.shelf-row { position: relative; display: flex; flex-wrap: wrap; gap: 0 20px; padding: 26px 16px 0; --case-w: 118px; --case-h: calc(var(--case-w) * 1.41); }
+/* Warm light pools on the board under the cases. */
+.shelf-row::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: calc(26px + var(--case-h)); pointer-events: none; z-index: 0;
+  background: linear-gradient(0deg, rgb(255 214 170 / .08), transparent 60%);
 }
+/* The board the cases stand on: it runs across the row under the boxes, the labels hang below it. */
+.shelf-board {
+  position: absolute; left: -4px; right: -4px; top: calc(26px + var(--case-h)); height: 12px; border-radius: 2px 2px 4px 4px; z-index: 2;
+  background: linear-gradient(180deg, rgb(255 255 255 / .17), rgb(255 255 255 / .06) 40%, rgb(255 255 255 / .03));
+  box-shadow: 0 18px 36px -6px rgb(0 0 0 / .6), inset 0 1px 0 rgb(255 255 255 / .2);
+}
+.shelf-board::after { content: ""; position: absolute; inset: auto 8% -34px; height: 34px; background: radial-gradient(60% 100% at 50% 0, rgb(255 220 180 / .1), transparent 70%); pointer-events: none; }
+.shelf { position: relative; }
 
-.case { position: relative; width: 118px; padding: 0 0 16px; }
+.case { position: relative; z-index: 1; width: var(--case-w, 118px); padding: 0 0 20px; }
 .case-hit { display: flex; flex-direction: column; align-items: flex-start; width: 100%; text-align: left; background: none; padding: 0; }
+.case-box {
+  position: relative; display: block; width: 118px; aspect-ratio: 2 / 2.82; border-radius: 3px 7px 7px 3px; overflow: hidden;
+  background: #0d1118;
+  box-shadow: 0 22px 30px -12px rgb(0 0 0 / .85), 0 0 0 1px rgb(255 255 255 / .14) inset;
+  transform-origin: 50% 100%;
+  transition: transform 280ms var(--ease-out), box-shadow 280ms ease;
+}
+.case-hit:hover .case-box { transform: translateY(-10px) rotateY(-7deg); box-shadow: 0 34px 44px -14px rgb(0 0 0 / .9), 0 0 0 1px rgb(255 255 255 / .22) inset, 0 0 40px -10px rgb(var(--accent-rgb) / .45); }
+.case-hit:active .case-box { transform: translateY(-5px) scale(.98); }
+.case-hit:focus-visible .case-box { outline: 2px solid var(--accent); outline-offset: 3px; }
+.case-box img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.case-blank { position: absolute; inset: 0; display: grid; place-items: center; padding: 10px; font-size: 11px; font-weight: 700; text-align: center; color: var(--ink-2); }
+.case-spine { position: absolute; left: 0; top: 0; bottom: 0; width: 8px; background: linear-gradient(90deg, rgb(0 0 0 / .7), rgb(0 0 0 / .25) 60%, rgb(255 255 255 / .1)); }
+.case-gloss { position: absolute; inset: 0; background: linear-gradient(115deg, rgb(255 255 255 / .22) 0%, rgb(255 255 255 / .04) 32%, transparent 50%, rgb(255 255 255 / .07) 100%); pointer-events: none; }
+.case-name { margin-top: 24px; width: 100%; font-size: var(--fs-13); font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.case-year { font-size: var(--fs-12); color: var(--ink-3); }
 .case-remove {
   position: absolute; top: -10px; right: -10px; z-index: 3; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
-  color: #fff; background: rgb(10 10 14 / .8); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .18);
+  color: #fff; background: rgb(10 10 14 / .85); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .18);
   opacity: 0; transform: scale(.8); transition: opacity var(--t-fast) ease, transform var(--t-med) var(--ease-out), background-color var(--t-fast) ease;
 }
 .case-remove svg { width: 14px; height: 14px; }
 .case:hover .case-remove, .case:focus-within .case-remove { opacity: 1; transform: scale(1); }
 .case-remove:hover { background: rgb(255 69 58 / .9); }
-.case-box {
-  position: relative; display: block; width: 118px; aspect-ratio: 2 / 2.82; border-radius: 4px 8px 8px 4px; overflow: hidden;
-  background: #0d1118;
-  box-shadow: 0 18px 30px -10px rgb(0 0 0 / .75), inset 0 0 0 1px rgb(255 255 255 / .16);
-  transform-origin: 50% 100%;
-  transition: transform 260ms var(--ease-out), box-shadow 260ms ease;
+
+/* ---- Empty ------------------------------------------------------------------------------- */
+.trophies-empty { margin: 30px var(--gutter); max-width: 720px; display: flex; flex-direction: column; gap: 10px; }
+.trophies-empty-shelf { position: relative; height: 150px; margin-bottom: 10px; display: flex; align-items: flex-end; gap: 14px; padding: 0 0 12px 12px; border-bottom: 10px solid rgb(255 255 255 / .1); border-radius: 0 0 4px 4px; }
+.trophies-empty-shelf span { width: 84px; height: 118px; border-radius: 3px 6px 6px 3px; border: 1px dashed rgb(255 255 255 / .18); }
+.trophies-empty .badge-rail { margin-top: 18px; opacity: .85; }
+
+@media (max-width: 1100px) {
+  .trophies-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .trophies-figures > div + div { box-shadow: none; }
+  .trophies-latest { grid-column: 1 / -1; box-shadow: inset 0 1px 0 rgb(255 255 255 / .07) !important; }
 }
-.case:hover .case-box { transform: translateY(-8px) rotateY(-6deg); box-shadow: 0 28px 44px -12px rgb(0 0 0 / .8), inset 0 0 0 1px rgb(255 255 255 / .22); }
-.case:active .case-box { transform: translateY(-4px) scale(.98); }
-.case-box img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.case-blank { position: absolute; inset: 0; display: grid; place-items: center; padding: 10px; font-size: 11px; font-weight: 700; text-align: center; color: var(--ink-2); }
-.case-spine { position: absolute; left: 0; top: 0; bottom: 0; width: 8px; background: linear-gradient(90deg, rgb(0 0 0 / .7), rgb(0 0 0 / .25) 60%, rgb(255 255 255 / .1)); }
-.case-gloss { position: absolute; inset: 0; background: linear-gradient(115deg, rgb(255 255 255 / .2) 0%, rgb(255 255 255 / .04) 32%, transparent 50%, rgb(255 255 255 / .07) 100%); pointer-events: none; }
-.case-ring { position: absolute; left: -9px; top: -9px; width: 136px; height: calc(118px * 1.41 + 18px); border-radius: 12px; box-shadow: 0 0 0 1.5px var(--accent, #e9c98a), 0 0 22px rgb(var(--accent-rgb, 233 201 138) / .45); opacity: 0; transition: opacity 260ms ease; pointer-events: none; }
-.case:hover .case-ring { opacity: .9; }
-.case-name { margin-top: 12px; width: 100%; font-size: var(--fs-13); font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.case-year { font-size: var(--fs-12); color: var(--ink-3); }

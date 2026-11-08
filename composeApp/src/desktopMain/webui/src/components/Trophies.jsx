@@ -1,43 +1,103 @@
-import { useEffect, useMemo } from "react";
-import { LuTrophy, LuX } from "react-icons/lu";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  LuCalendar, LuClock, LuFilm, LuFlame, LuHistory, LuHourglass, LuLayers, LuLibrary, LuMoon, LuStar, LuSun, LuTrophy, LuTv, LuX,
+} from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
 import { useApp } from "../AppContext.jsx";
 import { year } from "../lib/format.js";
+import { EASE, reduceMotion } from "../lib/motion.js";
+import { badges, fmtHours, stats, yearGrid } from "../lib/trophies.js";
 import "./Trophies.css";
 
-const monthKey = ms => {
-  const d = new Date(ms);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-};
-const monthLabel = key => new Date(`${key}-01T00:00:00`).toLocaleDateString([], { month: "long", year: "numeric" });
+const ICONS = { shelf: LuLibrary, film: LuFilm, tv: LuTv, flame: LuFlame, layers: LuLayers, clock: LuClock, moon: LuMoon, history: LuHistory, star: LuStar, sun: LuSun, hourglass: LuHourglass, calendar: LuCalendar };
+const TIER_NAMES = { bronze: "Bronze", silver: "Silver", gold: "Gold", platinum: "Platinum" };
 
-/** One finished film or series as a case on a shelf. */
-export function Case({ item, onOpen, onRemove, size = "m" }) {
+const monthKey = ms => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
+const monthLabel = key => new Date(`${key}-01T00:00:00`).toLocaleDateString([], { month: "long", year: "numeric" });
+const ago = ms => {
+  const days = Math.floor((Date.now() - ms) / 86400e3);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 30) return `${days} days ago`;
+  return new Date(ms).toLocaleDateString([], { month: "short", day: "numeric" });
+};
+
+/** One finished film or series as a case standing on the shelf. */
+export function Case({ item, onOpen, onRemove }) {
   return (
-    <div className={`case case-${size}`}>
+    <div className="case">
       {onRemove ? (
         <button className="case-remove" onClick={() => onRemove(item)} aria-label={`Remove ${item.name} from trophies`} title="Remove from trophies"><LuX /></button>
       ) : null}
       <button className="case-hit" onClick={() => onOpen?.(item)} title={item.name} aria-label={item.name}>
-      <span className="case-box">
-        {item.poster ? <img src={item.poster} alt="" loading="lazy" decoding="async" /> : <span className="case-blank">{item.name}</span>}
-        <span className="case-spine" />
-        <span className="case-gloss" />
-      </span>
-      <span className="case-ring" aria-hidden="true" />
-      <span className="case-name" dir="auto">{item.name}</span>
-      <span className="case-year num">{[item.type === "series" ? "Series" : null, year(item.releaseInfo)].filter(Boolean).join(" · ")}</span>
+        <span className="case-box">
+          {item.poster ? <img src={item.poster} alt="" loading="lazy" decoding="async" /> : <span className="case-blank">{item.name}</span>}
+          <span className="case-spine" />
+          <span className="case-gloss" />
+        </span>
+        <span className="case-name" dir="auto">{item.name}</span>
+        <span className="case-year num">{[item.type === "series" ? `${item.episodes || ""} ep`.trim() : year(item.releaseInfo), item.durationMs ? fmtHours(item.durationMs) : null].filter(Boolean).join(" · ")}</span>
       </button>
     </div>
   );
 }
 
-/** Everything watched to the end, shelved by month, newest first. */
+/** A badge: metal when earned, with the distance to the next tier underneath. */
+function Badge({ badge }) {
+  const Icon = ICONS[badge.icon] || LuTrophy;
+  return (
+    <div className={`badge badge-${badge.earned ? badge.tier : "locked"}`} title={`${badge.name}: ${badge.what}`}>
+      <span className="badge-medal"><Icon /></span>
+      <span className="badge-text">
+        <strong>{badge.name}</strong>
+        <span>{badge.earned ? TIER_NAMES[badge.tier] : badge.what}</span>
+      </span>
+      <span className="badge-progress" aria-label={badge.maxed ? "Top tier" : `${badge.value} of ${badge.next}`}>
+        <span className="badge-bar"><i style={{ width: `${Math.round((badge.maxed ? 1 : badge.progress) * 100)}%` }} /></span>
+        <span className="badge-count num">{badge.maxed ? "Max" : `${badge.value} / ${badge.next}`}</span>
+      </span>
+    </div>
+  );
+}
+
+/** A year of finishes, one cell per day. */
+function YearGrid({ items }) {
+  const grid = useMemo(() => yearGrid(items), [items]);
+  return (
+    <div className="ygrid" role="img" aria-label="Finishes over the last year">
+      <div className="ygrid-months">
+        {grid.months.map(m => <span key={m.week + m.label} style={{ gridColumn: m.week + 1 }}>{m.label}</span>)}
+      </div>
+      <div className="ygrid-cells">
+        {grid.weeks.map((week, w) => week.map((cell, d) => (
+          <i
+            key={`${w}-${d}`}
+            className={cell.count < 0 ? "is-future" : cell.count ? `l${Math.min(4, Math.ceil((cell.count / grid.max) * 4))}` : ""}
+            title={cell.count > 0 ? `${new Date(cell.day).toLocaleDateString([], { month: "short", day: "numeric" })}: ${cell.count} finished` : undefined}
+          />
+        )))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Trophies: everything watched to the end, shown as cases on lit shelves, with the badges and the
+ * year they add up to. All of it is computed from the same list, so the numbers always match the
+ * cases below them.
+ */
 export default function Trophies() {
   const { openDetails, toast } = useApp();
   const items = useTopic("completed", []);
+  const rootRef = useRef(null);
+  const [view, setView] = useState("shelf");
   useEffect(() => { call("home.subscribe").catch(() => {}); }, []);
+
+  const s = useMemo(() => stats(items), [items]);
+  const all = useMemo(() => badges(items), [items]);
+  const earned = all.filter(b => b.earned);
+  const latest = items[0];
 
   const shelves = useMemo(() => {
     const map = new Map();
@@ -49,39 +109,70 @@ export default function Trophies() {
     return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]));
   }, [items]);
 
+  // The page settles in once: figures, then badges, then the first shelf.
+  useLayoutEffect(() => {
+    if (!rootRef.current || reduceMotion()) return undefined;
+    const parts = rootRef.current.querySelectorAll("[data-rise]");
+    const animations = [...parts].map((part, i) => part.animate(
+      [{ opacity: 0, transform: "translate3d(0, 10px, 0)" }, { opacity: 1, transform: "none" }],
+      { duration: 480, delay: 60 + i * 50, easing: EASE.out, fill: "backwards" },
+    ));
+    return () => animations.forEach(a => a.cancel());
+  }, [items.length > 0]);
+
   // Taking a case off the shelf keeps it off, even if the title is watched again.
   const remove = item => {
     call("completed.remove", { type: item.type, id: item.id }).catch(error => toast(error.message, { tone: "error" }));
     toast(`${item.name} removed from trophies`, { action: { label: "Undo", run: () => call("completed.restore", { type: item.type, id: item.id }) } });
   };
 
-  const films = items.filter(i => i.type !== "series").length;
-  const series = items.length - films;
-
   if (!items.length) {
     return (
-      <section className="library-empty trophies-empty">
-        <LuTrophy />
-        <h2 className="t-title">No trophies yet</h2>
-        <p className="t-meta">Watch a film to the end, or every episode of a series, and its case lands on this shelf.</p>
+      <section className="trophies-empty" ref={rootRef}>
+        <div className="trophies-empty-shelf" aria-hidden="true"><span /><span /><span /></div>
+        <h2 className="t-title">Your shelf is empty</h2>
+        <p className="t-meta">Watch a film to the end, or every episode of a series, and its case lands here. Badges unlock as the shelf fills.</p>
+        <div className="badge-rail is-preview">{all.slice(0, 4).map(b => <Badge key={b.id} badge={b} />)}</div>
       </section>
     );
   }
 
   return (
-    <section className="trophies">
-      <div className="trophies-stats">
-        <div><strong className="num">{items.length}</strong><span>completed</span></div>
-        <div><strong className="num">{films}</strong><span>films</span></div>
-        <div><strong className="num">{series}</strong><span>series</span></div>
+    <section className="trophies" ref={rootRef}>
+      <div className="trophies-figures" data-rise>
+        <div><strong className="num">{s.total}</strong><span>on the shelf</span><small>{s.films} films · {s.series} series</small></div>
+        <div><strong className="num">{fmtHours(s.totalMs)}</strong><span>watched</span><small>{s.timed < s.total ? `${s.total - s.timed} without a time` : "from the player"}</small></div>
+        <div><strong className="num">{s.current}</strong><span>{s.current === 1 ? "day streak" : "day streak"}</span><small>longest {s.longest}</small></div>
+        <div><strong className="num">{s.thisMonth}</strong><span>this month</span><small>{s.topMonth ? `best ${s.topMonth.label.split(" ")[0]}: ${s.topMonth.count}` : ""}</small></div>
+        <div className="trophies-latest">
+          {latest?.poster ? <img src={latest.poster} alt="" /> : null}
+          <span><small>Latest</small><strong dir="auto">{latest?.name}</strong><em>{latest ? ago(latest.completedAt) : ""}</em></span>
+        </div>
       </div>
-      {shelves.map(([key, list]) => (
-        <section className="shelf" key={key}>
+
+      <div className="trophies-row" data-rise>
+        <h2 className="trophies-h">Badges <span className="num">{earned.length} of {all.length}</span></h2>
+        <div className="seg glass-flat" role="tablist" aria-label="View">
+          <button role="tab" aria-pressed={view === "shelf"} onClick={() => setView("shelf")}>Shelf</button>
+          <button role="tab" aria-pressed={view === "year"} onClick={() => setView("year")}>Year</button>
+        </div>
+      </div>
+      <div className="badge-rail" data-rise>
+        {[...all].sort((a, b) => Number(b.earned) - Number(a.earned)).map(b => <Badge key={b.id} badge={b} />)}
+      </div>
+
+      {view === "year" ? (
+        <section className="trophies-year" data-rise>
+          <YearGrid items={items} />
+          <p className="t-meta">{s.thisYear} finished this year{s.oldest ? ` · oldest film from ${s.oldest}` : ""}{s.decades > 1 ? ` · ${s.decades} decades` : ""}</p>
+        </section>
+      ) : shelves.map(([key, list], i) => (
+        <section className="shelf" key={key} data-rise={i < 2 ? "" : undefined}>
           <h2 className="shelf-title">{monthLabel(key)} <span className="num">{list.length}</span></h2>
           <div className="shelf-row">
+            <div className="shelf-board" aria-hidden="true" />
             {list.map(item => <Case key={`${item.type}:${item.id}`} item={item} onOpen={openDetails} onRemove={remove} />)}
           </div>
-          <div className="shelf-board" aria-hidden="true" />
         </section>
       ))}
     </section>

@@ -10,6 +10,7 @@ import { ScreenActiveContext } from "./lib/screen.js";
 import Background from "./components/Background.jsx";
 import TopBar from "./components/TopBar.jsx";
 import Toasts from "./components/Toasts.jsx";
+import TrophyToast from "./components/TrophyToast.jsx";
 import ProfileGate, { shouldShowGate } from "./components/ProfileGate.jsx";
 import ClickSpark from "./reactbits/ClickSpark/ClickSpark.jsx";
 import Home from "./screens/Home.jsx";
@@ -153,6 +154,7 @@ function Shell() {
       </ClickSpark>
       {gate ? <ProfileGate onDone={() => setGate(false)} /> : null}
       <Toasts />
+      <TrophyToast />
     </>
   );
 }

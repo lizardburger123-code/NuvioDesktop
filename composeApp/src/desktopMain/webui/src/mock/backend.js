@@ -59,6 +59,9 @@ const all = [...trendingMovies, ...trendingSeries, ...anime, ...library];
 const byKey = new Map(all.map(item => [`${item.type}:${item.id}`, item]));
 
 let watchLater = [trendingSeries[6], library[3], trendingMovies[5], anime[5], trendingSeries[3]].map(item => ({ ...item, addedAt: Date.now() }));
+const watchedIds = new Set();
+let lastDetails = null;
+let completedItems = null;
 
 const continueWatching = [
   { item: anime[0], season: 1, episode: 1, episodeTitle: "To You, Two Thousand Years Later", positionMs: 174633, durationMs: 1540967 },
@@ -233,7 +236,13 @@ export const createMockBackend = deliver => {
       pushHome();
       push("continue", continueWatching, 120);
       push("watchLater", watchLater, 140);
-      push("completed", [...library, ...watchLater].slice(0, 9).map((item, i) => ({ id: item.id, type: item.type, name: item.name, poster: item.poster, releaseInfo: item.releaseInfo, completedAt: Date.now() - i * 9 * 86400e3 })), 150);
+      if (!completedItems) completedItems = [...library, ...watchLater, ...trendingMovies.slice(0, 8), ...anime.slice(0, 3)].slice(0, 22).map((item, i) => {
+        const gap = [0, 0, 1, 2, 3, 3, 5, 9, 12, 16, 20, 27, 33, 41, 48, 55, 70, 84, 99, 120, 150, 190][i] || i * 10;
+        const when = new Date(Date.now() - gap * 86400e3); when.setHours([21, 23, 1, 20, 22, 0, 19, 23, 2, 21][i % 10], 12, 0, 0);
+        return { id: item.id, type: item.type, name: item.name, poster: item.poster, releaseInfo: item.releaseInfo, completedAt: when.getTime(),
+          durationMs: item.type === "series" ? (8 + i % 5) * 50 * 60e3 : (95 + (i * 37) % 80) * 60e3, episodes: item.type === "series" ? 8 + i % 5 : undefined };
+      });
+      push("completed", completedItems, 150);
       push("upcoming", [{ id: "tt5875444", type: "series", name: "Slow Horses", season: 5, episode: 2, title: "Episode 2", airsAt: Date.now() + 5.5 * 3600_000, thumbnail: still("Slow Horses", 52) }], 160);
       return true;
     },
@@ -372,9 +381,21 @@ export const createMockBackend = deliver => {
     },
     "details.load": ({ type, id }) => {
       const key = `${type}:${id}`;
+      lastDetails = { type, id };
       push("details", { key, loading: true, meta: null });
-      push("details", { key, loading: false, meta: detailsFor(type, id), watchLater: watchLater.some(item => item.id === id) }, 220);
+      push("details", { key, loading: false, meta: detailsFor(type, id), watchLater: watchLater.some(item => item.id === id), watched: watchedIds.has(id) }, 220);
       return true;
+    },
+    "watched.toggle": ({ id, type, name, poster, releaseInfo }) => {
+      if (watchedIds.has(id)) watchedIds.delete(id); else watchedIds.add(id);
+      if (completedItems) {
+        completedItems = watchedIds.has(id)
+          ? [{ id, type, name, poster, releaseInfo, completedAt: Date.now(), durationMs: 128 * 60e3 }, ...completedItems.filter(i => i.id !== id)]
+          : completedItems.filter(i => i.id !== id);
+        push("completed", completedItems, 300);
+      }
+      if (lastDetails) push("details", { key: `${lastDetails.type}:${lastDetails.id}`, loading: false, meta: detailsFor(lastDetails.type, lastDetails.id), watchLater: watchLater.some(item => item.id === lastDetails.id), watched: watchedIds.has(lastDetails.id) });
+      return watchedIds.has(id);
     },
     "streams.load": ({ videoId }) => {
       const key = videoId;

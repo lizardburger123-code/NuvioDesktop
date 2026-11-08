@@ -25,6 +25,9 @@ import com.nuvio.app.features.streams.StreamLinkCacheRepository
 import com.nuvio.app.features.streams.StreamsRepository
 import com.nuvio.app.features.watched.WatchedItem
 import com.nuvio.app.features.watched.WatchedRepository
+import com.nuvio.app.features.watchprogress.WatchProgressUiState
+import com.nuvio.app.features.watchprogress.WatchProgressEntry
+import com.nuvio.app.features.watched.WatchedUiState
 import com.nuvio.app.features.watched.isEpisode
 import com.nuvio.app.features.watchprogress.WatchProgressRepository
 import com.nuvio.app.shell.ShellJson.bool
@@ -252,6 +255,19 @@ internal class ShellRpc(private val host: ShellHost) {
         "search.query" -> search(params)
         "details.load" -> loadDetails(params)
         "streams.load" -> loadStreams(params)
+        "watched.toggle" -> {
+            val item = WatchedItem(
+                id = params.string("id") ?: "",
+                type = params.string("type") ?: "movie",
+                name = params.string("name") ?: "",
+                poster = params.string("poster"),
+                releaseInfo = params.string("releaseInfo"),
+                markedAtEpochMs = System.currentTimeMillis(),
+            )
+            WatchedRepository.toggleWatched(item)
+            ShellTrophyStore.restore(item.type, item.id)
+            JsonPrimitive(WatchedRepository.isWatched(item.id, item.type))
+        }
         "completed.remove" -> {
             ShellTrophyStore.hide(params.string("type") ?: "movie", params.string("id") ?: "")
             JsonPrimitive(true)
@@ -419,22 +435,36 @@ internal class ShellRpc(private val host: ShellHost) {
         }
         watch("watchLater", WatchLaterStore.items) { items -> watchLaterJson(items) }
         WatchedRepository.ensureLoaded()
-        watch("completed", combine(WatchedRepository.uiState, WatchedRepository.fullyWatchedSeriesKeys, ShellTrophyStore.hidden) { state, series, hidden -> Triple(state, series, hidden) }) { (state, series, hidden) ->
-            completedJson(state.items, series, hidden)
+        watch("completed", combine(WatchedRepository.uiState, WatchedRepository.fullyWatchedSeriesKeys, ShellTrophyStore.hidden, WatchProgressRepository.uiState) { state, series, hidden, progress -> listOf(state, series, hidden, progress) }) { parts ->
+            @Suppress("UNCHECKED_CAST")
+            completedJson(
+                (parts[0] as WatchedUiState).items,
+                parts[1] as Set<String>,
+                parts[2] as Set<String>,
+                (parts[3] as WatchProgressUiState).entries,
+            )
         }
         subscribeLibrary()
         return JsonPrimitive(true)
     }
 
     /** Trophies: every film watched to the end, and every series with all its episodes seen. */
-    private fun completedJson(items: List<WatchedItem>, fullSeries: Set<String>, hidden: Set<String>): JsonArray {
-        val items = items.filter { "${it.type}:${it.id}" !in hidden }
+    private fun completedJson(
+        watched: List<WatchedItem>,
+        fullSeries: Set<String>,
+        hidden: Set<String>,
+        progress: List<WatchProgressEntry>,
+    ): JsonArray {
+        val items = watched.filter { "${it.type}:${it.id}" !in hidden }
         val films = items.filter { !it.isEpisode && it.type != "series" }
-        val series = items.filter { it.type == "series" }
-            .groupBy { it.id }
+        val seriesEpisodes = items.filter { it.type == "series" }.groupBy { it.id }
+        val series = seriesEpisodes
             .filter { (id, _) -> fullSeries.any { key -> key == "series:$id" || key.startsWith("series:$id:") } }
             .map { (_, entries) -> entries.maxBy { it.markedAtEpochMs } }
-        val all = (films + series).sortedByDescending { it.markedAtEpochMs }.take(200)
+        // Time watched: the player's own duration where it played the title; episodes add up.
+        val durationByTitle = progress.groupBy { it.parentMetaId }
+            .mapValues { (_, entries) -> entries.distinctBy { it.videoId }.sumOf { it.durationMs.coerceAtLeast(0L) } }
+        val all = (films + series).sortedByDescending { it.markedAtEpochMs }.take(400)
         return buildJsonArray {
             all.forEach { item ->
                 add(buildJsonObject {
@@ -444,6 +474,11 @@ internal class ShellRpc(private val host: ShellHost) {
                     item.poster?.let { put("poster", it) }
                     item.releaseInfo?.let { put("releaseInfo", it) }
                     put("completedAt", item.markedAtEpochMs)
+                    val duration = durationByTitle[item.id] ?: 0L
+                    if (duration > 0) put("durationMs", duration)
+                    if (item.type == "series") put("episodes", seriesEpisodes[item.id]?.count { it.isEpisode } ?: 0)
+                    progress.firstOrNull { it.parentMetaId == item.id }?.background?.let { put("backdrop", it) }
+                    progress.firstOrNull { it.parentMetaId == item.id }?.logo?.let { put("logo", it) }
                 })
             }
         }
@@ -523,7 +558,7 @@ internal class ShellRpc(private val host: ShellHost) {
         WatchedRepository.ensureLoaded()
         watch(
             "details",
-            combine(MetaDetailsRepository.uiState, WatchProgressRepository.uiState, WatchLaterStore.items, detailsAlt) { meta, progress, later, alt ->
+            combine(MetaDetailsRepository.uiState, WatchProgressRepository.uiState, WatchLaterStore.items, detailsAlt, WatchedRepository.uiState) { meta, progress, later, alt, _ ->
                 DetailsInputs(meta, progress, later, alt)
             },
         ) { (state, progress, later, alt) ->
@@ -536,6 +571,10 @@ internal class ShellRpc(private val host: ShellHost) {
                 put("loading", meta == null && (state.errorMessage == null || altRunning))
                 state.errorMessage?.takeIf { meta == null && !altRunning }?.let { put("error", it) }
                 put("watchLater", later.any { it.id == wantedId })
+                // Films: whether this title is already on the Trophies shelf.
+                if (meta != null && meta.type != "series") {
+                    put("watched", runCatching { WatchedRepository.isWatched(meta.id, meta.type) }.getOrDefault(false))
+                }
                 if (meta == null) {
                     put("meta", JsonNull)
                 } else {
