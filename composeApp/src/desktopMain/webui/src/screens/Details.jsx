@@ -202,6 +202,22 @@ export default function Details({ params }) {
         </Row>
       ) : null}
 
+      {meta.collection?.length > 1 ? (
+        <Row title={meta.collectionName || "In this series"} subtitle={`${meta.collection.length} films`}>
+          {meta.collection.map(item => (
+            <WideCard
+              key={`${item.type}:${item.id}`}
+              width={300}
+              image={item.poster || item.banner}
+              title={item.name}
+              kicker={item.releaseInfo || ""}
+              meta={item.id === meta.id || item.name === meta.name ? "Now viewing" : item.imdbRating ? `IMDb ${item.imdbRating}` : ""}
+              onOpen={() => (item.id === meta.id ? null : openDetails(item))}
+            />
+          ))}
+        </Row>
+      ) : null}
+
       {meta.moreLikeThis?.length ? (
         <Row title="More like this">
           {meta.moreLikeThis.map(item => (

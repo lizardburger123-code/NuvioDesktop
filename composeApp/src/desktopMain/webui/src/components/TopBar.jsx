@@ -1,8 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { LuArrowLeft, LuSearch } from "react-icons/lu";
+import { LuArrowLeft, LuSearch, LuSettings2 } from "react-icons/lu";
 import { activeSection, back, canGoBack, goSection } from "../lib/router.js";
 import { reduceMotion, spring, stopAnimations } from "../lib/motion.js";
-import { clockTime } from "../lib/format.js";
 import { NAV_ITEMS } from "../lib/nav.js";
 import GradientText from "../reactbits/GradientText/GradientText.jsx";
 import { useApp } from "../AppContext.jsx";
@@ -13,16 +12,6 @@ export { initials } from "./ProfileCard.jsx";
 
 /** Open the profile card from anywhere (Settings uses it): detail { view: "picture" }. */
 export const PROFILE_CARD = "nuvio:profile-card";
-
-const useNow = () => {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const tick = () => setNow(new Date());
-    const timer = window.setInterval(tick, 15000);
-    return () => window.clearInterval(timer);
-  }, []);
-  return now;
-};
 
 const SECTIONS = NAV_ITEMS.filter(item => item.inTopBar).map(item => ({
   ...item,
@@ -160,11 +149,8 @@ function SectionNav({ active }) {
 }
 
 export default function TopBar({ route, stack, profile, compact }) {
-  const now = useNow();
   const { appearance } = useApp();
   const colors = appearance?.colors?.length ? ["#ffffff", ...appearance.colors, "#ffffff"] : ["#ffffff", "#b497cf", "#ffffff"];
-  const day = now.toLocaleDateString([], { weekday: "long" });
-  const date = now.toLocaleDateString([], { month: "long", day: "numeric" });
   const showBack = canGoBack();
   const section = activeSection(stack);
   const profileRef = useRef(null);
@@ -184,10 +170,9 @@ export default function TopBar({ route, stack, profile, compact }) {
         <button className="btn btn-glass btn-icon btn-sm topbar-back" onClick={back} aria-label="Back" title="Back (Esc)" tabIndex={showBack ? 0 : -1} aria-hidden={!showBack || undefined}>
           <LuArrowLeft />
         </button>
-        <div className="topbar-day">
-          <GradientText className="topbar-weekday" colors={colors} animationSpeed={14}>{day}</GradientText>
-          <span className="topbar-date"><i className="topbar-dot" />{date}</span>
-        </div>
+        <button className="topbar-brand" onClick={() => goSection("home")} aria-label="Home">
+          <GradientText className="topbar-brand-text" colors={colors} animationSpeed={14}>NUVIO</GradientText>
+        </button>
       </div>
 
       <div className="topbar-center">
@@ -207,7 +192,14 @@ export default function TopBar({ route, stack, profile, compact }) {
         >
           <LuSearch />
         </button>
-        <span className="topbar-clock num">{clockTime(now)}</span>
+        <button
+          className={`btn btn-glass btn-icon btn-sm topbar-settings${section === "settings" ? " is-on" : ""}`}
+          aria-label="Settings"
+          title="Settings"
+          onClick={() => goSection("settings")}
+        >
+          <LuSettings2 />
+        </button>
         <button
           ref={profileRef}
           className={`topbar-profile${card ? " is-open" : ""}`}
@@ -216,7 +208,6 @@ export default function TopBar({ route, stack, profile, compact }) {
           aria-expanded={Boolean(card)}
           title="Profile"
         >
-          <span className="topbar-hi" dir="auto">Hi, {String(profile?.name || "there").split(" ")[0]}</span>
           <Avatar profile={profile} />
         </button>
       </div>

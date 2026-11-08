@@ -2,10 +2,9 @@ import { useEffect, useRef } from "react";
 import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
 import { useApp } from "../AppContext.jsx";
-import SearchHero from "../components/SearchHero.jsx";
+import Showcase from "../components/Showcase.jsx";
 import Row from "../components/Row.jsx";
 import { ContinueCard, PosterCard, SkeletonPosters } from "../components/Cards.jsx";
-import { CollectionTile, ResumeTile, SpotlightTile } from "../components/Tiles.jsx";
 import RowActions, { openCatalog } from "../components/RowActions.jsx";
 import AddonShelf from "../components/AddonShelf.jsx";
 import { navigate } from "../lib/router.js";
@@ -13,19 +12,9 @@ import { EASE, reduceMotion } from "../lib/motion.js";
 import "./Home.css";
 
 export default function Home() {
-  const { watchLater, laterIds, toggleLater, openDetails, resume, removeContinue, toast, appearance, setAppearance } = useApp();
-  const hidden = appearance?.hiddenTiles || [];
-  const TILE_NAMES = { spotlight: "Spotlight", resume: "Resume", later: "Watch later", library: "Library" };
-  const hideTile = id => {
-    const before = hidden;
-    setAppearance({ hiddenTiles: [...new Set([...hidden, id])] });
-    toast(`${TILE_NAMES[id]} hidden from Home`, { action: { label: "Undo", run: () => setAppearance({ hiddenTiles: before }) } });
-  };
-  const show = id => !hidden.includes(id);
+  const { watchLater, laterIds, toggleLater, openDetails, resume, removeContinue } = useApp();
   const home = useTopic("home", { loading: true, hero: [], sections: [] });
   const continueWatching = useTopic("continue", []);
-  const upcoming = useTopic("upcoming", []);
-  const library = useTopic("library", { items: [] });
 
   useEffect(() => { call("home.subscribe").catch(() => {}); }, []);
 
@@ -39,7 +28,7 @@ export default function Home() {
       // Behind "Who's watching?" the rise would go unseen: it plays when that page lifts.
       if (played || !root || reduceMotion() || document.querySelector(".gate")) return;
       played = true;
-      const parts = [root.querySelector(".home-hero"), ...root.querySelectorAll(".home-tiles > *"), ...[...root.querySelectorAll(".row")].slice(0, 2)].filter(Boolean);
+      const parts = [root.querySelector(".showcase"), ...[...root.querySelectorAll(".row")].slice(0, 2)].filter(Boolean);
       parts.forEach((part, i) => part.animate(
         [{ transform: "translate3d(0, 34px, 0) scale(.985)" }, { transform: "none" }],
         { duration: 1100, delay: 40 + i * 55, easing: EASE.out, fill: "backwards" },
@@ -60,18 +49,9 @@ export default function Home() {
   return (
     <main ref={rootRef} className="screen home">
       <h1 className="sr-only">Home</h1>
-      <section className="home-hero">
-        <SearchHero />
-      </section>
-
-      {hidden.length < 4 ? (
-        <section className="home-tiles tiles" aria-label="Dashboard">
-          {show("spotlight") ? <SpotlightTile items={home.hero} onPlay={playFromSpotlight} onHide={() => hideTile("spotlight")} /> : null}
-          {show("resume") ? <ResumeTile entry={continueWatching[0]} onResume={resume} onHide={() => hideTile("resume")} /> : null}
-          {show("later") ? <CollectionTile kind="later" items={watchLater} onHide={() => hideTile("later")} /> : null}
-          {show("library") ? <CollectionTile kind="library" items={library.items || []} upcoming={upcoming} onHide={() => hideTile("library")} /> : null}
-        </section>
-      ) : null}
+      <div className="home-top">
+        <Showcase items={home.hero} resumeEntry={continueWatching[0]} onPlay={playFromSpotlight} onResume={resume} onToggleLater={toggleLater} laterIds={laterIds} />
+      </div>
 
       {continueWatching.length ? (
         <Row title="Continue watching" subtitle={`${continueWatching.length} in progress`}>

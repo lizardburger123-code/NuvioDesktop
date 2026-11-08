@@ -8,5 +8,5 @@ export const NAV_ITEMS = [
   { route: "browse", kind: "anime", label: "Anime", icon: LuSparkles, inTopBar: true },
   { route: "library", label: "Library", icon: LuLibrary, inTopBar: true },
   { route: "library", tab: "later", label: "Watch later", icon: LuBookmark },
-  { route: "settings", label: "Settings", icon: LuSettings, inTopBar: true },
+  { route: "settings", label: "Settings", icon: LuSettings },
 ];

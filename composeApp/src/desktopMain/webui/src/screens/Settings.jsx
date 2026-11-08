@@ -221,33 +221,8 @@ function Appearance() {
         </div>
       </Panel>
 
-      <HomeTiles />
       <HomeRows />
     </>
-  );
-}
-
-const DASHBOARD = [
-  { id: "spotlight", label: "Spotlight", note: "Featured titles, rotating" },
-  { id: "resume", label: "Resume", note: "Your last title, one click to carry on" },
-  { id: "later", label: "Watch later", note: "Count and the three newest saves" },
-  { id: "library", label: "Library", note: "Count, newest titles and the next new episode" },
-];
-
-/** The four tiles at the top of Home: each can be hidden from its own eye button or here. */
-function HomeTiles() {
-  const { appearance, setAppearance } = useApp();
-  const hidden = appearance.hiddenTiles || [];
-  const set = (id, visible) => setAppearance({ hiddenTiles: visible ? hidden.filter(h => h !== id) : [...new Set([...hidden, id])] });
-  return (
-    <Panel title="Home dashboard" description="The tiles under the search box on Home. Hidden ones leave their space to the others.">
-      {DASHBOARD.map(tile => (
-        <div key={tile.id} className="toggle-row">
-          <span>{tile.label}<small>{tile.note}</small></span>
-          <Toggle checked={!hidden.includes(tile.id)} onChange={value => set(tile.id, value)} label={tile.label} />
-        </div>
-      ))}
-    </Panel>
   );
 }
 

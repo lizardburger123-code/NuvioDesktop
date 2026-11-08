@@ -171,6 +171,8 @@ internal object ShellJson {
             }
         })
         put("moreLikeThis", buildJsonArray { meta.moreLikeThis.take(20).forEach { add(preview(it)) } })
+        meta.collectionName?.let { put("collectionName", it) }
+        put("collection", buildJsonArray { meta.collectionItems.forEach { add(preview(it)) } })
         put("videos", buildJsonArray { meta.videos.forEach { add(video(it, progressFor(it), watchedFor(it))) } })
         if (resume != null && !resume.isCompleted) {
             put("resume", buildJsonObject {
