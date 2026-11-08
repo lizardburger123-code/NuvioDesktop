@@ -285,10 +285,6 @@ p { text-wrap: pretty; }
 }
 .intro-word { position: relative; display: flex; gap: .04em; font-size: clamp(56px, 9vw, 128px); font-weight: 800; letter-spacing: .08em; }
 .intro-clip { display: inline-block; overflow: hidden; padding: 0 .02em; }
-.intro-letter {
-  display: inline-block;
-  background: linear-gradient(120deg, #fff 10%, var(--g3) 55%, #fff 90%);
-  -webkit-background-clip: text; background-clip: text; color: transparent;
-}
+.intro-letter { display: inline-block; color: var(--ink); }
 .intro-line { position: relative; width: min(260px, 40vw); height: 2px; border-radius: 2px; transform-origin: left;
   background: linear-gradient(90deg, transparent, var(--g3), transparent); }

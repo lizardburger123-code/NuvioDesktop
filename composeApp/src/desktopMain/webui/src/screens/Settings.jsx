@@ -749,7 +749,7 @@ function Profile() {
 function About() {
   const { boot } = useApp();
   const credits = useMemo(() => [
-    ["Interface", "React, GSAP 3.15, View Transitions, React Bits (Grainient, GlassSurface, TiltedCard, SpotlightCard, GradientText, ClickSpark) by David Haz"],
+    ["Interface", "React, GSAP 3.15, View Transitions, React Bits (Grainient, GlassSurface, TiltedCard, SpotlightCard, ClickSpark) by David Haz"],
     ["Fonts", "Plus Jakarta Sans, IBM Plex Sans Arabic, Cairo, Tajawal, Almarai, Noto Naskh / Kufi Arabic, Readex Pro, Changa, Amiri (SIL Open Font License)"],
     ["Icons", "Lucide"],
   ], []);
