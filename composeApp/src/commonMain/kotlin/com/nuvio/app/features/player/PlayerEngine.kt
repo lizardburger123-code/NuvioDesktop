@@ -210,6 +210,7 @@ data class PlayerControlsState(
     val skipPromptDismissed: Boolean = false,
     /** Full-screen card when a film reaches its end: the film's look, and the next film in its series. */
     val endCardEnabled: Boolean = false,
+    val endCardPoster: String = "",
     val endCardYear: String = "",
     val endCardGenres: String = "",
     val endCardDirector: String = "",

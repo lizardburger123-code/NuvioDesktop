@@ -480,6 +480,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
         skipPromptEndMs = nativeSkipAction?.targetMs?.coerceAtLeast(0L) ?: 0L,
         skipPromptDismissed = skipIntervalDismissed,
         endCardEnabled = !isSeries && endCardMeta != null,
+        endCardPoster = endCardMeta?.poster ?: poster.orEmpty(),
         endCardYear = endCardMeta?.releaseInfo?.let { Regex("\\d{4}").find(it)?.value }.orEmpty(),
         endCardGenres = endCardMeta?.genres?.take(3)?.joinToString(" · ").orEmpty(),
         endCardDirector = endCardMeta?.director?.firstOrNull().orEmpty(),

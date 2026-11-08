@@ -233,6 +233,7 @@ export const createMockBackend = deliver => {
       pushHome();
       push("continue", continueWatching, 120);
       push("watchLater", watchLater, 140);
+      push("completed", [...library, ...watchLater].slice(0, 9).map((item, i) => ({ id: item.id, type: item.type, name: item.name, poster: item.poster, releaseInfo: item.releaseInfo, completedAt: Date.now() - i * 9 * 86400e3 })), 150);
       push("upcoming", [{ id: "tt5875444", type: "series", name: "Slow Horses", season: 5, episode: 2, title: "Episode 2", airsAt: Date.now() + 5.5 * 3600_000, thumbnail: still("Slow Horses", 52) }], 160);
       return true;
     },

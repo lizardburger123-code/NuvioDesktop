@@ -2583,6 +2583,8 @@ const renderEndCard = () => {
     const span = document.createElement("span"); span.textContent = part; endCardMeta.appendChild(span);
   });
   endCardChip.textContent = hasNext ? "The story continues" : "Completed";
+  const posterUrl = setImageSource(document.getElementById("endCardCasePoster"), state.endCardPoster);
+  document.getElementById("endCardTrophy").hidden = !posterUrl;
   endCard.classList.toggle("has-next", hasNext);
   endCardNext.hidden = !hasNext;
   if (hasNext) {

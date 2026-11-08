@@ -1151,3 +1151,75 @@ button.action:focus-visible,
   .end-card-body > * { animation-duration: 1ms; animation-delay: 0s; }
   .end-card.visible .end-card-backdrop { animation: none; }
 }
+
+/* The trophy: a ring glows in and fills around the film's case, which rises into the middle. */
+.end-card-trophy {
+  position: absolute;
+  z-index: 1;
+  right: clamp(32px, 9vw, 160px);
+  bottom: clamp(60px, 14vh, 150px);
+  width: 240px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.end-card-trophy[hidden] { display: none; }
+
+.end-card-ring {
+  width: 240px;
+  height: 240px;
+  transform: rotate(-90deg);
+  filter: drop-shadow(0 0 18px color-mix(in srgb, var(--end-accent) 55%, transparent));
+  opacity: 0;
+}
+
+.end-card.visible .end-card-ring { animation: end-ring-in 900ms ease 1.1s forwards; }
+@keyframes end-ring-in { to { opacity: 1; } }
+
+.end-card-ring circle { fill: none; stroke-width: 3; }
+.end-card-ring-track { stroke: rgba(255, 255, 255, .12); }
+.end-card-ring-fill {
+  stroke: var(--end-accent);
+  stroke-linecap: round;
+  stroke-dasharray: 704;
+  stroke-dashoffset: 704;
+}
+.end-card.visible .end-card-ring-fill { animation: end-ring-fill 2.2s cubic-bezier(.2, 0, 0, 1) 1.4s forwards, end-ring-pulse 2.6s ease-in-out 3.6s infinite; }
+@keyframes end-ring-fill { to { stroke-dashoffset: 0; } }
+@keyframes end-ring-pulse { 50% { filter: drop-shadow(0 0 10px var(--end-accent)); } }
+
+.end-card-case {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 104px;
+  height: 146px;
+  transform: translate(-50%, -50%) scale(.6);
+  opacity: 0;
+  border-radius: 5px 9px 9px 5px;
+  overflow: hidden;
+  background: #0d1118;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, .6), inset 0 0 0 1px rgba(255, 255, 255, .18);
+}
+.end-card-case img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.end-card-case-spine { position: absolute; left: 0; top: 0; bottom: 0; width: 9px; background: linear-gradient(90deg, rgba(0, 0, 0, .7), rgba(0, 0, 0, .25) 60%, rgba(255, 255, 255, .1)); }
+.end-card-case-gloss { position: absolute; inset: 0; background: linear-gradient(115deg, rgba(255, 255, 255, .22) 0%, rgba(255, 255, 255, .04) 32%, rgba(255, 255, 255, 0) 50%, rgba(255, 255, 255, .08) 100%); }
+.end-card.visible .end-card-case { animation: end-case-in 1.1s cubic-bezier(.2, 0, 0, 1) 1.6s forwards; }
+@keyframes end-case-in { to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+
+.end-card-trophy-label {
+  margin-top: 14px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--end-accent);
+  opacity: 0;
+}
+.end-card.visible .end-card-trophy-label { animation: end-card-in 700ms ease 3.5s forwards; }
+
+/* Beside the trophy the written-out chip is redundant. */
+.end-card:has(.end-card-trophy:not([hidden])) .end-card-chip { display: none; }
+
+@media (max-width: 980px) { .end-card-trophy { display: none; } }

@@ -1785,6 +1785,8 @@ private fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageRea
         append(',')
         appendJsonField("endCardEnabled", endCardEnabled)
         append(',')
+        appendJsonField("endCardPoster", endCardPoster)
+        append(',')
         appendJsonField("endCardYear", endCardYear)
         append(',')
         appendJsonField("endCardGenres", endCardGenres)

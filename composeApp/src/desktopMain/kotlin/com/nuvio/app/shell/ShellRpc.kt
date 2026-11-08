@@ -23,7 +23,9 @@ import com.nuvio.app.features.streams.StreamAutoPlayMode
 import com.nuvio.app.features.streams.StreamItem
 import com.nuvio.app.features.streams.StreamLinkCacheRepository
 import com.nuvio.app.features.streams.StreamsRepository
+import com.nuvio.app.features.watched.WatchedItem
 import com.nuvio.app.features.watched.WatchedRepository
+import com.nuvio.app.features.watched.isEpisode
 import com.nuvio.app.features.watchprogress.WatchProgressRepository
 import com.nuvio.app.shell.ShellJson.bool
 import com.nuvio.app.shell.ShellJson.double
@@ -408,8 +410,34 @@ internal class ShellRpc(private val host: ShellHost) {
             buildJsonArray { entries.forEach { add(ShellJson.continueEntry(it)) } }
         }
         watch("watchLater", WatchLaterStore.items) { items -> watchLaterJson(items) }
+        WatchedRepository.ensureLoaded()
+        watch("completed", combine(WatchedRepository.uiState, WatchedRepository.fullyWatchedSeriesKeys) { state, series -> state to series }) { (state, series) ->
+            completedJson(state.items, series)
+        }
         subscribeLibrary()
         return JsonPrimitive(true)
+    }
+
+    /** Trophies: every film watched to the end, and every series with all its episodes seen. */
+    private fun completedJson(items: List<WatchedItem>, fullSeries: Set<String>): JsonArray {
+        val films = items.filter { !it.isEpisode && it.type != "series" }
+        val series = items.filter { it.type == "series" }
+            .groupBy { it.id }
+            .filter { (id, _) -> fullSeries.any { key -> key == "series:$id" || key.startsWith("series:$id:") } }
+            .map { (_, entries) -> entries.maxBy { it.markedAtEpochMs } }
+        val all = (films + series).sortedByDescending { it.markedAtEpochMs }.take(200)
+        return buildJsonArray {
+            all.forEach { item ->
+                add(buildJsonObject {
+                    put("id", item.id)
+                    put("type", item.type)
+                    put("name", item.name)
+                    item.poster?.let { put("poster", it) }
+                    item.releaseInfo?.let { put("releaseInfo", it) }
+                    put("completedAt", item.markedAtEpochMs)
+                })
+            }
+        }
     }
 
     private fun watchLaterJson(items: List<WatchLaterItem>): JsonArray = buildJsonArray {

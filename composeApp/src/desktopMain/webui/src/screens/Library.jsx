@@ -8,6 +8,7 @@ import { useSegmentPill } from "../lib/motion.js";
 import { useScreenActive } from "../lib/screen.js";
 import TorboxClear from "../components/TorboxClear.jsx";
 import Downloads from "../components/Downloads.jsx";
+import Trophies from "../components/Trophies.jsx";
 import { LuRefreshCw, LuTrash2 } from "react-icons/lu";
 import "./Library.css";
 
@@ -15,6 +16,7 @@ const TABS = [
   { id: "later", label: "Watch later" },
   { id: "continue", label: "Continue watching" },
   { id: "saved", label: "Saved" },
+  { id: "completed", label: "Trophies" },
   { id: "cloud", label: "TorBox" },
   { id: "downloads", label: "Downloads" },
 ];
@@ -48,8 +50,9 @@ export default function Library({ params }) {
   }, [tab, watchLater, library, sort, cloud]);
 
   const downloads = useTopic("downloads", []);
+  const completed = useTopic("completed", []);
   useEffect(() => { call("downloads.subscribe").catch(() => {}); }, []);
-  const counts = { later: watchLater.length, continue: continueWatching.length, saved: (library.items || []).length, cloud: (cloud || library.cloud || []).length, downloads: downloads.length };
+  const counts = { later: watchLater.length, continue: continueWatching.length, saved: (library.items || []).length, cloud: (cloud || library.cloud || []).length, downloads: downloads.length, completed: completed.length };
 
   return (
     <main className="screen library">
@@ -69,7 +72,7 @@ export default function Library({ params }) {
               <button className="btn btn-glass btn-sm library-clear" onClick={() => setClearing(true)}><LuTrash2 /> Clear TorBox library</button>
             </div>
           ) : null}
-          {tab !== "continue" && tab !== "downloads" ? (
+          {tab !== "continue" && tab !== "downloads" && tab !== "completed" ? (
             <label className="library-sort">
               <span className="t-meta">Sort</span>
               <select value={sort} onChange={event => setSort(event.target.value)} className="field">
@@ -80,7 +83,7 @@ export default function Library({ params }) {
         </div>
       </section>
 
-      {tab === "downloads" ? <Downloads /> : tab === "continue" ? (
+      {tab === "downloads" ? <Downloads /> : tab === "completed" ? <Trophies /> : tab === "continue" ? (
         <section className="library-grid library-grid-wide">
           {continueWatching.map(entry => <ContinueCard key={entry.key} entry={entry} onResume={resume} onRemove={removeContinue} />)}
         </section>
@@ -92,7 +95,7 @@ export default function Library({ params }) {
         </section>
       )}
 
-      {tab !== "downloads" && (tab === "continue" ? continueWatching.length : items.length) === 0 ? (
+      {tab !== "downloads" && tab !== "completed" && (tab === "continue" ? continueWatching.length : items.length) === 0 ? (
         <section className="library-empty">
           <h2 className="t-title">
             {tab === "later" ? "Nothing saved for later" : tab === "continue" ? "Nothing in progress" : tab === "cloud" ? "Your TorBox library is empty" : "No saved titles"}
