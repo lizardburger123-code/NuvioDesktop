@@ -191,7 +191,6 @@ export default function Sources({ meta, video, onClose }) {
       <aside ref={panelRef} className="sources glass-dark" onClick={event => event.stopPropagation()} aria-label="Sources">
         <header className="sources-head">
           <div className="sources-titles">
-            <span className="sources-kicker">Sources</span>
             <h2 className="sources-title" dir="auto">{meta.name}</h2>
             {video.season != null ? (
               <span className="sources-sub num">{episodeCode(video.season, video.episode)}{video.title ? ` · ${video.title}` : ""}</span>

@@ -108,8 +108,7 @@ export default function SubtitlePicker({ request, onPlay, onClose }) {
       <div ref={dialogRef} className="sp glass-dark" role="dialog" aria-label="Choose subtitles" onClick={event => event.stopPropagation()}>
         <header className="sp-head">
           <div className="sp-titles">
-            <span className="sp-kicker"><LuCaptions /> Subtitles</span>
-            <h2>Pick subtitles for this file</h2>
+            <h2><LuCaptions aria-hidden="true" /> Subtitles for this file</h2>
             {data?.filename ? (
               <span className="sp-file" title={data.filename}><LuFileVideo aria-hidden="true" /> <span dir="ltr">{middle(data.filename)}</span></span>
             ) : null}

@@ -29,8 +29,12 @@
 .topbar-brand { transition: transform 520ms var(--ease-out); }
 .has-back .topbar-brand { transform: translateX(54px); }
 
-.topbar-brand { display: flex; align-items: center; height: 40px; padding: 0; background: none; }
-.topbar-brand-text { font-size: 17px; font-weight: 850; letter-spacing: .22em; line-height: 1; }
+.topbar-brand { display: flex; align-items: center; gap: 9px; height: 40px; padding: 0 6px; border-radius: 999px; background: none; color: var(--ink); }
+.topbar-brand:hover .topbar-brand-text { color: var(--ink); }
+/* The mark: an N whose strokes are a play notch, drawn in the accent. */
+.topbar-brand-mark { width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center; background: var(--accent); color: var(--on-accent); }
+.topbar-brand-mark svg { width: 15px; height: 15px; fill: currentColor; }
+.topbar-brand-text { font-size: var(--fs-16); font-weight: 700; letter-spacing: -.01em; line-height: 1; color: var(--ink-2); transition: color var(--t-fast) ease; }
 
 
 @property --pill-l { syntax: "<length>"; inherits: false; initial-value: 0px; }

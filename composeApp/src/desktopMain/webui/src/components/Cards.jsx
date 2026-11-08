@@ -5,10 +5,10 @@ import { episodeCode, minutesLeft, year } from "../lib/format.js";
 import "./Cards.css";
 
 const TILT = {
-  rotateAmplitude: 9,
-  scaleOnHover: 1.06,
-  glare: 0.32,
-  shadow: 0.55,
+  rotateAmplitude: 6,
+  scaleOnHover: 1.05,
+  glare: 0.22,
+  shadow: 0.5,
   parallax: 0.6,
   smoothness: 0.55,
   showTooltip: false,

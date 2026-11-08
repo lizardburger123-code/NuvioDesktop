@@ -3,6 +3,7 @@ import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
 import { useApp } from "../AppContext.jsx";
 import Showcase from "../components/Showcase.jsx";
+import ShelfPulse from "../components/ShelfPulse.jsx";
 import Row from "../components/Row.jsx";
 import { ContinueCard, PosterCard, SkeletonPosters } from "../components/Cards.jsx";
 import RowActions, { openCatalog } from "../components/RowActions.jsx";
@@ -54,7 +55,7 @@ export default function Home() {
       </div>
 
       {continueWatching.length ? (
-        <Row title="Continue watching" subtitle={`${continueWatching.length} in progress`}>
+        <Row title="Continue watching" subtitle={`${continueWatching.length} in progress`} action={<ShelfPulse />}>
           {continueWatching.map(entry => <ContinueCard key={entry.key} entry={entry} onResume={resume} onRemove={removeContinue} />)}
         </Row>
       ) : null}

@@ -1273,3 +1273,15 @@ button.action:focus-visible,
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* A single light sweep across the case once it has landed. */
+.end-card-case::after {
+  content: "";
+  position: absolute;
+  inset: -30% -60%;
+  background: linear-gradient(100deg, transparent 42%, rgba(255, 255, 255, .28) 50%, transparent 58%);
+  transform: translateX(-80%);
+  pointer-events: none;
+}
+.end-card.visible .end-card-case::after { animation: end-case-sweep 1.1s cubic-bezier(.2, .9, .25, 1) 2.7s both; }
+@keyframes end-case-sweep { to { transform: translateX(80%); } }

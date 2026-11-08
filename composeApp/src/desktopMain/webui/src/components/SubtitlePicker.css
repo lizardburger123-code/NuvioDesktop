@@ -35,9 +35,8 @@
   padding: 24px 24px 14px;
 }
 .sp-titles { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.sp-kicker { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-12); font-weight: 700; color: var(--accent); }
-.sp-kicker svg { width: 14px; height: 14px; }
-.sp-titles h2 { font-size: var(--fs-20); font-weight: 750; letter-spacing: -.01em; }
+.sp-titles h2 { display: flex; align-items: center; gap: 8px; font-size: var(--fs-20); font-weight: 700; letter-spacing: -.01em; }
+.sp-titles h2 svg { width: 20px; height: 20px; color: var(--ink-2); }
 .sp-file {
   display: inline-flex;
   align-items: center;

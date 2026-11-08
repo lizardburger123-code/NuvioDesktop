@@ -36,8 +36,7 @@
   padding: 24px 24px 12px;
 }
 .sources-titles { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.sources-kicker { font-size: var(--fs-12); font-weight: 700; color: var(--accent); }
-.sources-title { font-size: var(--fs-20); font-weight: 750; }
+.sources-title { font-size: var(--fs-20); font-weight: 700; }
 .sources-sub { font-size: var(--fs-13); color: var(--ink-2); font-weight: 600; }
 
 .sources-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 24px 14px; }

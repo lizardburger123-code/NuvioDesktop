@@ -2662,6 +2662,7 @@ const renderEndCard = () => {
   endCardSecondaryIcon.setAttribute("href", hasNext ? "#icon-home" : "#icon-replay");
   endCardSecondary.dataset.endAction = hasNext ? "endCardHome" : "endCardReplay";
   endCard.style.setProperty("--end-secs", `${END_CARD_SECONDS}s`);
+  if (posterUrl) window.setTimeout(playTrophyChime, 1500);
   endCard.hidden = false;
   endCard.classList.remove("visible");
   void endCard.offsetWidth;
@@ -2669,6 +2670,35 @@ const renderEndCard = () => {
   root.classList.add("end-card-active");
   window.clearTimeout(endCardTimer);
   endCardTimer = window.setTimeout(() => { if (endCardShown) runEndAction(endCardPrimary.dataset.endAction); }, (END_CARD_SECONDS + 1.2) * 1000);
+};
+
+// A quiet two-note chime as the ring closes: the moment should be heard as well as seen, once.
+let chimeContext = null;
+const playTrophyChime = () => {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    chimeContext = chimeContext || new Ctx();
+    const ctx = chimeContext;
+    const now = ctx.currentTime;
+    const master = ctx.createGain();
+    master.gain.value = 0.0001;
+    master.connect(ctx.destination);
+    master.gain.exponentialRampToValueAtTime(0.09, now + 0.02);
+    master.gain.exponentialRampToValueAtTime(0.0001, now + 2.2);
+    [[659.25, 0], [987.77, 0.42], [1318.5, 0.84]].forEach(([freq, at]) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, now + at);
+      gain.gain.exponentialRampToValueAtTime(1, now + at + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + at + 1.3);
+      osc.connect(gain).connect(master);
+      osc.start(now + at);
+      osc.stop(now + at + 1.4);
+    });
+  } catch (error) { /* no audio output: the moment is still seen */ }
 };
 
 const hideEndCard = () => {

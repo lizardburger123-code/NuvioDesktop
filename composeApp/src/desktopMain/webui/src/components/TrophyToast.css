@@ -44,9 +44,9 @@
   width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; color: #15110a;
   background: radial-gradient(circle at 35% 30%, var(--metal-a), var(--metal-b) 70%);
   box-shadow: inset 0 0 0 1px rgb(255 255 255 / .18), inset 0 -2px 6px rgb(0 0 0 / .35), 0 0 30px -6px var(--metal-a);
-  animation: ttoast-land .6s cubic-bezier(.2, .9, .3, 1.15) both;
+  animation: ttoast-land .62s cubic-bezier(.23, 1, .32, 1) both;
 }
-@keyframes ttoast-land { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes ttoast-land { 0% { transform: scale(.4); opacity: 0; } 70% { transform: scale(1.04); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
 .ttoast-medal svg { width: 22px; height: 22px; }
 .ttoast-badge.badge-silver .ttoast-medal, .ttoast-badge.badge-platinum .ttoast-medal { color: #0e1620; }
 

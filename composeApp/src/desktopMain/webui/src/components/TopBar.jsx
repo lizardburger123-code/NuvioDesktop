@@ -3,7 +3,6 @@ import { LuArrowLeft, LuSearch, LuSettings2 } from "react-icons/lu";
 import { activeSection, back, canGoBack, goSection } from "../lib/router.js";
 import { reduceMotion, spring, stopAnimations } from "../lib/motion.js";
 import { NAV_ITEMS } from "../lib/nav.js";
-import GradientText from "../reactbits/GradientText/GradientText.jsx";
 import { useApp } from "../AppContext.jsx";
 import ProfileCard, { Avatar } from "./ProfileCard.jsx";
 import "./TopBar.css";
@@ -149,8 +148,6 @@ function SectionNav({ active }) {
 }
 
 export default function TopBar({ route, stack, profile, compact }) {
-  const { appearance } = useApp();
-  const colors = appearance?.colors?.length ? ["#ffffff", ...appearance.colors, "#ffffff"] : ["#ffffff", "#b497cf", "#ffffff"];
   const showBack = canGoBack();
   const section = activeSection(stack);
   const profileRef = useRef(null);
@@ -171,7 +168,8 @@ export default function TopBar({ route, stack, profile, compact }) {
           <LuArrowLeft />
         </button>
         <button className="topbar-brand" onClick={() => goSection("home")} aria-label="Home">
-          <GradientText className="topbar-brand-text" colors={colors} animationSpeed={14}>NUVIO</GradientText>
+          <span className="topbar-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 19V5l9 9V5h5v14l-9-9v9z" /></svg></span>
+          <span className="topbar-brand-text">Nuvio</span>
         </button>
       </div>
 
