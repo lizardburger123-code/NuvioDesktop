@@ -50,7 +50,8 @@ export function AppProvider({ boot, children }) {
     );
   }, [laterIds, toast]);
 
-  const openDetails = useCallback(item => navigate("details", { type: item.type, id: item.id, name: item.name }), []);
+  // An AniList title for a later season opens on that season.
+  const openDetails = useCallback(item => navigate("details", { type: item.type, id: item.id, name: item.name, ...(item.season ? { season: item.season } : {}) }), []);
 
   /** Continue watching: replay the last source when the app still has it, else pick a source. */
   const resume = useCallback(async entry => {

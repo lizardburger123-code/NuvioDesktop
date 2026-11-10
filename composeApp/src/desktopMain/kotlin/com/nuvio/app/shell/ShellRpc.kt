@@ -416,12 +416,27 @@ internal class ShellRpc(private val host: ShellHost) {
         WatchProgressRepository.ensureLoaded()
         WatchedRepository.ensureLoaded()
         WatchLaterStore.ensureLoaded()
-        watch("home", HomeRepository.uiState) { state ->
+        ShellAniList.refreshIfStale()
+        watch("home", combine(HomeRepository.uiState, ShellAniList.state) { home, anime -> home to anime }) { (state, anime) ->
             runCatching { ShellHomeRows.applyDefaults() }
+            val animeRows = ShellAniList.rows(anime)
+            val trending = ShellAniList.homeRow(anime)
             buildJsonObject {
                 put("loading", state.isLoading)
                 put("hero", buildJsonArray { state.heroItems.forEach { add(ShellJson.preview(it)) } })
-                put("sections", buildJsonArray { state.sections.forEach { add(ShellJson.section(it)) } })
+                put("sections", buildJsonArray {
+                    val sections = state.sections.map { ShellJson.section(it) }
+                    // AniList's trending row sits third on Home (where Kitsu's rows used to be).
+                    val at = minOf(2, sections.size)
+                    sections.forEachIndexed { index, section ->
+                        if (index == at && trending != null) add(trending)
+                        add(section)
+                    }
+                    if (at == sections.size && trending != null) add(trending)
+                })
+                put("anime", JsonArray(animeRows))
+                put("animeLoading", animeRows.isEmpty() && (anime.loading || anime.loadedAt == 0L && anime.error == null))
+                anime.error?.takeIf { animeRows.isEmpty() }?.let { put("animeError", it) }
                 state.errorMessage?.let { put("error", it) }
             }
         }
@@ -524,12 +539,19 @@ internal class ShellRpc(private val host: ShellHost) {
         val query = params.string("query").orEmpty().trim()
         searchQuery = query
         if (params.bool("commit") == true && query.length > 1) SearchHistoryRepository.recordSearch(query)
-        watch("search", SearchRepository.uiState) { state ->
+        ShellAniList.search(query)
+        watch("search", combine(SearchRepository.uiState, ShellAniList.found) { state, found -> state to found }) { (state, found) ->
+            val anime = found.section?.takeIf { found.query == searchQuery.trim() }
             buildJsonObject {
                 put("query", searchQuery)
                 put("loading", state.isLoading)
                 put("sections", buildJsonArray {
-                    state.sections.forEach { section ->
+                    // With AniList's matches in, Kitsu's search rows only repeat them.
+                    val sections = state.sections.filter { section ->
+                        anime == null || "kitsu" !in "${section.addonName} ${section.key}".lowercase()
+                    }
+                    sections.forEachIndexed { index, section ->
+                        if (index == minOf(2, sections.size) && anime != null) add(anime)
                         add(buildJsonObject {
                             put("key", section.key)
                             put("title", section.title)
@@ -538,6 +560,7 @@ internal class ShellRpc(private val host: ShellHost) {
                             put("items", buildJsonArray { section.items.forEach { add(ShellJson.preview(it)) } })
                         })
                     }
+                    if (anime != null && sections.size <= 2) add(anime)
                 })
                 state.errorMessage?.let { put("error", it) }
             }

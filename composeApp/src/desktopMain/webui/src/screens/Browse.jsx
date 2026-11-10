@@ -28,7 +28,12 @@ export default function Browse({ params }) {
   useEffect(() => { call("home.subscribe").catch(() => {}); }, []);
   useEffect(() => { setGenre(null); }, [kind]);
 
-  const sections = useMemo(() => home.sections.filter(section => sectionKind(section) === kind), [home.sections, kind]);
+  // Anime comes from AniList (built in), then any other anime addon's rows.
+  const sections = useMemo(() => {
+    const own = home.sections.filter(section => sectionKind(section) === kind && !String(section.key).startsWith("anilist:"));
+    return kind === "anime" ? [...(home.anime || []), ...own] : own;
+  }, [home.sections, home.anime, kind]);
+  const waiting = kind === "anime" ? Boolean(home.animeLoading) || (home.loading && !sections.length) : home.loading && !sections.length;
   const genres = useMemo(() => {
     const counts = new Map();
     sections.forEach(section => section.items.forEach(item => (item.genres || []).forEach(g => counts.set(g, (counts.get(g) || 0) + 1))));
@@ -60,11 +65,11 @@ export default function Browse({ params }) {
 
       {mode === "highlights" && featuredList.length ? (
         <div className="browse-showcase">
-          <Showcase short items={featuredList} onPlay={item => navigate("details", { type: item.type, id: item.id, name: item.name, autoplay: true })} onToggleLater={toggleLater} laterIds={laterIds} />
+          <Showcase short items={featuredList} onPlay={item => navigate("details", { type: item.type, id: item.id, name: item.name, autoplay: true, ...(item.season ? { season: item.season } : {}) })} onToggleLater={toggleLater} laterIds={laterIds} />
         </div>
       ) : null}
 
-      {mode === "highlights" && home.loading && !sections.length ? <Row title="Loading"><SkeletonPosters /></Row> : null}
+      {mode === "highlights" && waiting && !sections.length ? <Row title="Loading"><SkeletonPosters /></Row> : null}
       {mode === "highlights" && filtered.map(section => (
         <Row
           key={section.key}
@@ -78,8 +83,12 @@ export default function Browse({ params }) {
           ))}
         </Row>
       ))}
-      {mode === "highlights" && !home.loading && !sections.length ? (
-        <p className="browse-empty">None of your addons has a {TITLES[kind]?.toLowerCase() || kind} catalog on Home. Turn one on in Settings, or install a catalog addon.</p>
+      {mode === "highlights" && !waiting && !sections.length ? (
+        <p className="browse-empty">
+          {kind === "anime"
+            ? `Couldn't load AniList${home.animeError ? ` (${home.animeError})` : ""}. Check your connection, then come back to this tab.`
+            : `None of your addons has a ${TITLES[kind]?.toLowerCase() || kind} catalog on Home. Turn one on in Settings, or install a catalog addon.`}
+        </p>
       ) : null}
       <div className="screen-end" />
     </main>

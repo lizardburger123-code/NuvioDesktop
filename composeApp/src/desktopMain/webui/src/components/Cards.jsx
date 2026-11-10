@@ -23,7 +23,7 @@ export const PosterCard = memo(function PosterCard({ item, onOpen, onToggleLater
       ) : null}
       <div className="poster-text">
         <span className="poster-title" dir="auto">{item.name}</span>
-        <span className="poster-meta num">{[year(item.releaseInfo), item.imdbRating].filter(Boolean).join(" · ")}</span>
+        <span className="poster-meta num">{[year(item.releaseInfo), item.imdbRating || (item.score ? `${item.score}%` : null)].filter(Boolean).join(" · ")}</span>
       </div>
     </div>
   );

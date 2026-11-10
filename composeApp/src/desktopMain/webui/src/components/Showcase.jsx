@@ -6,27 +6,40 @@ import { year } from "../lib/format.js";
 import { navigate } from "../lib/router.js";
 import "./Showcase.css";
 
-const openDetails = item => navigate("details", { type: item.type, id: item.id, name: item.name });
+const openDetails = item => navigate("details", { type: item.type, id: item.id, name: item.name, ...(item.season ? { season: item.season } : {}) });
 
-/** Backdrop that cross-fades after the next picture has decoded, with a slow drift while it shows. */
-function Art({ src }) {
-  const [layers, setLayers] = useState(() => (src ? [{ src, id: 0 }] : []));
+/**
+ * Backdrop that cross-fades after the next picture has decoded, with a slow drift while it shows.
+ * When a picture won't load, its [fallback] takes its place (AniList's own banner, say).
+ */
+function Art({ src, fallback }) {
+  const [layers, setLayers] = useState(() => (src ? [{ src, fallback, id: 0 }] : []));
   const id = useRef(0);
   const last = useRef(null);
   useEffect(() => {
     if (!src || layers[layers.length - 1]?.src === src) return undefined;
     let alive = true;
-    const img = new Image();
-    img.src = src;
-    const swap = () => {
+    const show = (next, alt) => {
       if (!alive) return;
       id.current += 1;
-      setLayers(prev => [...prev.slice(-1), { src, id: id.current }]);
+      setLayers(prev => [...prev.slice(-1), { src: next, fallback: alt, id: id.current }]);
     };
-    (img.decode ? img.decode() : Promise.resolve()).then(swap, swap);
+    const load = (next, alt) => {
+      const img = new Image();
+      img.src = next;
+      (img.decode ? img.decode() : Promise.resolve()).then(
+        () => show(next, null),
+        () => (alt ? load(alt, null) : show(next, null)),
+      );
+    };
+    load(src, fallback);
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src]);
+  const failed = layer => {
+    if (!layer.fallback) return;
+    setLayers(prev => prev.map(entry => (entry.id === layer.id ? { ...entry, src: entry.fallback, fallback: null } : entry)));
+  };
   useLayoutEffect(() => {
     if (!last.current || reduceMotion()) return;
     if (layers.length > 1) last.current.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 1100, easing: EASE.glide });
@@ -35,11 +48,26 @@ function Art({ src }) {
   return (
     <div className="showcase-art" aria-hidden="true">
       {layers.map((layer, i) => (
-        <img key={layer.id} ref={i === layers.length - 1 ? last : undefined} src={layer.src} alt="" decoding="async" />
+        <img key={layer.id} ref={i === layers.length - 1 ? last : undefined} src={layer.src} alt="" decoding="async" onError={() => failed(layer)} />
       ))}
     </div>
   );
 }
+
+/** The title as its logo, or in type when there's no logo (or it won't load). */
+function Title({ item }) {
+  const [broken, setBroken] = useState(false);
+  if (item.logo && !broken) return <img className="showcase-logo" src={item.logo} alt={item.name} onError={() => setBroken(true)} />;
+  return <h2 className="showcase-name" dir="auto">{item.name}</h2>;
+}
+
+/** "Episode 1181 in 3 days": when an airing anime's next episode comes out. */
+export const nextEpisodeLabel = item => {
+  if (!item?.nextEpisode || !item.nextAt) return null;
+  const days = Math.round((item.nextAt - Date.now()) / 864e5);
+  if (days < 0) return null;
+  return `Episode ${item.nextEpisode} ${days === 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`}`;
+};
 
 /**
  * The first screen of Home: one film or series at a time, full width, with its own backdrop and
@@ -72,15 +100,22 @@ export default function Showcase({ items = [], strip = false, short = false, onP
   const shape = `${short ? " is-short" : ""}${strip ? " has-strip" : ""}`;
   if (!item) return <section className={`showcase skel${shape}`} aria-hidden="true" />;
   const saved = laterIds?.has(`${item.type}:${item.id}`);
-  const meta = [year(item.releaseInfo), ...(item.genres?.slice(0, 2) || []), item.imdbRating ? `IMDb ${item.imdbRating}` : null].filter(Boolean);
+  const meta = [
+    year(item.releaseInfo), ...(item.genres?.slice(0, 2) || []),
+    item.imdbRating ? `IMDb ${item.imdbRating}` : item.score ? `AniList ${item.score}%` : null,
+    nextEpisodeLabel(item),
+  ].filter(Boolean);
+  const kicker = item.anilist != null || item.score != null
+    ? (item.type === "movie" ? "Anime film" : "Anime series")
+    : (item.type === "series" ? "Featured series" : "Featured film");
 
   return (
     <section className={`showcase${shape}`} aria-label="Featured" onMouseEnter={() => setHeld(true)} onMouseLeave={() => setHeld(false)}>
-      <Art src={item.banner || item.poster} />
+      <Art src={item.banner || item.poster} fallback={item.bannerAlt || item.poster} />
       <div className="showcase-scrim" />
       <div className="showcase-body" ref={bodyRef}>
-        <span className="showcase-kicker">{item.type === "series" ? "Featured series" : "Featured film"}</span>
-        {item.logo ? <img className="showcase-logo" src={item.logo} alt={item.name} /> : <h2 className="showcase-name" dir="auto">{item.name}</h2>}
+        <span className="showcase-kicker">{kicker}</span>
+        <Title key={`${item.type}:${item.id}`} item={item} />
         <p className="showcase-meta num">{meta.map((part, i) => <span key={i}>{part}</span>)}</p>
         {item.description ? <p className="showcase-desc" dir="auto">{item.description}</p> : null}
         <div className="showcase-actions">

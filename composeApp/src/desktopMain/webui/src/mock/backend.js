@@ -48,6 +48,37 @@ const anime = [
   series("kitsu:42765", "Jujutsu Kaisen", 2020, { genres: ["Action", "Anime"] }),
   series("kitsu:44042", "Chainsaw Man", 2022, { genres: ["Action", "Anime"] }),
 ];
+// AniList's lists, the way the app sends them (IMDb ids, AniList covers and scores).
+const ani = (id, name, year, score, extra = {}) => ({ ...series(id, name, year, extra), score, imdbRating: undefined, ...extra });
+const aniPool = [
+  ani("tt0388629", "ONE PIECE", 1999, 87, { genres: ["Action", "Adventure", "Comedy"], nextEpisode: 1181, nextAt: Date.now() + 3 * 864e5 }),
+  ani("tt43691353", "Overgeared", 2026, 79, { genres: ["Action", "Fantasy"], nextEpisode: 7, nextAt: Date.now() + 2 * 864e5 }),
+  ani("tt12345678", "Cyberpunk: Edgerunners 2", 2026, 84, { genres: ["Action", "Sci-Fi"], season: 2 }),
+  ani("tt20850348", "The Apothecary Diaries Season 3", 2026, 88, { genres: ["Drama", "Mystery"], season: 3 }),
+  ani("tt2560140", "Attack on Titan", 2013, 85, { genres: ["Action", "Drama", "Fantasy"] }),
+  ani("tt9335498", "Demon Slayer: Kimetsu no Yaiba", 2019, 83, { genres: ["Action", "Supernatural"] }),
+  ani("tt12343534", "JUJUTSU KAISEN", 2020, 85, { genres: ["Action", "Supernatural"] }),
+  ani("tt0877057", "Death Note", 2006, 84, { genres: ["Mystery", "Psychological", "Thriller"] }),
+  ani("tt22248376", "Frieren: Beyond Journey's End", 2023, 91, { genres: ["Adventure", "Drama", "Fantasy"] }),
+  ani("tt13706018", "Chainsaw Man – The Movie: Reze Arc", 2025, 89, { type: "movie", genres: ["Action", "Romance"] }),
+  ani("tt5323662", "A Silent Voice", 2016, 89, { type: "movie", genres: ["Drama", "Romance"] }),
+  ani("tt13616990", "Shangri-La Frontier Season 3", 2027, null, { genres: ["Action", "Adventure"], season: 3 }),
+];
+const aniRow = (id, title, offset) => ({
+  key: `anilist:${id}`, title, subtitle: "", addonName: "AniList", type: "anime", kind: "anime", hasMore: true,
+  source: `anilist|anime|${id}`, items: aniPool.map((_, i) => aniPool[(i + offset) % aniPool.length]),
+});
+const animeRows = [
+  aniRow("trending", "Trending now", 0), aniRow("season", "Popular in Fall 2026", 1), aniRow("airing", "Top airing", 3),
+  aniRow("popular", "All-time popular", 4), aniRow("top", "Top rated", 8), aniRow("films", "Top anime films", 9), aniRow("next", "Coming in Winter 2027", 11),
+];
+const aniSources = [
+  ...animeRows.map(row => ({ id: row.source, name: row.title, addon: "AniList", addonId: "anilist", type: "anime", paged: true, searchable: true, searchOnly: false,
+    filters: [{ name: "genre", required: false, options: ["Action", "Adventure", "Comedy", "Drama", "Fantasy", "Romance", "Sci-Fi", "Slice of Life"] }, { name: "format", required: false, options: ["TV", "Film", "ONA", "OVA", "Special", "TV short"] }] })),
+  { id: "anilist|anime|seasons", name: "By season", addon: "AniList", addonId: "anilist", type: "anime", paged: true, searchable: true, searchOnly: false,
+    filters: [{ name: "season", required: true, options: ["Fall", "Winter", "Spring", "Summer"] }, { name: "year", required: true, options: Array.from({ length: 30 }, (_, i) => String(2026 - i)) }] },
+];
+
 const library = [
   movie("tt9001", "The Hunt", 2012, { genres: ["Drama"], rating: "8.3", description: "A teacher lives a lonely life, all the while struggling over his son's custody. His life slowly gets better as he finds love and receives good news from his son, but his new luck is about to be brutally shattered by an innocent little lie." }),
   anime[1],
@@ -80,7 +111,7 @@ const continueWatching = [
 const sections = [
   { key: "cinemeta.movie.top", title: "Trending movies", subtitle: "Cinemeta", addonName: "Cinemeta", type: "movie", kind: "movie", items: trendingMovies, source: "https://v3-cinemeta.strem.io/manifest.json|movie|top" },
   { key: "cinemeta.series.top", title: "Trending series", subtitle: "Cinemeta", addonName: "Cinemeta", type: "series", kind: "series", items: trendingSeries, source: "https://v3-cinemeta.strem.io/manifest.json|series|top" },
-  { key: "kitsu.trending", title: "Trending anime", subtitle: "Anime Kitsu", addonName: "Anime Kitsu", type: "series", kind: "anime", items: anime, source: "https://anime-kitsu.strem.fun/manifest.json|anime|kitsu-trending" },
+  { ...animeRows[0], key: "anilist:home", title: "Trending anime" },
   { key: "torbox.library", title: "TorBox library", subtitle: "AIOStreams", addonName: "AIOStreams", type: "other", items: library },
 ];
 
@@ -89,6 +120,9 @@ let homeRows = [
   { key: "aio:series:popular", title: "Popular - Series", addon: "SELection", enabled: true },
   { key: "aio:movie:library", title: "TorBox - Library", addon: "SELection", enabled: false },
   { key: "cinemeta:movie:top", title: "Trending movies", addon: "Cinemeta", enabled: true },
+  { key: "kitsu:anime:kitsu-trending", title: "Kitsu Trending", addon: "Anime Kitsu", enabled: false },
+  { key: "anilist:home", title: "Trending anime (Home)", addon: "AniList", enabled: true },
+  ...animeRows.map(row => ({ key: row.key, title: row.title, addon: "AniList", enabled: true })),
 ];
 let torboxConnected = false;
 let torboxItems = library.slice(0, 5);
@@ -198,7 +232,7 @@ export const createMockBackend = deliver => {
     // Like the app: the loading state is only seen once; later subscribes get the data.
     if (!homeLoaded) push("home", { loading: true, hero: [], sections: [] });
     homeLoaded = true;
-    push("home", { loading: false, hero: [trendingSeries[4], library[3], anime[5], trendingMovies[9]], sections }, 260);
+    push("home", { loading: false, hero: [trendingSeries[4], library[3], anime[5], trendingMovies[9]], sections, anime: animeRows.filter(row => homeRows.find(r => r.key === row.key)?.enabled !== false) }, 260);
   };
 
   const avatarCatalog = ["Nova", "Echo", "Ember", "Moss", "Tide", "Iris", "Quartz", "Dune", "Volt", "Lumen", "Sable", "Coral"].map((name, i) => {
@@ -257,6 +291,7 @@ export const createMockBackend = deliver => {
       const base = kind === "anime"
         ? [["kitsu-trending", "Trending", "Anime Kitsu"], ["kitsu-airing", "Airing now", "Anime Kitsu"], ["kitsu-top", "Top rated", "Anime Kitsu"], ["mal-season", "This season", "Animeo"]]
         : [["tmdb-popular", "Popular", "The Movie Database"], ["tmdb-top", "Top rated", "The Movie Database"], ["tmdb-trending", "Trending", "The Movie Database"], ["netflix", "Netflix", "Streaming Catalogs"], ["disney", "Disney+", "Streaming Catalogs"], ["cinemeta-new", "New", "Cinemeta"]];
+      if (kind === "anime") return [...aniSources, ...base.map(([id, name, addon]) => ({ id: `mock|anime|${id}`, name, addon, type: "anime", paged: true, filters: [{ name: "genre", required: false, options: genres }] }))];
       return base.map(([id, name, addon], i) => ({
         id: `mock|${kind}|${id}`, name, addon, type: kind === "anime" ? "anime" : kind, paged: true,
         filters: [{ name: "genre", required: false, options: genres }, ...(i % 2 === 0 ? [{ name: "year", required: false, options: years }] : [])],
@@ -276,6 +311,7 @@ export const createMockBackend = deliver => {
           cat("https://anime-kitsu.strem.fun/manifest.json", "anime", "kitsu-airing", "Airing now"),
           cat("https://anime-kitsu.strem.fun/manifest.json", "anime", "kitsu-search", "Search", { searchable: true, searchOnly: true, filters: [] }),
         ] },
+        { id: "anilist", name: "AniList", logo: null, description: "Built in. Anime from AniList: trending, this season, top rated, films and every season back to 1970.", types: ["anime"], adult: false, catalogs: aniSources },
         { id: "https://x/onlyporn/manifest.json", name: "OnlyPorn", description: "Adult videos", types: ["movie"], adult: true, catalogs: [
           cat("https://x/onlyporn/manifest.json", "movie", "eporner", "Eporner"),
           cat("https://x/onlyporn/manifest.json", "Porn", "trending", "Trending", { searchable: true }),
@@ -287,7 +323,7 @@ export const createMockBackend = deliver => {
     },
     "discover.page": ({ source, filters = {}, skip = 0 }) => new Promise(resolve => setTimeout(() => {
       const q = String(filters.search || "").toLowerCase();
-      const pool = all.filter(item => (!filters.genre || item.genres.includes(filters.genre) || /^\d{4}$/.test(filters.genre)) && (!q || item.name.toLowerCase().includes(q)));
+      const pool = (source.startsWith("anilist|") ? aniPool : all).filter(item => (!filters.genre || item.genres.includes(filters.genre) || /^\d{4}$/.test(filters.genre)) && (!q || item.name.toLowerCase().includes(q)));
       const page = Array.from({ length: 24 }, (_, i) => {
         const item = pool[(skip + i + source.length) % Math.max(1, pool.length)];
         return item ? { ...item, id: `${item.id}-${skip + i}` } : null;
@@ -380,7 +416,7 @@ export const createMockBackend = deliver => {
         { key: "movies", title: "Movies", type: "movie", addonName: "Cinemeta", items: hits.filter(item => item.type === "movie") },
         { key: "tmdb-movies", title: "TMDB Movies", type: "movie", addonName: "AIOMetadata", items: hits.filter(item => item.type === "movie").slice(0, 3) },
         { key: "series", title: "Series", type: "series", addonName: "Cinemeta", items: hits.filter(item => item.type === "series" && !item.id.startsWith("kitsu")) },
-        { key: "anime", title: "Anime", type: "anime", addonName: "Anime Kitsu", items: hits.filter(item => item.id.startsWith("kitsu")) },
+        { key: "anilist:search", title: "Anime", type: "anime", addonName: "AniList", items: aniPool.filter(item => item.name.toLowerCase().includes(String(query || "").toLowerCase().slice(0, 3))) },
       ].filter(group => group.items.length);
       push("search", { query, loading: false, sections: groups }, 300);
       return true;

@@ -249,6 +249,7 @@ internal object ShellTorbox {
 internal object ShellHomeRows {
     private val store by lazy { DesktopStorage.store("nuvio_shell") }
     private val torboxLibrary = Regex("torbox.*library|library.*torbox", RegexOption.IGNORE_CASE)
+    private val kitsu = Regex("kitsu", RegexOption.IGNORE_CASE)
 
     fun list(): JsonElement {
         HomeCatalogSettingsRepository.snapshot()
@@ -262,24 +263,47 @@ internal object ShellHomeRows {
                     put("enabled", item.enabled)
                 })
             }
+            ShellAniList.rowList().forEach { (key, title) ->
+                add(buildJsonObject {
+                    put("key", key)
+                    put("title", title)
+                    put("addon", ShellAniList.AddonName)
+                    put("enabled", !ShellAniList.isHidden(key))
+                })
+            }
         }
     }
 
     fun setEnabled(key: String, enabled: Boolean) {
-        HomeCatalogSettingsRepository.setEnabled(key, enabled)
+        if (key.startsWith("anilist:")) ShellAniList.setHidden(key, !enabled)
+        else HomeCatalogSettingsRepository.setEnabled(key, enabled)
     }
 
-    /** Once: the TorBox library catalog stays off Home (it's still in Library › TorBox). */
+    /**
+     * Once each: the TorBox library catalog stays off Home (it's still in Library › TorBox), and
+     * Kitsu's rows make way for AniList's once those have loaded. Each waits until its rows exist
+     * (their addon may still be loading); after that, a manual "show" in Settings sticks.
+     */
     fun applyDefaults() {
-        if (store.getBoolean("hid_torbox_library_v1") == true) return
+        val torboxDone = store.getBoolean("hid_torbox_library_v1") == true
+        val kitsuDone = store.getBoolean("hid_kitsu_rows_v1") == true
+        if (torboxDone && kitsuDone) return
         HomeCatalogSettingsRepository.snapshot()
         val items = HomeCatalogSettingsRepository.uiState.value.items
-        // Wait until the row exists (its addon may still be loading); once hidden, a manual
-        // "show" in Settings sticks.
-        val matches = items.filter { torboxLibrary.containsMatchIn(it.defaultTitle) || torboxLibrary.containsMatchIn(it.displayTitle) }
-        if (matches.isEmpty()) return
-        matches.forEach { HomeCatalogSettingsRepository.setEnabled(it.key, false) }
-        store.putBoolean("hid_torbox_library_v1", true)
+        if (!torboxDone) {
+            val matches = items.filter { torboxLibrary.containsMatchIn(it.defaultTitle) || torboxLibrary.containsMatchIn(it.displayTitle) }
+            if (matches.isNotEmpty()) {
+                matches.forEach { HomeCatalogSettingsRepository.setEnabled(it.key, false) }
+                store.putBoolean("hid_torbox_library_v1", true)
+            }
+        }
+        if (!kitsuDone && ShellAniList.state.value.rows.isNotEmpty()) {
+            val matches = items.filter { !it.isCollection && (kitsu.containsMatchIn(it.addonName) || kitsu.containsMatchIn(it.key)) }
+            if (matches.isNotEmpty()) {
+                matches.forEach { HomeCatalogSettingsRepository.setEnabled(it.key, false) }
+                store.putBoolean("hid_kitsu_rows_v1", true)
+            }
+        }
     }
 }
 
@@ -329,6 +353,8 @@ internal object ShellDiscover {
         catalog.extra.none { it.isRequired && it.name != "search" && it.options.isEmpty() }
 
     fun sources(kind: String): JsonElement = buildJsonArray {
+        // Anime starts with AniList's lists (built in), then any anime addon's own catalogs.
+        if (kind == "anime") ShellAniList.sources().forEach { add(it) }
         AddonRepository.uiState.value.addons.enabledAddons().forEach { addon ->
             val manifest = addon.manifest ?: return@forEach
             manifest.catalogs.forEach catalogs@{ catalog ->
@@ -356,6 +382,7 @@ internal object ShellDiscover {
                 put("catalogs", buildJsonArray { catalogs.forEach { add(sourceJson(addon, it)) } })
             })
         }
+        add(ShellAniList.addon())
     }
 
     private fun encode(value: String) = URLEncoder.encode(value, Charsets.UTF_8).replace("+", "%20")
@@ -384,6 +411,7 @@ internal object ShellDiscover {
     }
 
     suspend fun page(source: String, filters: Map<String, String>, skip: Int): JsonElement {
+        if (source.startsWith("${ShellAniList.AddonId}|")) return ShellAniList.page(source.substringAfterLast("|"), filters, skip)
         val parts = source.split("|")
         require(parts.size >= 3) { "Unknown catalog." }
         val catalogId = parts.last()
