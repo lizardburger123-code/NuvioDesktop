@@ -182,6 +182,124 @@ internal object DesktopEmbeddedSubtitleTimelineLoader {
         }
     }
 
+    /** One subtitle track a file carries, read from its header without downloading the film. */
+    data class EmbeddedSubtitleInfo(
+        val number: Int,
+        val language: String?,
+        val name: String?,
+        /** "PGS" (disc bitmap), "VobSub" (DVD bitmap), "ASS", "SRT" or the raw codec id. */
+        val format: String,
+        val forced: Boolean,
+        val hearingImpaired: Boolean,
+        val commentary: Boolean,
+    ) {
+        /** Bitmap tracks come straight off a Blu-ray or DVD: the official subtitles. */
+        val fromDisc: Boolean get() = format == "PGS" || format == "VobSub"
+    }
+
+    private const val PROBE_TIMEOUT_MS = 8_000L
+    private const val PROBE_MAX_BYTES = 6L * 1024L * 1024L
+    private const val PROBE_MAX_REQUESTS = 6
+
+    /**
+     * Lists the subtitle tracks of a Matroska file at [sourceUrl] by reading only its header
+     * (usually one range request of half a megabyte). Null when the file can't be read that way
+     * (not Matroska, no range support, too slow).
+     */
+    suspend fun probeSubtitleTracks(
+        sourceUrl: String,
+        sourceHeaders: Map<String, String> = emptyMap(),
+    ): List<EmbeddedSubtitleInfo>? {
+        if (!sourceUrl.startsWith("http://", ignoreCase = true) &&
+            !sourceUrl.startsWith("https://", ignoreCase = true)
+        ) return null
+        return try {
+            withTimeout(PROBE_TIMEOUT_MS) {
+                withContext(Dispatchers.IO) { readSubtitleTracks(sourceUrl, sourceHeaders) }
+            }
+        } catch (_: TimeoutCancellationException) {
+            null
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private suspend fun readSubtitleTracks(
+        sourceUrl: String,
+        sourceHeaders: Map<String, String>,
+    ): List<EmbeddedSubtitleInfo>? {
+        val stats = RangeStats(
+            deadlineNs = System.nanoTime() + PROBE_TIMEOUT_MS * 1_000_000L,
+            maxBytes = PROBE_MAX_BYTES,
+            maxRequests = PROBE_MAX_REQUESTS,
+        )
+        val initial = fetchRange(
+            sourceUrl = sourceUrl,
+            sourceHeaders = sourceHeaders,
+            start = 0L,
+            length = INITIAL_PROBE_BYTES,
+            requirePartialContent = false,
+            stats = stats,
+        ) ?: return null
+        val segment = findSegment(initial.bytes) ?: return null
+        val segmentDataStart = segment.dataStart.toLong()
+        val directPositions = findInitialTopLevelPositions(bytes = initial.bytes, segment = segment)
+
+        var tracksPosition = directPositions[ID_TRACKS]
+        if (tracksPosition == null) {
+            // Tracks normally sits right after the header; when it doesn't, the SeekHead says where.
+            val seekHeadPosition = directPositions[ID_SEEK_HEAD] ?: return null
+            val seekHeadBytes = extractElementFromInitialProbe(
+                initialBytes = initial.bytes,
+                absolutePosition = seekHeadPosition,
+                expectedId = ID_SEEK_HEAD,
+                maxElementBytes = MAX_SEEK_HEAD_BYTES,
+            ) ?: fetchElementAt(
+                sourceUrl = sourceUrl,
+                sourceHeaders = sourceHeaders,
+                absolutePosition = seekHeadPosition,
+                expectedId = ID_SEEK_HEAD,
+                maxElementBytes = MAX_SEEK_HEAD_BYTES,
+                stats = stats,
+            ) ?: return null
+            tracksPosition = parseSeekHead(seekHeadBytes)[ID_TRACKS]?.let { segmentDataStart + it } ?: return null
+        }
+        val tracksBytes = extractElementFromInitialProbe(
+            initialBytes = initial.bytes,
+            absolutePosition = tracksPosition,
+            expectedId = ID_TRACKS,
+            maxElementBytes = MAX_TRACKS_BYTES,
+        ) ?: fetchElementAt(
+            sourceUrl = sourceUrl,
+            sourceHeaders = sourceHeaders,
+            absolutePosition = tracksPosition,
+            expectedId = ID_TRACKS,
+            maxElementBytes = MAX_TRACKS_BYTES,
+            stats = stats,
+        ) ?: return null
+        return parseSubtitleTracks(tracksBytes).map { track ->
+            val codec = track.codecId.orEmpty()
+            EmbeddedSubtitleInfo(
+                number = track.number,
+                language = track.languageIetf?.takeIf { it.isNotBlank() } ?: track.language?.takeIf { it.isNotBlank() },
+                name = track.name?.takeIf { it.isNotBlank() },
+                format = when {
+                    codec.equals(MATROSKA_PGS_CODEC_ID, ignoreCase = true) -> "PGS"
+                    codec.equals("S_VOBSUB", ignoreCase = true) -> "VobSub"
+                    codec.startsWith("S_TEXT/ASS", ignoreCase = true) || codec.startsWith("S_TEXT/SSA", ignoreCase = true) -> "ASS"
+                    codec.startsWith("S_TEXT/UTF8", ignoreCase = true) -> "SRT"
+                    codec.startsWith("S_TEXT/WEBVTT", ignoreCase = true) -> "WebVTT"
+                    else -> codec.removePrefix("S_").ifBlank { "Unknown" }
+                },
+                forced = track.forced,
+                hearingImpaired = track.hearingImpaired,
+                commentary = track.commentary,
+            )
+        }
+    }
+
     private suspend fun loadAndCache(
         cacheKey: String,
         sourceUrl: String,

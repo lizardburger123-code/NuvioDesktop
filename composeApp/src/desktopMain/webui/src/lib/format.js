@@ -58,3 +58,30 @@ export const parseStream = stream => {
 };
 
 export const qualityRank = quality => ({ "4K": 4, "1080p": 3, "720p": 2, SD: 1 })[quality] || 0;
+
+/**
+ * The kinds of release a source can be, in the order a viewer would reach for them. Each has its
+ * own colour in the sources sheet; the best file of each kind is lifted to the top.
+ */
+export const SOURCE_KINDS = [
+  { id: "imax", label: "IMAX", test: info => info.tags.includes("IMAX") || info.tags.includes("IMAX Enhanced") },
+  { id: "openmatte", label: "Open Matte", test: info => info.tags.includes("Open Matte") },
+  { id: "dv", label: "Dolby Vision", test: info => info.tags.includes("DV") },
+  { id: "remux", label: "Remux", test: info => info.tags.includes("Remux") },
+  { id: "hdr", label: "HDR", test: info => info.tags.includes("HDR") || info.tags.includes("HDR10+") },
+  { id: "web", label: "Web", test: info => info.tags.includes("WEB") },
+];
+export const sourceKind = info => SOURCE_KINDS.find(kind => kind.test(info))?.id || null;
+export const TAG_KIND = { IMAX: "imax", "IMAX Enhanced": "imax", "Open Matte": "openmatte", DV: "dv", Remux: "remux", HDR: "hdr", "HDR10+": "hdr", WEB: "web" };
+
+/** How good a file is to watch: picture first, then whether it plays now, then its extras. */
+export const sourceScore = (info, ready = info.cached) => {
+  const gb = (info.sizeBytes || 0) / 1024;
+  return qualityRank(info.quality) * 100
+    + (ready ? 40 : 0)
+    + (info.tags.includes("DV") ? 8 : 0)
+    + (info.tags.includes("HDR10+") ? 6 : info.tags.includes("HDR") ? 5 : 0)
+    + (info.tags.includes("Remux") ? 6 : 0)
+    + (info.tags.includes("Atmos") ? 4 : info.tags.includes("Lossless") ? 3 : 0)
+    + Math.min(12, Math.log2(1 + gb) * 3);
+};

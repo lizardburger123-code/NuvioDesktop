@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { LuCaptions, LuCaptionsOff, LuFileVideo, LuLoaderCircle, LuSearch, LuSparkles, LuX } from "react-icons/lu";
+import { LuCaptions, LuCaptionsOff, LuDisc3, LuFileVideo, LuLoaderCircle, LuSearch, LuSparkles, LuX } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useApp } from "../AppContext.jsx";
 import { EASE, reduceMotion, useSegmentPill } from "../lib/motion.js";
@@ -143,26 +143,41 @@ export default function SubtitlePicker({ request, onPlay, onClose }) {
         <div className="sp-list" ref={listRef} aria-busy={loading}>
           {loading ? (
             <>
-              <p className="sp-status"><LuLoaderCircle className="spin" /> Searching your subtitle sites and addons…</p>
+              <p className="sp-status"><LuLoaderCircle className="spin" /> Looking inside the file and searching your subtitle sites and addons…</p>
               {Array.from({ length: 6 }, (_, i) => <div key={i} className="sp-skel"><span className="skel" /><span className="skel" /></div>)}
             </>
           ) : results.length ? results.map(item => (
             <button
               key={item.key}
-              className={`sp-row${item.best ? " is-best" : ""}`}
+              className={`sp-row${item.best ? " is-best" : ""}${item.embedded ? ` is-inside${item.disc ? " is-disc" : ""}` : ""}`}
               onClick={() => choose(item.key)}
               disabled={Boolean(busy)}
               aria-busy={busy === item.key}
             >
-              <span className={`sp-match${item.match >= 65 ? " is-exact" : item.match >= 35 ? " is-close" : ""}`} aria-label={item.match > 0 ? `${item.match}% match` : "Release not matched"}>
-                {item.match > 0 ? <><strong className="num">{item.match}</strong><small>%</small></> : <strong>–</strong>}
-              </span>
+              {item.embedded ? (
+                <span className="sp-match sp-inside" aria-label={item.disc ? "From the Blu-ray disc" : "Built into this file"}>
+                  {item.disc ? <LuDisc3 aria-hidden="true" /> : <LuFileVideo aria-hidden="true" />}
+                  <small>{item.format}</small>
+                </span>
+              ) : (
+                <span className={`sp-match${item.match >= 65 ? " is-exact" : item.match >= 35 ? " is-close" : ""}`} aria-label={item.match > 0 ? `${item.match}% match` : "Release not matched"}>
+                  {item.match > 0 ? <><strong className="num">{item.match}</strong><small>%</small></> : <strong>–</strong>}
+                </span>
+              )}
               <span className="sp-body">
-                <span className="sp-release" dir="ltr" title={item.release}>{item.release || "Unnamed release"}</span>
+                <span className="sp-release" dir="auto" title={item.release}>
+                  {item.embedded ? (item.disc ? `Official ${item.languageName} subtitles` : `${item.languageName} subtitles in this file`) : item.release || "Unnamed release"}
+                </span>
                 <span className="sp-meta">
-                  {item.best ? <span className="sp-best"><LuSparkles /> Best match</span> : item.matchLabel ? <span className="sp-label">{item.matchLabel}</span> : null}
-                  <span className="sp-m">{item.languageName}</span>
-                  <span className="sp-m">{item.source}{item.addon ? " (addon)" : ""}</span>
+                  {item.embedded ? (
+                    <span className={`sp-label sp-label-inside${item.disc ? " is-disc" : ""}`}>{item.disc ? "From the Blu-ray" : "Built in"}</span>
+                  ) : null}
+                  {item.best && !item.embedded ? <span className="sp-best"><LuSparkles /> Best match</span> : !item.embedded && item.matchLabel ? <span className="sp-label">{item.matchLabel}</span> : null}
+                  {item.embedded ? <span className="sp-m" dir="auto">{item.release}</span> : null}
+                  {item.embedded && item.disc ? <span className="sp-m">Timed to this file · shown as on the disc</span> : null}
+                  {item.embedded && !item.disc ? <span className="sp-m">Timed to this file</span> : null}
+                  {!item.embedded ? <span className="sp-m">{item.languageName}</span> : null}
+                  {!item.embedded ? <span className="sp-m">{item.source}{item.addon ? " (addon)" : ""}</span> : null}
                   {item.downloads ? <span className="sp-m num">{downloads(item.downloads)} downloads</span> : null}
                   {item.hi ? <span className="sp-m">Hearing impaired</span> : null}
                 </span>
@@ -193,7 +208,7 @@ export default function SubtitlePicker({ request, onPlay, onClose }) {
           </button>
           {best && !loading ? (
             <button className="btn btn-primary btn-sm" onClick={() => choose(best.key)} disabled={Boolean(busy)} title={best.release}>
-              {busy === best.key ? <LuLoaderCircle className="spin" /> : <LuSparkles />} Play best match
+              {busy === best.key ? <LuLoaderCircle className="spin" /> : best.disc ? <LuDisc3 /> : <LuSparkles />} {best.disc ? "Play with disc subtitles" : "Play best match"}
             </button>
           ) : null}
         </footer>

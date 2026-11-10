@@ -172,7 +172,10 @@ const detailsFor = (type, id) => {
 };
 
 const streamRows = [
-  ["4K", "SELection", "Slow.Horses.S01E01.2160p.ATVP.WEB-DL.DDP5.1.DV.HDR.H.265-FLUX", "18.2 GB", true],
+  ["4K", "SELection", "The.Dark.Knight.2008.IMAX.2160p.UHD.BluRay.REMUX.DV.HDR.HEVC.TrueHD.Atmos.7.1-FGT", "68.4 GB", true],
+  ["4K", "SELection", "The.Dark.Knight.2008.2160p.UHD.BluRay.REMUX.HDR.HEVC.DTS-HD.MA.5.1-EPSiLON", "61.0 GB", true],
+  ["1080p", "SELection", "The.Dark.Knight.2008.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-FraMeSToR", "38.5 GB", true],
+  ["4K", "SELection", "The.Dark.Knight.2008.Open.Matte.2160p.WEB-DL.DDP5.1.HDR.H.265-NOGRP", "22.0 GB", false],
   ["4K", "SELection", "Slow.Horses.S01E01.2160p.WEB-DL.DDP5.1.Atmos.HDR10.HEVC-NTb", "12.9 GB", true],
   ["1080p", "SELection", "Slow.Horses.S01E01.1080p.ATVP.WEB-DL.DDP5.1.H.264-FLUX", "3.1 GB", true],
   ["1080p", "SELection", "Slow.Horses.S01E01.1080p.BluRay.x264-SHORTBREHD", "4.4 GB", false],
@@ -360,10 +363,13 @@ export const createMockBackend = deliver => {
       resolve({
         filename, configured: 3,
         languages: [{ code: "ar", name: "Arabic" }, { code: "en", name: "English" }],
-        results: releases.filter(r => wanted.includes(r[1])).map(([release, language, source, match, downloads], i) => ({
-          key: `k${i}`, source, addon: source === "SubSense", language, languageName: language === "ar" ? "Arabic" : "English",
-          release, downloads, match, matchLabel: match >= 65 ? "Exact release" : match >= 35 ? "Same source" : match >= 15 ? "Close" : undefined, best: i === 0,
-        })),
+        results: [
+          ...(wanted.includes("ar") && !query ? [{ key: "e:4", source: "Blu-ray disc", language: "ar", languageName: "Arabic", release: "Arabic · PGS", match: 100, embedded: true, format: "PGS", disc: true, best: true }] : []),
+          ...releases.filter(r => wanted.includes(r[1])).map(([release, language, source, match, downloads], i) => ({
+            key: `k${i}`, source, addon: source === "SubSense", language, languageName: language === "ar" ? "Arabic" : "English",
+            release, downloads, match, matchLabel: match >= 65 ? "Exact release" : match >= 35 ? "Same source" : match >= 15 ? "Close" : undefined, best: false,
+          })),
+        ],
       });
     }, 700)),
     "search.query": ({ query }) => {
@@ -397,6 +403,12 @@ export const createMockBackend = deliver => {
       if (lastDetails) push("details", { key: `${lastDetails.type}:${lastDetails.id}`, loading: false, meta: detailsFor(lastDetails.type, lastDetails.id), watchLater: watchLater.some(item => item.id === lastDetails.id), watched: watchedIds.has(lastDetails.id) });
       return watchedIds.has(id);
     },
+    "streams.probeSubs": ({ streamKey }) => new Promise(resolve => setTimeout(() => {
+      const index = Number(String(streamKey).split("#")[1]);
+      const row = streamRows[index] || [];
+      if (/REMUX/i.test(row[2] || "")) resolve({ readable: true, tracks: [{ number: 3, language: "en", format: "PGS", disc: true }, { number: 4, language: index === 2 ? "fr" : "ar", format: "PGS", disc: true }, { number: 5, language: "ar", format: "PGS", disc: true, forced: true }].filter(t => index !== 2 || t.language !== "ar") });
+      else resolve({ readable: true, tracks: [{ number: 3, language: "en", format: "SRT" }] });
+    }, 600 + Math.random() * 600)),
     "streams.load": ({ videoId }) => {
       const key = videoId;
       push("streams", { key, loading: true, groups: [{ addonId: "aio", addonName: "SELection", loading: true, streams: [] }] });

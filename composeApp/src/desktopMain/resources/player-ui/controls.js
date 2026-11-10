@@ -1263,7 +1263,10 @@ const appendSubtitleOptionRow = option => {
   const selected = option.id === pendingSubtitleOptionId || (!pendingSubtitleOptionId && option.selected);
   const row = document.createElement("button");
   row.type = "button";
-  row.className = `track-row subtitle-option-row${selected ? " selected" : ""}`;
+  // A bitmap track inside the file (PGS from a Blu-ray, VobSub from a DVD) is the disc's own,
+  // official subtitle: it gets its own mark.
+  const fromDisc = option.kind === "builtIn" && /\b(PGS|HDMV|VobSub|dvd_?sub)\b/i.test(`${option.title} ${option.metadata}`);
+  row.className = `track-row subtitle-option-row${selected ? " selected" : ""}${fromDisc ? " is-disc" : ""}`;
   row.addEventListener("click", event => {
     event.stopPropagation();
     pendingSubtitleOptionId = option.id;
@@ -1275,7 +1278,7 @@ const appendSubtitleOptionRow = option => {
   copy.className = "subtitle-option-copy";
   const source = document.createElement("span");
   source.className = "subtitle-source-chip";
-  source.textContent = option.sourceLabel;
+  source.textContent = fromDisc ? "Blu-ray disc" : option.sourceLabel;
   copy.appendChild(source);
   const title = document.createElement("span");
   title.className = "subtitle-option-title";

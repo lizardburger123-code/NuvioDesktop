@@ -165,3 +165,20 @@
 .sp-m + .sp-m::before { content: "·"; margin-right: 8px; color: var(--ink-3); opacity: .7; }
 .sp-meta { column-gap: 8px; }
 .sp-search input:focus-visible { outline: none; }
+
+/* Subtitles inside the file itself: a disc track (PGS) is the Blu-ray's official translation. */
+.sp-inside { flex-direction: column; align-items: center; justify-content: center; padding-top: 0; gap: 2px; background: rgb(255 255 255 / .1); color: #fff; }
+.sp-inside svg { width: 20px; height: 20px; }
+.sp-inside small { font-size: 11px; font-weight: 700; letter-spacing: .06em; opacity: .8; }
+.sp-row.is-inside { background: rgb(255 255 255 / .05); }
+.sp-row.is-disc {
+  background:
+    radial-gradient(120% 160% at 0% 50%, rgb(143 227 168 / .2), rgb(143 227 168 / .05) 45%, transparent 75%),
+    rgb(255 255 255 / .03);
+  box-shadow: inset 0 0 0 1px rgb(143 227 168 / .32);
+}
+.sp-row.is-disc:hover:not(:disabled) { background: radial-gradient(120% 160% at 0% 50%, rgb(143 227 168 / .28), rgb(143 227 168 / .08) 45%, transparent 75%), rgb(255 255 255 / .06); }
+.sp-row.is-disc .sp-inside { background: #8fe3a8; color: #0b1f12; box-shadow: 0 0 24px rgb(143 227 168 / .45); }
+.sp-row.is-disc .sp-release { font-weight: 700; }
+.sp-label-inside { background: rgb(255 255 255 / .14); color: #fff; }
+.sp-label-inside.is-disc { background: #8fe3a8; color: #0b1f12; }

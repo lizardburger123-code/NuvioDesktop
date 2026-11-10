@@ -125,3 +125,58 @@ button.source-cache:active { transform: translateY(-50%) scale(.96); }
 .source-item:hover .source-dl, .source-dl:focus-visible { color: #fff; }
 .source-dl:hover { background: rgb(255 255 255 / .16); }
 .source-dl:active { transform: translateY(-50%) scale(.96); }
+
+/* ---- Kinds: each kind of release has its own colour --------------------------------------------
+   The quality tile and the kind's tag take it; the best file of each kind sits in the strip at the
+   top, washed in its colour like light through haze. */
+.source-item { --kind: 210 216 226; --kind-ink: 10 11 13; }
+.source-item[data-kind="imax"] { --kind: 92 170 255; }
+.source-item[data-kind="openmatte"] { --kind: 94 225 214; }
+.source-item[data-kind="dv"] { --kind: 186 150 255; }
+.source-item[data-kind="remux"] { --kind: 242 196 109; }
+.source-item[data-kind="hdr"] { --kind: 255 159 90; }
+.source-item[data-kind="web"] { --kind: 210 216 226; }
+.source-item[data-kind="disc"] { --kind: 143 227 168; }
+
+.source-item[data-kind] .source-q { background: rgb(var(--kind) / .14); box-shadow: inset 0 0 0 1px rgb(var(--kind) / .42); color: #fff; }
+.source-item[data-kind] .source-q small { color: rgb(var(--kind)); }
+.source-item[data-kind] .source-q.q-4k { background: rgb(var(--kind) / .26); }
+.source-item[data-kind="web"] .source-q { background: rgb(255 255 255 / .09); box-shadow: none; }
+.source-item[data-kind="web"] .source-q.q-4k { background: #fff; color: #0a0b0d; }
+.source-item[data-kind="web"] .source-q.q-4k small { color: rgb(10 11 13 / .7); }
+
+.source-tag.tag-imax { background: rgb(92 170 255 / .18); color: #a9d2ff; }
+.source-tag.tag-openmatte { background: rgb(94 225 214 / .16); color: #9cf0e8; }
+.source-tag.tag-dv { background: rgb(186 150 255 / .18); color: #d6c6ff; }
+.source-tag.tag-remux { background: rgb(242 196 109 / .18); color: #f7d99c; }
+.source-tag.tag-hdr { background: rgb(255 159 90 / .16); color: #ffc49b; }
+.source-tag.tag-disc { gap: 5px; background: #8fe3a8; color: #0b1f12; font-weight: 700; }
+.source-tag.tag-disc svg { width: 13px; height: 13px; }
+.source-tag.tag-inside { background: rgb(143 227 168 / .14); color: #8fe3a8; }
+
+/* The strip: one file per kind, its colour washing in from the left. */
+.sources-picks { margin-top: 4px; padding-bottom: 6px; }
+.sources-picks .source-item + .source-item { box-shadow: none; margin-top: 6px; }
+.source-item.is-pick .source-row {
+  background:
+    radial-gradient(90% 180% at 0% 50%, rgb(var(--kind) / .3), rgb(var(--kind) / .1) 42%, transparent 72%),
+    radial-gradient(60% 120% at 12% 0%, rgb(var(--kind) / .14), transparent 70%),
+    rgb(255 255 255 / .03);
+  box-shadow: inset 0 0 0 1px rgb(var(--kind) / .34);
+}
+.source-item.is-pick .source-row:hover:not(:disabled), .source-item.is-pick .source-row:focus-visible {
+  background:
+    radial-gradient(90% 180% at 0% 50%, rgb(var(--kind) / .38), rgb(var(--kind) / .14) 42%, transparent 72%),
+    radial-gradient(60% 120% at 12% 0%, rgb(var(--kind) / .18), transparent 70%),
+    rgb(255 255 255 / .06);
+}
+.source-item.is-pick[data-kind] .source-q, .source-item.is-pick[data-kind] .source-q.q-4k { background: rgb(var(--kind)); color: rgb(var(--kind-ink)); box-shadow: 0 0 28px rgb(var(--kind) / .55); }
+.source-item.is-pick[data-kind] .source-q small, .source-item.is-pick[data-kind] .source-q.q-4k small { color: rgb(var(--kind-ink) / .7); }
+.source-pick { font-size: var(--fs-12); font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: rgb(var(--kind)); }
+.source-pick em { font-style: normal; font-weight: 600; letter-spacing: .04em; text-transform: none; color: var(--ink-2); }
+.source-item.is-pick[data-kind="web"] .source-pick { color: #fff; }
+
+/* The disc-subtitle search: green once it has found the official track somewhere. */
+.chip-disc:disabled { cursor: progress; opacity: 1; }
+.chip-disc.has-found { color: #8fe3a8; background: rgb(143 227 168 / .14); }
+.chip-disc.has-found[aria-pressed="true"] { background: #8fe3a8; color: #0b1f12; }

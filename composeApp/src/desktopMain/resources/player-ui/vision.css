@@ -1373,3 +1373,10 @@ button.action:focus-visible,
 .end-card-actions { margin-top: 28px; gap: 12px; }
 .end-card-button { height: 52px; padding: 0 26px; font-size: 16px; font-weight: 700; }
 .end-card-button.primary { font-weight: 800; }
+
+/* A disc subtitle track (PGS) in the Subtitles panel: the official one, marked in green. */
+.subtitle-option-row.is-disc:not(.selected) {
+  background: radial-gradient(120% 160% at 0% 50%, rgba(143, 227, 168, .2), rgba(143, 227, 168, .04) 50%, transparent 80%);
+  box-shadow: inset 0 0 0 1px rgba(143, 227, 168, .3);
+}
+.subtitle-option-row.is-disc .subtitle-source-chip { background: #8fe3a8; color: #0b1f12; }

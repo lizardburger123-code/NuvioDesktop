@@ -255,6 +255,7 @@ internal class ShellRpc(private val host: ShellHost) {
         "search.query" -> search(params)
         "details.load" -> loadDetails(params)
         "streams.load" -> loadStreams(params)
+        "streams.probeSubs" -> probeEmbeddedSubs(params)
         "watched.toggle" -> {
             val item = WatchedItem(
                 id = params.string("id") ?: "",
@@ -707,7 +708,20 @@ internal class ShellRpc(private val host: ShellHost) {
             filename = filename,
             query = params.string("query"),
             languages = params["languages"].asStringList().takeIf { it.isNotEmpty() },
+            embedded = stream?.takeIf { ShellEmbeddedSubs.canProbe(it) && params.bool("torbox") != true }?.let { picked -> suspend { ShellEmbeddedSubs.probe(picked) } },
         )
+    }
+
+    /** The subtitle tracks inside one listed source's file (its header only; nothing plays). */
+    private suspend fun probeEmbeddedSubs(params: JsonObject): JsonElement {
+        val key = params.string("streamKey") ?: error("Missing source.")
+        val stream = streamIndex[key] ?: error("That source is no longer listed.")
+        if (!ShellEmbeddedSubs.canProbe(stream)) return buildJsonObject { put("readable", false); put("reason", "not-ready") }
+        val tracks = ShellEmbeddedSubs.probe(stream) ?: return buildJsonObject { put("readable", false); put("reason", "unreadable") }
+        return buildJsonObject {
+            put("readable", true)
+            put("tracks", ShellEmbeddedSubs.json(tracks))
+        }
     }
 
     private suspend fun play(params: JsonObject): JsonElement {

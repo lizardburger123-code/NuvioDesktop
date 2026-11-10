@@ -1,6 +1,7 @@
 package com.nuvio.app.shell
 
 import co.touchlab.kermit.Logger
+import com.nuvio.app.features.autosync.DesktopEmbeddedSubtitleTimelineLoader.EmbeddedSubtitleInfo
 import com.nuvio.app.features.player.AddonSubtitle
 import com.nuvio.app.features.player.PersistedPlayerTrackPreference
 import com.nuvio.app.features.player.PersistedSubtitleSelectionType
@@ -36,6 +37,8 @@ internal object ShellSubtitlePicker {
         val language: String
         data class Site(val result: SubtitleResult) : Candidate { override val language: String get() = result.language }
         data class Addon(val subtitle: AddonSubtitle, override val language: String) : Candidate
+        /** A track inside the file itself; [rawLanguage] is the code the player will see. */
+        data class Embedded(override val language: String, val rawLanguage: String?, val name: String?, val forced: Boolean) : Candidate
     }
 
     private val candidates = ConcurrentHashMap<String, Candidate>()
@@ -60,6 +63,7 @@ internal object ShellSubtitlePicker {
         filename: String?,
         query: String?,
         languages: List<String>?,
+        embedded: (suspend () -> List<EmbeddedSubtitleInfo>?)? = null,
     ): JsonElement {
         val prefs = ShellSubtitleStore.prefs.value
         val wanted = (languages?.takeIf { it.isNotEmpty() } ?: prefs.languages).ifEmpty { listOf("ar", "en") }
@@ -74,13 +78,14 @@ internal object ShellSubtitlePicker {
             languages = wanted,
         )
         val file = SubtitleReleaseMatch.parse(filename)
-        val (sites, addons) = coroutineScope {
+        val (sites, addons, inside) = coroutineScope {
+            val insideJob = async { if (custom != null || embedded == null) null else runCatching { embedded() }.getOrNull() }
             val siteJob = async { withTimeoutOrNull(22_000) { runCatching { SubtitleSearchService.search(siteQuery) }.getOrNull() }.orEmpty() }
             val addonJob = async {
                 if (custom != null) emptyList<AddonSubtitle>()
                 else withTimeoutOrNull(12_000) { runCatching { loadAddonSubtitles(addonSubtitleRequests(type, target.videoId)) }.getOrNull() }.orEmpty()
             }
-            siteJob.await() to addonJob.await()
+            Triple(siteJob.await(), addonJob.await(), insideJob.await())
         }
 
         data class Row(val key: String, val candidate: Candidate, val source: String, val release: String, val downloads: Long, val hi: Boolean, val match: Double, val score: Double)
@@ -97,7 +102,30 @@ internal object ShellSubtitlePicker {
             rows += Row("a:$index:${subtitle.url.hashCode()}", Candidate.Addon(subtitle, language), subtitle.addonName ?: "Addon", release, 0, false, match,
                 SubtitleSearchService.rank(asResult, wanted, match) + 0.5)
         }
-        val ranked = rows.sortedByDescending { it.score }.distinctBy { "${it.source}|${it.release}|${it.candidate.language}" }.take(120)
+        val ranked = rows.sortedByDescending { it.score }.distinctBy { "${it.source}|${it.release}|${it.candidate.language}" }.take(120).toMutableList()
+        // Tracks inside the file lead: they are cut to this exact video, and a disc track (PGS) is
+        // the official translation from the Blu-ray. Ordered by the user's language order.
+        val insideRows = inside.orEmpty()
+            .filter { !it.commentary }
+            .mapNotNull { track ->
+                val language = SubtitleSearchService.normalizeLanguage(track.language)
+                val rank = wanted.indexOf(language).takeIf { it >= 0 } ?: return@mapNotNull null
+                val sort = rank * 10 + (if (track.fromDisc) 0 else 2) + (if (track.forced) 5 else 0) + (if (track.hearingImpaired) 1 else 0)
+                Triple(sort, Row(
+                    key = "e:${track.number}",
+                    candidate = Candidate.Embedded(language, track.language, track.name, track.forced),
+                    source = if (track.fromDisc) "Blu-ray disc" else "In this file",
+                    release = listOfNotNull(track.name, track.format.takeIf { track.name?.contains(it, true) != true }).joinToString(" · ").ifBlank { track.format },
+                    downloads = 0L, hi = track.hearingImpaired, match = 1.0, score = 1000.0 - rank,
+                ), track)
+            }
+            .sortedBy { it.first }
+        // The first language leads the whole list; a track in another wanted language goes last,
+        // so an English disc track never outranks an Arabic subtitle for someone who reads Arabic.
+        val (lead, rest) = insideRows.partition { (_, row, _) -> row.candidate.language == wanted.first() }
+        lead.asReversed().forEach { (_, row, _) -> ranked.add(0, row) }
+        rest.forEach { (_, row, _) -> ranked.add(row) }
+        val insideByKey = insideRows.associate { (_, row, track) -> row.key to track }
         candidates.clear()
         ranked.forEach { candidates[it.key] = it.candidate }
         val bestKey = ranked.firstOrNull()?.key
@@ -120,7 +148,15 @@ internal object ShellSubtitlePicker {
                         if (row.downloads > 0) put("downloads", row.downloads)
                         if (row.hi) put("hi", true)
                         put("match", (row.match * 100).toInt())
-                        SubtitleReleaseMatch.label(row.match)?.let { put("matchLabel", it) }
+                        val track = insideByKey[row.key]
+                        if (track != null) {
+                            put("embedded", true)
+                            put("format", track.format)
+                            if (track.fromDisc) put("disc", true)
+                            if (track.forced) put("forced", true)
+                        } else {
+                            SubtitleReleaseMatch.label(row.match)?.let { put("matchLabel", it) }
+                        }
                         if (row.key == bestKey) put("best", true)
                     })
                 }
@@ -155,8 +191,27 @@ internal object ShellSubtitlePicker {
                     target, candidate.subtitle.url, candidate.language, candidate.subtitle.display,
                     candidate.subtitle.addonName, id = candidate.subtitle.id,
                 )
+                is Candidate.Embedded -> rememberBuiltIn(target, candidate)
             }
         }
+    }
+
+    /** Saves a track inside the file as the choice: the player selects it by language as it starts. */
+    private fun rememberBuiltIn(target: Target, candidate: Candidate.Embedded) {
+        if (target.parentMetaId.isBlank()) return
+        val current = PlayerTrackPreferenceStorage.load(target.parentMetaId) ?: PersistedPlayerTrackPreference()
+        PlayerTrackPreferenceStorage.save(
+            target.parentMetaId,
+            current.copy(
+                subtitleType = PersistedSubtitleSelectionType.INTERNAL,
+                subtitleLanguage = candidate.rawLanguage?.takeIf { it.isNotBlank() } ?: candidate.language,
+                subtitleName = candidate.name,
+                subtitleTrackId = null,
+                subtitleIsForced = candidate.forced,
+                addonSubtitleId = null, addonSubtitleUrl = null, addonSubtitleItemId = null, addonSubtitleAddonName = null,
+            ),
+        )
+        log.d { "remembered built-in ${candidate.language} track for ${target.itemId}" }
     }
 
     /** Saves [url] (a link or a local file) as the subtitle for [target], like a pick in the player. */
