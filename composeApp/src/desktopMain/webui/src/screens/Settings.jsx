@@ -6,7 +6,7 @@ import {
 import { call } from "../bridge.js";
 import AddonStore from "../components/AddonStore.jsx";
 import { useApp } from "../AppContext.jsx";
-import { PRESETS, applyAppearance, parseHex } from "../theme/appearance.js";
+import { PRESETS, accentOf, applyAppearance } from "../theme/appearance.js";
 import { navigate } from "../lib/router.js";
 import { useSegmentPill } from "../lib/motion.js";
 import { PROFILE_CARD, initials } from "../components/TopBar.jsx";
@@ -27,7 +27,7 @@ export default function Settings({ params }) {
   const current = SECTIONS.find(s => s.id === section) || SECTIONS[0];
   return (
     <main className="screen settings">
-      <aside className="settings-nav glass-flat" aria-label="Settings sections">
+      <aside className="settings-nav" aria-label="Settings sections">
         <h1 className="settings-h">Settings</h1>
         {SECTIONS.map(s => {
           const Icon = s.icon;
@@ -39,7 +39,7 @@ export default function Settings({ params }) {
         })}
       </aside>
       <section className="settings-body" key={current.id}>
-        <h2 className="t-page">{current.label}</h2>
+        <h2>{current.label}</h2>
         {current.id === "appearance" ? <Appearance /> : null}
         {current.id === "subtitles" ? <Subtitles /> : null}
         {current.id === "playback" ? <Playback /> : null}
@@ -81,28 +81,6 @@ const useSavedStamp = () => {
 
 /* ---------------------------------------------------------------- Appearance */
 
-function ColourField({ index, value, onChange }) {
-  const [text, setText] = useState(value);
-  useEffect(() => setText(value), [value]);
-  return (
-    <div className="colour-field">
-      <label className="colour-swatch" style={{ background: value }} title={`Colour ${index + 1}`}>
-        <input type="color" value={value} onChange={event => onChange(event.target.value)} aria-label={`Colour ${index + 1}`} />
-      </label>
-      <input
-        className="field colour-hex num"
-        value={text}
-        onChange={event => {
-          setText(event.target.value);
-          if (parseHex(event.target.value)) onChange(event.target.value.startsWith("#") ? event.target.value : `#${event.target.value}`);
-        }}
-        aria-label={`Colour ${index + 1} hex`}
-        spellCheck={false}
-      />
-    </div>
-  );
-}
-
 const resizeImage = file => new Promise((resolve, reject) => {
   const reader = new FileReader();
   reader.onerror = () => reject(new Error("Couldn't read that file."));
@@ -136,11 +114,6 @@ function Appearance() {
     setAppearance(patch);
     stamp();
   };
-  const setColour = (i, hex) => {
-    const next = [...colors];
-    next[i] = hex;
-    update({ colors: next });
-  };
 
   const onFile = async event => {
     const file = event.target.files?.[0];
@@ -160,8 +133,8 @@ function Appearance() {
       <Panel title="Accent" description="The room is black and the type is white. One colour marks what is switched on, focused or selected.">
         <div className="preset-row">
           {PRESETS.map(preset => (
-            <button key={preset.name} className="preset" aria-pressed={preset.colors.join() === colors.join()} onClick={() => update({ colors: preset.colors })} title={preset.name}>
-              <span style={{ background: preset.colors[1] }} />
+            <button key={preset.name} className="preset" aria-pressed={accentOf(colors).toLowerCase() === preset.colors[0]} onClick={() => update({ colors: preset.colors })} title={preset.name}>
+              <span style={{ background: preset.colors[0] }} />
               {preset.name}
             </button>
           ))}
@@ -169,7 +142,7 @@ function Appearance() {
       </Panel>
 
       <Panel title="Backdrop" description="Home and every title show their own artwork. Other pages are black, or a dimmed picture of yours.">
-        <div ref={wallSeg} className="seg glass-flat" role="group" aria-label="Backdrop">
+        <div ref={wallSeg} className="seg" role="group" aria-label="Backdrop">
           {[["none", "Black"], ["custom", "My image"]].map(([id, label]) => (
             <button key={id} aria-pressed={(mode === "custom") === (id === "custom")} onClick={() => (id === "custom" && !appearance.wallpaper?.image ? fileRef.current?.click() : update({ wallpaper: { ...appearance.wallpaper, mode: id } }))}>{label}</button>
           ))}
@@ -348,7 +321,7 @@ function Subtitles() {
       </Panel>
 
       <Panel title="Placement" description="MBC 2 keeps every line flush right near the bottom right of the picture. Each line of the subtitle stays on its own line.">
-        <div ref={alignSeg} className="seg glass-flat" role="group" aria-label="Alignment">
+        <div ref={alignSeg} className="seg" role="group" aria-label="Alignment">
           {[["right", "MBC 2 (right-aligned)"], ["center", "Center"], ["left", "Left"]].map(([id, label]) => (
             <button key={id} aria-pressed={(value.align || "right") === id} onClick={() => update({ align: id })}>{label}</button>
           ))}
@@ -729,7 +702,7 @@ function Profile() {
 function About() {
   const { boot } = useApp();
   const credits = useMemo(() => [
-    ["Interface", "React, GSAP 3.15, View Transitions, React Bits (Grainient, GlassSurface, TiltedCard, SpotlightCard, ClickSpark) by David Haz"],
+    ["Interface", "React, GSAP 3.15 and the browser's View Transitions"],
     ["Fonts", "Plus Jakarta Sans, IBM Plex Sans Arabic, Cairo, Tajawal, Almarai, Noto Naskh / Kufi Arabic, Readex Pro, Changa, Amiri (SIL Open Font License)"],
     ["Icons", "Lucide"],
   ], []);

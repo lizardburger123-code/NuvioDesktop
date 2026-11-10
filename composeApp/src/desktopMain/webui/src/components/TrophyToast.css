@@ -1,55 +1,43 @@
-/* The unlock card: top-right, one at a time, a short light sweep across its metal, then it goes. */
+/* The unlock card: top-right, one at a time, a single light sweep across it, then it goes. */
 .ttoast {
-  position: fixed;
-  top: calc(var(--topbar-h) + 10px);
-  right: 22px;
-  z-index: 95;
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 14px;
-  width: min(360px, calc(100vw - 44px));
-  padding: 12px 18px 12px 12px;
-  border-radius: 20px;
-  text-align: left;
-  color: var(--ink);
-  background: rgb(14 14 20 / .78);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .12), 0 24px 60px rgb(0 0 0 / .5);
-  -webkit-backdrop-filter: blur(28px) saturate(1.5);
-  backdrop-filter: blur(28px) saturate(1.5);
-  overflow: hidden;
-  cursor: pointer;
+  --metal: var(--accent); --metal-ink: var(--on-accent); --metal-bar: var(--accent);
+  position: fixed; top: calc(var(--topbar-h) + 8px); right: var(--gutter); z-index: 95;
+  display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 16px;
+  width: min(372px, calc(100vw - 44px)); padding: 14px 22px 14px 14px; border-radius: var(--r-xl);
+  text-align: left; color: #fff; overflow: hidden; cursor: pointer;
+  background: rgb(22 24 29 / .92);
+  box-shadow: inset 0 0 0 1px var(--line-strong), 0 30px 70px rgb(0 0 0 / .6);
+  -webkit-backdrop-filter: blur(28px) saturate(1.4); backdrop-filter: blur(28px) saturate(1.4);
+  transition: background-color var(--t-fast) ease;
 }
 .ttoast::after {
-  content: "";
-  position: absolute;
-  inset: -40% -60%;
+  content: ""; position: absolute; inset: -40% -60%; pointer-events: none;
   background: linear-gradient(100deg, transparent 42%, rgb(255 255 255 / .14) 50%, transparent 58%);
   transform: translateX(-70%);
   animation: ttoast-sweep 1.3s cubic-bezier(.2, .9, .25, 1) .35s both;
-  pointer-events: none;
 }
 @keyframes ttoast-sweep { to { transform: translateX(70%); } }
-.ttoast:hover { background: rgb(26 26 36 / .84); }
+.ttoast:hover { background: rgb(34 37 44 / .94); }
+.ttoast.ttoast-badge { box-shadow: inset 0 0 0 1px var(--line-strong), 0 30px 70px rgb(0 0 0 / .6); }
 
-.ttoast-case { position: relative; width: 48px; height: 68px; border-radius: 3px 6px 6px 3px; overflow: hidden; background: #0d1118; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .16), 0 12px 24px -8px rgb(0 0 0 / .9); }
+.ttoast-case { position: relative; width: 48px; height: 68px; border-radius: 3px 6px 6px 3px; overflow: hidden; background: #0d1118; outline: 1px solid rgb(255 255 255 / .16); outline-offset: -1px; }
 .ttoast-case img { width: 100%; height: 100%; object-fit: cover; }
 .ttoast-case i { position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: linear-gradient(90deg, rgb(0 0 0 / .7), rgb(0 0 0 / .2) 60%, rgb(255 255 255 / .1)); }
-.ttoast-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.ttoast-text small { font-size: 11px; font-weight: 700; letter-spacing: .02em; color: var(--metal-ink, var(--accent)); }
-.ttoast-text strong { font-size: var(--fs-16); font-weight: 700; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ttoast-text span { font-size: var(--fs-13); color: var(--ink-2); }
+.ttoast-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ttoast-text small { font-size: var(--fs-12); font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--metal-bar); }
+.ttoast-text strong { font-size: 17px; font-weight: 700; letter-spacing: -.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ttoast-text span { font-size: var(--fs-14); color: var(--ink-2); }
 
-.ttoast-medal {
-  width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; color: #15110a;
-  background: radial-gradient(circle at 35% 30%, var(--metal-a), var(--metal-b) 70%);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .18), inset 0 -2px 6px rgb(0 0 0 / .35), 0 0 30px -6px var(--metal-a);
+.ttoast-medal, .ttoast-ring {
+  width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center;
   animation: ttoast-land .62s cubic-bezier(.23, 1, .32, 1) both;
 }
+.ttoast-medal { color: var(--metal-ink); background: var(--metal); }
+.ttoast-medal svg { width: 23px; height: 23px; }
+.ttoast-ring { background: var(--accent); color: var(--on-accent); }
+.ttoast-ring strong { font-size: 24px; font-weight: 800; letter-spacing: -.04em; }
 @keyframes ttoast-land { 0% { transform: scale(.4); opacity: 0; } 70% { transform: scale(1.04); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
-.ttoast-medal svg { width: 22px; height: 22px; }
-.ttoast-badge.badge-silver .ttoast-medal, .ttoast-badge.badge-platinum .ttoast-medal { color: #0e1620; }
 
 @media (prefers-reduced-motion: reduce) {
-  .ttoast::after, .ttoast-medal { animation: none; }
+  .ttoast::after, .ttoast-medal, .ttoast-ring { animation: none; }
 }

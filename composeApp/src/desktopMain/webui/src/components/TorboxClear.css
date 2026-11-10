@@ -1,37 +1,39 @@
 .tbx-layer { position: fixed; inset: 0; z-index: 75; display: grid; place-items: center; padding: 24px; }
-.tbx-layer::before { content: ""; position: absolute; inset: 0; z-index: -1; background: rgb(4 4 8 / .55); animation: scrim-in 240ms var(--ease-soft) backwards; }
+.tbx-layer::before { content: ""; position: absolute; inset: 0; z-index: -1; background: rgb(7 8 10 / .66); animation: scrim-in 240ms var(--ease-soft) backwards; }
 
 .tbx {
   width: min(520px, 100%);
-  border-radius: 28px;
-  padding: 22px 24px 24px;
+  border-radius: var(--r-xl);
+  padding: 28px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  background: rgb(14 14 20 / .8);
+  gap: 16px;
+  background: rgb(18 19 24 / .94);
+  box-shadow: inset 0 0 0 1px var(--line-strong), 0 40px 100px rgb(0 0 0 / .6);
+  -webkit-backdrop-filter: blur(32px) saturate(1.4);
+  backdrop-filter: blur(32px) saturate(1.4);
 }
 .tbx-head { display: flex; align-items: center; gap: 12px; }
-.tbx-head h2 { flex: 1; font-size: var(--fs-20); font-weight: 750; letter-spacing: -.01em; }
-.tbx-icon { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: rgb(255 69 58 / .16); color: #ff8a80; }
+.tbx-head h2 { flex: 1; font-size: var(--fs-24); font-weight: 800; letter-spacing: -.03em; line-height: 1.1; }
+.tbx-icon { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: rgb(255 120 110 / .16); color: #ffb4ad; }
 .tbx-icon svg { width: 20px; height: 20px; }
 .tbx-body { display: flex; flex-direction: column; gap: 14px; }
 .tbx-text { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: var(--fs-14); line-height: 1.55; color: var(--ink-2); text-wrap: pretty; }
 .tbx-text strong { color: var(--ink); }
 .tbx-text svg { width: 16px; height: 16px; margin-right: 4px; }
-.tbx-note { font-size: var(--fs-12); color: var(--ink-3); }
+.tbx-note { font-size: var(--fs-13); color: var(--ink-3); }
 .tbx-code {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 14px 14px 14px 20px;
-  border-radius: 18px;
-  background: rgb(255 255 255 / .06);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .08);
+  border-radius: var(--r-m);
+  background: rgb(255 255 255 / .07);
 }
 .tbx-code strong { font-size: 30px; font-weight: 800; letter-spacing: .14em; font-variant-numeric: tabular-nums; }
 .tbx-actions { display: flex; justify-content: flex-end; gap: 10px; }
-.tbx-danger { background: #ff453a; color: #fff; }
-.tbx-danger:hover { background: #ff5b52; }
-.tbx .btn-glass { -webkit-backdrop-filter: none; backdrop-filter: none; background: rgb(255 255 255 / .1); }
+.tbx-danger { background: #ff6b5e; color: #1a0503; }
+.tbx-danger:hover { background: #ff8378; }
+.tbx-actions .btn { height: 44px; }
 
-.tbx-icon.is-calm { background: rgb(var(--accent-rgb) / .18); color: var(--ink); }
+.tbx-icon.is-calm { background: rgb(255 255 255 / .1); color: #fff; }

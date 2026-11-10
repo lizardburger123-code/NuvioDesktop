@@ -12,7 +12,6 @@ import TopBar from "./components/TopBar.jsx";
 import Toasts from "./components/Toasts.jsx";
 import TrophyToast from "./components/TrophyToast.jsx";
 import ProfileGate, { shouldShowGate } from "./components/ProfileGate.jsx";
-import ClickSpark from "./reactbits/ClickSpark/ClickSpark.jsx";
 import Home from "./screens/Home.jsx";
 import Browse from "./screens/Browse.jsx";
 import Search from "./screens/Search.jsx";
@@ -88,13 +87,11 @@ function Screens() {
 }
 
 const NO_FEATURED = [];
-const appearanceSpark = appearance => (appearance?.colors?.length ? ["#ffffff", ...appearance.colors] : "#ffffff");
 
 function Shell() {
   const router = useRouter();
   const top = router.stack[router.stack.length - 1];
   const { appearance, art, boot } = useApp();
-  const home = useTopic("home", { hero: [] });
   const [scrolled, setScrolled] = useState(false);
   const [gate, setGate] = useState(() => shouldShowGate(boot));
 
@@ -150,9 +147,9 @@ function Shell() {
     <>
       <Background appearance={appearance} featured={NO_FEATURED} art={sceneArt} scrolled={scrolled} />
       <TopBar route={top} stack={router.stack} profile={useApp().profile} compact={compact} />
-      <ClickSpark className={gate ? "app-stage is-gated" : "app-stage"} sparkColor={appearanceSpark(appearance)} sparkCount={10} sparkRadius={26} sparkSize={12} duration={520} shape="streak" glow={0.6}>
+      <div className={gate ? "app-stage is-gated" : "app-stage"}>
         <Screens />
-      </ClickSpark>
+      </div>
       {gate ? <ProfileGate onDone={() => setGate(false)} /> : null}
       <Toasts />
       <TrophyToast />

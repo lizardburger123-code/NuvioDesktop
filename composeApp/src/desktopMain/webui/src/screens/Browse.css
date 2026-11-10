@@ -1,16 +1,9 @@
-.browse-head {
-  padding: 28px var(--gutter) 0;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 14px 20px;
-}
+.browse-head { padding: 36px var(--gutter) 0; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 18px 20px; }
 .browse-head .t-page { grid-column: 1; }
 .browse-mode { grid-column: 2; justify-self: end; }
-.browse-genres { grid-column: 1 / -1; }
-.browse-genres { display: flex; flex-wrap: wrap; gap: 8px; }
+.browse-genres { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
 
-.browse-showcase { margin-top: 24px; }
-.browse-showcase + .row { margin-top: 8px; }
+.browse-showcase { margin-top: 28px; }
+.browse-showcase + .row { margin-top: 0; }
 
-.browse-empty { margin: 40px var(--gutter); color: var(--ink-2); max-width: 60ch; }
+.browse-empty { margin: 40px var(--gutter) 0; font-size: var(--fs-15); line-height: 1.55; color: var(--ink-2); max-width: 56ch; }

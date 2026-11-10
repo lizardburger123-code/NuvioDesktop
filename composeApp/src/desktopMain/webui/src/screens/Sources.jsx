@@ -188,7 +188,7 @@ export default function Sources({ meta, video, onClose }) {
   return createPortal(
     <>
     <div className={`sources-layer${closing ? " is-closing" : ""}`} data-modal-open onClick={close}>
-      <aside ref={panelRef} className="sources glass-dark" onClick={event => event.stopPropagation()} aria-label="Sources">
+      <aside ref={panelRef} className="sources" onClick={event => event.stopPropagation()} aria-label="Sources">
         <header className="sources-head">
           <div className="sources-titles">
             <h2 className="sources-title" dir="auto">{meta.name}</h2>
@@ -198,13 +198,13 @@ export default function Sources({ meta, video, onClose }) {
           </div>
           <div className="sources-tools">
             <button className="btn btn-ghost btn-sm" onClick={load} aria-label="Reload sources" title="Reload"><LuRefreshCw /></button>
-            <button className="btn btn-primary btn-sm" onClick={best} disabled={!total}><LuPlay /> Best</button>
+            <button className="btn btn-primary btn-sm" onClick={best} disabled={!total} title="Play the top source in this list"><LuPlay /> Play best</button>
             <button className="btn btn-glass btn-icon btn-sm" onClick={close} aria-label="Close sources"><LuX /></button>
           </div>
         </header>
 
         <div className="sources-filters">
-          <div ref={qualityRef} className="seg glass-flat" role="group" aria-label="Quality">
+          <div ref={qualityRef} className="seg" role="group" aria-label="Quality">
             {QUALITIES.map(q => (
               <button key={q} aria-pressed={quality === q} onClick={() => setQuality(q)}>{q}</button>
             ))}

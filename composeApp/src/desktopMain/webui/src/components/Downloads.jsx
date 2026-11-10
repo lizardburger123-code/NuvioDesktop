@@ -43,9 +43,9 @@ export default function Downloads({ onCount }) {
 
   if (!items.length) {
     return (
-      <section className="library-empty">
-        <h2 className="t-title">No downloads yet</h2>
-        <p className="t-meta">Open a title's sources and press the download button on any source. Torrents download once they're cached on TorBox.</p>
+      <section className="empty">
+        <h2>No downloads yet</h2>
+        <p>Open a title's sources and press the download button on any source. Torrents download once they're cached on TorBox.</p>
         <button className="btn btn-glass btn-sm" onClick={() => call("downloads.reveal", {})}><LuFolderOpen /> Open the downloads folder</button>
       </section>
     );

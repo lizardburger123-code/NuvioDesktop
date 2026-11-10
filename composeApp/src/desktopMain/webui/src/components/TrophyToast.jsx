@@ -3,7 +3,7 @@ import { LuCalendar, LuClock, LuFilm, LuFlame, LuHistory, LuHourglass, LuLayers,
 import { useTopic } from "../store.js";
 import { reduceMotion } from "../lib/motion.js";
 import { navigate } from "../lib/router.js";
-import { newlyEarned } from "../lib/trophies.js";
+import { level, newlyEarned } from "../lib/trophies.js";
 import "./TrophyToast.css";
 
 const ICONS = { shelf: LuLibrary, film: LuFilm, tv: LuTv, flame: LuFlame, layers: LuLayers, clock: LuClock, moon: LuMoon, history: LuHistory, star: LuStar, sun: LuSun, hourglass: LuHourglass, calendar: LuCalendar };
@@ -30,17 +30,28 @@ export default function TrophyToast() {
     if (!added.length) return;
     const cards = added.map(item => ({ kind: "case", key: `case:${item.type}:${item.id}`, item }));
     newlyEarned(before, items).forEach(badge => cards.push({ kind: "badge", key: `badge:${badge.id}:${badge.tier}`, badge }));
+    const was = level(before).level;
+    const now = level(items).level;
+    if (now > was) cards.push({ kind: "level", key: `level:${now}`, level: now, toNext: level(items).toNext });
     setQueue(q => [...q, ...cards]);
   }, [items]);
 
+  // Next card up, once the corner is free.
   useEffect(() => {
-    if (current || !queue.length) return undefined;
+    if (current || !queue.length) return;
     const [next, ...rest] = queue;
     setQueue(rest);
     setCurrent(next);
+  }, [queue, current]);
+
+  // Each card stays its few seconds, then leaves. (Its own effect: sharing one with the queue
+  // cancelled this timer as soon as the card appeared, so cards never left.)
+  const showing = current && !current.leaving ? current.key : null;
+  useEffect(() => {
+    if (!showing) return undefined;
     const timer = window.setTimeout(() => setCurrent(c => (c ? { ...c, leaving: true } : c)), SHOW_MS);
     return () => window.clearTimeout(timer);
-  }, [queue, current]);
+  }, [showing]);
 
   useEffect(() => {
     if (!current?.leaving) return undefined;
@@ -78,6 +89,18 @@ function Card({ card, onOpen }) {
           <small>On the shelf</small>
           <strong dir="auto">{item.name}</strong>
           <span>{item.type === "series" ? "Series completed" : "Film completed"}</span>
+        </span>
+      </button>
+    );
+  }
+  if (card.kind === "level") {
+    return (
+      <button ref={ref} className="ttoast ttoast-level" onClick={onOpen} aria-label={`Level ${card.level} reached. Open Trophies`}>
+        <span className="ttoast-ring"><strong className="num">{card.level}</strong></span>
+        <span className="ttoast-text">
+          <small>Level up</small>
+          <strong>Level {card.level}</strong>
+          <span className="num">{card.toNext} more to level {card.level + 1}</span>
         </span>
       </button>
     );

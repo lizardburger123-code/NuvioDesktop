@@ -1,92 +1,48 @@
-.search-hero {
-  width: min(720px, 100%);
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
+.search-hero { width: 100%; display: flex; flex-direction: column; gap: 16px; }
 
-.search-glass.glass-surface {
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .16), inset 0 1px 0 rgb(255 255 255 / .2), 0 20px 50px rgb(0 0 0 / .3);
-}
-
+/* The field is a line of title type on a rule: what you type is the heading of the page. */
 .search-form {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 0 8px 0 22px;
+  display: flex; align-items: center; gap: 18px; height: clamp(72px, 9vh, 96px);
+  box-shadow: inset 0 -1px 0 var(--line-strong);
+  transition: box-shadow var(--t-fast) ease;
 }
-
-.search-icon { width: 20px; height: 20px; color: var(--ink-2); flex: none; }
-
+.search-form:focus-within { box-shadow: inset 0 -2px 0 #fff; }
+.search-icon { width: clamp(24px, 2.2vw, 32px); height: clamp(24px, 2.2vw, 32px); color: var(--ink-3); flex: none; transition: color var(--t-fast) ease; }
+.search-form:focus-within .search-icon { color: #fff; }
 .search-input {
-  flex: 1;
-  min-width: 0;
-  height: 100%;
-  border: 0;
-  background: transparent;
-  font-size: var(--fs-16);
-  font-weight: 550;
-  color: var(--ink);
+  flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; color: #fff;
+  font-size: clamp(28px, 3.2vw, 44px); font-weight: 800; letter-spacing: -.04em;
 }
-.search-input::placeholder { color: rgb(235 235 245 / .6); }
-
-.search-go {
-  height: 46px;
-  padding: 0 20px 0 22px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 750;
-  font-size: var(--fs-14);
-  background: #fff;
-  color: #0a0a0c;
-  transition: transform var(--t-fast) var(--ease-soft), background-color var(--t-fast) ease;
+.search-input::placeholder { color: var(--ink-3); }
+.search-input:focus-visible { outline: none; }
+.search-tool, .search-go {
+  width: 44px; height: 44px; flex: none; border-radius: 50%; display: grid; place-items: center;
+  transition: background-color var(--t-fast) ease, color var(--t-fast) ease, transform var(--t-fast) var(--ease-soft);
 }
-.search-go svg { width: 16px; height: 16px; }
-.search-go:hover { background: rgb(255 255 255 / .88); }
-.search-go:active { transform: scale(.96); }
+.search-tool { color: var(--ink-2); }
+.search-tool:hover { color: #fff; background: rgb(255 255 255 / .12); }
+.search-go { background: #fff; color: #0a0b0d; }
+.search-go:hover { background: #e6e9ee; }
+.search-tool:active, .search-go:active { transform: scale(.96); }
+.search-tool svg, .search-go svg { width: 18px; height: 18px; }
 
-.search-hero-compact .search-go { height: 40px; }
-
-.search-recent { display: flex; flex-wrap: wrap; gap: 8px; }
+.search-recent { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
 /* Recent searches: the chip opens the search; its small x forgets it. */
 .recent-chip { position: relative; display: inline-flex; }
-.recent-chip .recent-go { padding-right: 34px; }
+.recent-chip .recent-go { padding-right: 40px; }
+.recent-chip .recent-go svg { color: var(--ink-3); }
 .recent-x {
-  position: absolute;
-  top: 50%;
-  right: 4px;
-  width: 24px;
-  height: 24px;
-  margin-top: -12px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  color: var(--ink-3);
+  position: absolute; top: 50%; right: 6px; width: 26px; height: 26px; margin-top: -13px; border-radius: 50%;
+  display: grid; place-items: center; color: var(--ink-3);
   transition: background-color var(--t-fast) ease, color var(--t-fast) ease;
 }
-/* A 32px hit target around the 24px dot. */
-.recent-x::before { content: ""; position: absolute; inset: -4px; }
-.recent-x svg { width: 13px; height: 13px; }
-.recent-x:hover, .recent-x:focus-visible { background: rgb(255 255 255 / .16); color: var(--ink); }
-.recent-x:active { transform: scale(.92); }
+.recent-x::before { content: ""; position: absolute; inset: -5px -4px; }
+.recent-x svg { width: 14px; height: 14px; }
+.recent-x:hover, .recent-x:focus-visible { background: rgb(255 255 255 / .18); color: #fff; }
+.recent-x:active { transform: scale(.94); }
 .recent-clear {
-  height: 32px;
-  padding: 0 10px;
-  border-radius: 999px;
-  font-size: var(--fs-13);
-  font-weight: 600;
-  color: var(--ink-3);
+  height: 36px; padding: 0 12px; border-radius: 999px; font-size: var(--fs-14); font-weight: 600; color: var(--ink-3);
   transition: color var(--t-fast) ease, background-color var(--t-fast) ease;
 }
-.recent-clear:hover, .recent-clear:focus-visible { color: var(--ink); background: rgb(255 255 255 / .07); }
-
-/* The pill shows focus, not a box drawn inside it. */
-.search-input:focus-visible { outline: none; }
-.search-glass.glass-surface:focus-within {
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .34), inset 0 1px 0 rgb(255 255 255 / .2), 0 0 0 4px rgb(var(--accent-rgb) / .22), 0 20px 50px rgb(0 0 0 / .3);
-}
+.recent-clear:hover, .recent-clear:focus-visible { color: #fff; background: rgb(255 255 255 / .08); }

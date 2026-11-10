@@ -105,7 +105,7 @@ export default function SubtitlePicker({ request, onPlay, onClose }) {
 
   return createPortal(
     <div className="sp-layer" data-modal-open onClick={close}>
-      <div ref={dialogRef} className="sp glass-dark" role="dialog" aria-label="Choose subtitles" onClick={event => event.stopPropagation()}>
+      <div ref={dialogRef} className="sp" role="dialog" aria-label="Choose subtitles" onClick={event => event.stopPropagation()}>
         <header className="sp-head">
           <div className="sp-titles">
             <h2><LuCaptions aria-hidden="true" /> Subtitles for this file</h2>
@@ -129,7 +129,7 @@ export default function SubtitlePicker({ request, onPlay, onClose }) {
             {query ? <button type="button" className="sp-search-clear" onClick={() => { setQuery(""); search(""); }} aria-label="Clear search"><LuX /></button> : null}
           </form>
           {languages.length > 1 ? (
-            <div ref={langRef} className="seg glass-flat" role="group" aria-label="Language">
+            <div ref={langRef} className="seg" role="group" aria-label="Language">
               <button aria-pressed={lang === "all"} onClick={() => setLang("all")}>All</button>
               {languages.map(l => (
                 <button key={l.code} aria-pressed={lang === l.code} onClick={() => setLang(l.code)}>

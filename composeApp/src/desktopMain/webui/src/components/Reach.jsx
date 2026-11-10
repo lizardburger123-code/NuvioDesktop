@@ -8,13 +8,13 @@ import "./Reach.css";
 const ICONS = { shelf: LuLibrary, film: LuFilm, tv: LuTv, flame: LuFlame, layers: LuLayers, clock: LuClock, moon: LuMoon, history: LuHistory, star: LuStar, sun: LuSun, hourglass: LuHourglass, calendar: LuCalendar };
 
 /** Trophies in reach: the three badges closest to their next tier, each a goal with a bar. */
-export default function Reach() {
+export default function Reach({ heading = "Trophies in reach" }) {
   const items = useTopic("completed", []);
   const goals = useMemo(() => inReach(items), [items]);
   if (!goals.length) return null;
   return (
-    <section className="reach" aria-label="Trophies in reach">
-      <h2 className="row-title">Trophies in reach</h2>
+    <section className="reach" aria-label={heading}>
+      <h2 className="row-title">{heading}</h2>
       <div className="reach-grid">
         {goals.map(goal => {
           const Icon = ICONS[goal.icon] || LuStar;

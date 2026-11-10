@@ -1,4 +1,4 @@
-// Turns the appearance settings (three gradient colours, wallpaper, dim) into CSS variables.
+// Turns the appearance settings (accent colour, backdrop picture, blur) into CSS variables.
 // Everything visual that depends on the user's colours reads these variables, so a change
 // repaints the whole app in one frame.
 
@@ -12,14 +12,27 @@ export const DEFAULT_APPEARANCE = {
   profileGate: true,
 };
 
+/** Cinema accents: one colour each (stored three times, the shape the settings file already has). */
 export const PRESETS = [
-  { name: "Dusk", colors: ["#1d2b64", "#6b3fa0", "#e0607e"] },
-  { name: "Ember", colors: ["#1a0f0a", "#9a3412", "#f59e0b"] },
-  { name: "Lagoon", colors: ["#062a3a", "#0e7490", "#5eead4"] },
-  { name: "Forest", colors: ["#0b1f14", "#166534", "#a3e635"] },
-  { name: "Rose", colors: ["#2a0f1d", "#be185d", "#fda4af"] },
-  { name: "Mono", colors: ["#0b0b0d", "#3f3f46", "#d4d4d8"] },
+  { name: "Amber", colors: ["#f0b27a", "#f0b27a", "#f0b27a"] },
+  { name: "Ivory", colors: ["#ece7de", "#ece7de", "#ece7de"] },
+  { name: "Sky", colors: ["#8ec5ff", "#8ec5ff", "#8ec5ff"] },
+  { name: "Mint", colors: ["#8fe3c0", "#8fe3c0", "#8fe3c0"] },
+  { name: "Rose", colors: ["#ff9db5", "#ff9db5", "#ff9db5"] },
+  { name: "Violet", colors: ["#b9a7ff", "#b9a7ff", "#b9a7ff"] },
 ];
+
+// Gradient sets from the earlier look map onto the nearest Cinema accent, so nobody opens the
+// new interface to a colour chosen for a design that no longer exists.
+const LEGACY = {
+  "#1d2b64,#6b3fa0,#e0607e": "#f0b27a",
+  "#1a0f0a,#9a3412,#f59e0b": "#f0b27a",
+  "#062a3a,#0e7490,#5eead4": "#8fe3c0",
+  "#0b1f14,#166534,#a3e635": "#8fe3c0",
+  "#2a0f1d,#be185d,#fda4af": "#ff9db5",
+  "#0b0b0d,#3f3f46,#d4d4d8": "#ece7de",
+};
+export const accentOf = colors => LEGACY[(colors || []).join(",").toLowerCase()] || deriveAccent(colors || []);
 
 const clampByte = value => Math.max(0, Math.min(255, Math.round(value)));
 
@@ -82,7 +95,7 @@ export const applyAppearance = appearance => {
     const rgb = parseHex(color) || [100, 80, 160];
     root.setProperty(`--g${i + 1}-rgb`, rgb.join(" "));
   });
-  const accent = deriveAccent(colors);
+  const accent = accentOf(colors);
   root.setProperty("--accent", accent);
   root.setProperty("--accent-rgb", (parseHex(accent) || [139, 124, 246]).join(" "));
   root.setProperty("--on-accent", inkOn(accent));

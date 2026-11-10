@@ -36,7 +36,7 @@
 
 .wide-scrim { position: absolute; inset: 0; background: linear-gradient(0deg, rgb(0 0 0 / .55), rgb(0 0 0 / 0) 55%); }
 .wide-logo { position: absolute; left: 14px; bottom: 16px; max-width: 52%; max-height: 40px; object-fit: contain; object-position: left bottom; filter: drop-shadow(0 2px 10px rgb(0 0 0 / .6)); }
-.wide-badge { position: absolute; left: 10px; top: 10px; height: 24px; padding: 0 10px; border-radius: 999px; display: inline-flex; align-items: center; font-size: 11px; font-weight: 800; color: #0a0b0d; background: #fff; }
+.wide-badge { position: absolute; left: 10px; top: 10px; height: 24px; padding: 0 10px; border-radius: 999px; display: inline-flex; align-items: center; font-size: 12px; font-weight: 800; color: #0a0b0d; background: #fff; }
 .wide-play {
   position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%;
   display: grid; place-items: center; color: #0a0b0d; background: #fff;

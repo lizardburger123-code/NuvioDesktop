@@ -8,7 +8,7 @@
   background: linear-gradient(180deg, rgb(7 8 10 / .72), rgb(7 8 10 / 0));
   transition: background-color var(--t-med) ease;
 }
-.topbar.is-solid { background-color: rgb(7 8 10 / .92); }
+.topbar.is-solid { background-color: rgb(7 8 10 / .78); -webkit-backdrop-filter: blur(24px) saturate(1.4); backdrop-filter: blur(24px) saturate(1.4); }
 
 .topbar-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .topbar-back {
@@ -61,7 +61,7 @@
 .topbar-profile {
   --level: 0;
   width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
-  background: conic-gradient(#fff calc(var(--level) * 1turn), rgb(255 255 255 / .18) 0);
+  background: conic-gradient(var(--accent) calc(var(--level) * 1turn), rgb(255 255 255 / .18) 0);
   transition: transform var(--t-fast) var(--ease-soft);
 }
 .topbar-profile:active { transform: scale(.96); }

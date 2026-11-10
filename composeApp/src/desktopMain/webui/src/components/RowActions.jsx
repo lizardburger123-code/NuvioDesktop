@@ -1,4 +1,4 @@
-import { LuChevronRight, LuEyeOff } from "react-icons/lu";
+import { LuEyeOff } from "react-icons/lu";
 import { useApp } from "../AppContext.jsx";
 import { navigate } from "../lib/router.js";
 import { hideRow } from "../lib/rows.js";
@@ -10,17 +10,8 @@ export const openCatalog = section => {
   navigate("addons", { addon, source: section.source, ...(section.genre ? { genre: section.genre } : {}) });
 };
 
-/** "See all" and "Hide" for a catalog row. */
+/** "Hide" for a catalog row (its title opens the whole catalog). */
 export default function RowActions({ section }) {
   const { toast } = useApp();
-  return (
-    <>
-      <button className="row-hide" onClick={() => hideRow(section, toast)} aria-label={`Hide ${section.title}`} title="Hide this row"><LuEyeOff /></button>
-      {section.source ? (
-        <button className="row-more" onClick={() => openCatalog(section)} aria-label={`See all of ${section.title}`}>
-          See all <LuChevronRight />
-        </button>
-      ) : null}
-    </>
-  );
+  return <button className="row-hide" onClick={() => hideRow(section, toast)} aria-label={`Hide ${section.title}`} title="Hide this row"><LuEyeOff /></button>;
 }

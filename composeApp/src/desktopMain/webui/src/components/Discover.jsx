@@ -205,9 +205,9 @@ export default function Discover({ kind }) {
 
   if (sources && !sources.length) {
     return (
-      <section className="discover-empty">
-        <h2 className="t-title">Nothing to browse yet</h2>
-        <p className="t-meta">None of your addons has a catalog here. Add one from Settings › Addons › Store (The Movie Database, Anime Kitsu, Streaming Catalogs…).</p>
+      <section className="empty">
+        <h2>Nothing to browse yet</h2>
+        <p>None of your addons has a catalog here. Add one from Settings › Addons › Store (The Movie Database, Anime Kitsu, Streaming Catalogs…).</p>
       </section>
     );
   }

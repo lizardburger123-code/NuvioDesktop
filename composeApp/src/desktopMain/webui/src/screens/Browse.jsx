@@ -44,7 +44,7 @@ export default function Browse({ params }) {
     <main className="screen browse">
       <section className="browse-head">
         <h1 className="t-page">{TITLES[kind] || "Browse"}</h1>
-        <div ref={modeRef} className="seg glass-flat browse-mode" role="tablist" aria-label="View">
+        <div ref={modeRef} className="seg browse-mode" role="tablist" aria-label="View">
           <button role="tab" aria-pressed={mode === "highlights"} onClick={() => navigate("browse", { kind }, { replace: true })}>Highlights</button>
           <button role="tab" aria-pressed={mode === "discover"} onClick={() => navigate("browse", { kind, mode: "discover" }, { replace: true })}>Discover</button>
         </div>

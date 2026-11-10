@@ -20,7 +20,7 @@ function Toast({ toast }) {
     );
   }, [toast.leaving]);
   return (
-    <div ref={ref} className={`toast glass-dark${toast.tone === "error" ? " toast-error" : ""}`} role="status">
+    <div ref={ref} className={`toast${toast.tone === "error" ? " toast-error" : ""}`} role="status">
       <span>{toast.message}</span>
       {toast.action ? <button className="toast-action" onClick={toast.action.run}>{toast.action.label}</button> : null}
     </div>

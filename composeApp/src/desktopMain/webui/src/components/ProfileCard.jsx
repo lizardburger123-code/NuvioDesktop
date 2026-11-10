@@ -1,8 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { LuArrowLeft, LuCamera, LuCheck, LuFlame, LuImage, LuLink, LuLock, LuPalette, LuSettings, LuUpload } from "react-icons/lu";
+import { LuArrowLeft, LuCamera, LuCheck, LuFlame, LuImage, LuLink, LuLock, LuSettings, LuTrophy, LuUpload } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useApp } from "../AppContext.jsx";
+import { useTopic } from "../store.js";
+import { level, streaks } from "../lib/trophies.js";
 import { BEFORE_NAV, goSection } from "../lib/router.js";
 import { EASE, reduceMotion } from "../lib/motion.js";
 import { holdAmbient } from "../lib/hold.js";
@@ -177,7 +179,10 @@ function PictureView({ profile, onPicked, onBack }) {
  * the picture or switch profile. Grows out of the profile pill.
  */
 export default function ProfileCard({ anchorRef, onClose, closeRequest = 0, initialView = "main" }) {
-  const { boot, profile, setProfile, appearance } = useApp();
+  const { boot, profile, setProfile } = useApp();
+  const completed = useTopic("completed", []);
+  const rank = useMemo(() => level(completed), [completed]);
+  const streak = useMemo(() => streaks(completed).current, [completed]);
   const [view, setView] = useState(initialView);
   const [place, setPlace] = useState(null);
   const returning = useRef(false);
@@ -278,35 +283,27 @@ export default function ProfileCard({ anchorRef, onClose, closeRequest = 0, init
     setPop(n => n + 1);
   };
 
-  const animate = appearance?.animate !== false;
-
   return createPortal(
     <div
       ref={cardRef}
-      className="profile-pop glass-dark"
+      className="profile-pop"
       data-modal-open
       role="dialog"
       aria-label="Profile"
       style={place ? { top: place.top, right: place.right, transformOrigin: `calc(100% - ${place.origin}px) -10px` } : { visibility: "hidden" }}
     >
-      <div className={`pc-aurora${animate ? " is-live" : ""}`} aria-hidden="true">
-        <span className="pc-blob pc-blob-1" />
-        <span className="pc-blob pc-blob-2" />
-        <span className="pc-blob pc-blob-3" />
-      </div>
-
       {view === "main" ? (
         <div ref={mainRef} className="pc-view">
           <div className="pc-id" data-stagger>
-            <button className="pc-avatar" onClick={() => setView("picture")} aria-label="Change profile picture" title="Change picture">
-              <Avatar profile={profile} size={84} />
+            <button className="pc-avatar" style={{ "--level": rank.progress }} onClick={() => setView("picture")} aria-label="Change profile picture" title="Change picture">
+              <Avatar profile={profile} size={72} />
               <span className="pc-avatar-edit"><LuCamera /></span>
             </button>
             <div className="pc-who">
               <h3 dir="auto">{profile?.name || "You"}</h3>
-              <span className="pc-meta">
-                {boot.profiles?.length > 1 ? `Profile ${index + 1} of ${boot.profiles.length}` : "Your profile"}
-                {stats?.streak >= 2 ? <span className="pc-streak"><LuFlame /> {stats.streak}-day streak</span> : null}
+              <span className="pc-meta num">
+                {completed.length ? `Level ${rank.level} · ${completed.length} ${completed.length === 1 ? "trophy" : "trophies"}` : boot.profiles?.length > 1 ? `Profile ${index + 1} of ${boot.profiles.length}` : "Your profile"}
+                {streak >= 2 ? <span className="pc-streak"><LuFlame /> {streak}-day streak</span> : null}
               </span>
             </div>
           </div>
@@ -337,9 +334,9 @@ export default function ProfileCard({ anchorRef, onClose, closeRequest = 0, init
           ) : null}
 
           <div className="pc-actions" data-stagger>
-            <button className="btn btn-glass btn-sm" onClick={() => setView("picture")}><LuCamera /> Change picture</button>
-            <button className="btn btn-glass btn-sm" onClick={() => go("settings", { section: "appearance" })}><LuPalette /> Appearance</button>
-            <button className="btn btn-glass btn-icon btn-sm" onClick={() => go("settings", { section: "profile" })} aria-label="Settings" title="Settings"><LuSettings /></button>
+            <button className="btn btn-primary btn-sm" onClick={() => go("library", { tab: "completed" })}><LuTrophy /> Trophies</button>
+            <button className="btn btn-glass btn-sm" onClick={() => setView("picture")}><LuCamera /> Picture</button>
+            <button className="btn btn-glass btn-icon btn-sm" onClick={() => go("settings", { section: "profile" })} aria-label="Profile settings" title="Profile settings"><LuSettings /></button>
           </div>
         </div>
       ) : (

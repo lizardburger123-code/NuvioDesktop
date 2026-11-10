@@ -1,35 +1,21 @@
-.search-top { padding: 36px var(--gutter) 8px; display: flex; flex-direction: column; gap: 18px; }
-.search-group { padding: 34px var(--gutter) 0; }
-.search-group > h2 { display: flex; align-items: baseline; gap: 10px; margin-bottom: 16px; }
-.search-count { font-size: var(--fs-13); color: var(--ink-3); font-weight: 650; }
-.search-grid { display: flex; flex-wrap: wrap; gap: 26px 18px; }
-.search-none { padding: 44px var(--gutter); display: flex; flex-direction: column; gap: 8px; max-width: 70ch; }
+.search-top { padding: 28px var(--gutter) 0; display: flex; flex-direction: column; gap: 22px; }
+.search-group { padding: 40px var(--gutter) 0; }
+.search-group > h2 { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; }
+.search-from { font-size: var(--fs-13); font-weight: 500; color: var(--ink-3); letter-spacing: 0; }
+.search-grid { display: grid; grid-template-columns: repeat(auto-fill, 168px); gap: 32px 16px; }
 
-.search-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.search-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
 .search-addons { display: flex; flex-wrap: wrap; gap: 8px; }
-.search-chip-n { margin-left: 4px; font-size: 11.5px; font-weight: 700; opacity: .6; }
-.search-from {
-  font-size: var(--fs-12);
-  font-weight: 650;
-  color: var(--ink-3);
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgb(255 255 255 / .06);
-}
+.search-chip-n { margin-left: 4px; font-size: var(--fs-12); font-weight: 600; opacity: .65; }
+
+/* What search doesn't reach, said once at the end of the results. */
 .search-more {
-  margin: 40px var(--gutter) 0;
-  padding: 16px 18px;
-  border-radius: 20px;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  max-width: 880px;
-  font-size: var(--fs-13);
-  color: var(--ink-2);
-  background: rgb(255 255 255 / .045);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .07);
+  margin: 56px var(--gutter) 0; padding-top: 22px; max-width: 880px;
+  display: flex; align-items: center; gap: 16px;
+  font-size: var(--fs-14); color: var(--ink-2);
+  box-shadow: inset 0 1px 0 var(--line);
 }
 .search-more > svg { width: 20px; height: 20px; flex: none; color: var(--ink-3); }
 .search-more span { flex: 1; line-height: 1.5; text-wrap: pretty; }
-.search-more strong { color: var(--ink); font-weight: 700; }
+.search-more strong { color: #fff; font-weight: 700; }
 .search-more .btn { flex: none; }

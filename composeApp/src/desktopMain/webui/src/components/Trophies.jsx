@@ -7,7 +7,8 @@ import { useTopic } from "../store.js";
 import { useApp } from "../AppContext.jsx";
 import { year } from "../lib/format.js";
 import { EASE, reduceMotion } from "../lib/motion.js";
-import { badges, fmtHours, stats, yearGrid } from "../lib/trophies.js";
+import { badges, fmtHours, level, stats, yearGrid } from "../lib/trophies.js";
+import Reach from "./Reach.jsx";
 import "./Trophies.css";
 
 const ICONS = { shelf: LuLibrary, film: LuFilm, tv: LuTv, flame: LuFlame, layers: LuLayers, clock: LuClock, moon: LuMoon, history: LuHistory, star: LuStar, sun: LuSun, hourglass: LuHourglass, calendar: LuCalendar };
@@ -98,6 +99,7 @@ export default function Trophies() {
   const all = useMemo(() => badges(items), [items]);
   const earned = all.filter(b => b.earned);
   const latest = items[0];
+  const rank = useMemo(() => level(items), [items]);
 
   const shelves = useMemo(() => {
     const map = new Map();
@@ -130,8 +132,8 @@ export default function Trophies() {
     return (
       <section className="trophies-empty" ref={rootRef}>
         <div className="trophies-empty-shelf" aria-hidden="true"><span /><span /><span /></div>
-        <h2 className="t-title">Your shelf is empty</h2>
-        <p className="t-meta">Watch a film to the end, or every episode of a series, and its case lands here. Badges unlock as the shelf fills.</p>
+        <h2>Your shelf is empty</h2>
+        <p>Watch a film to the end, or every episode of a series, and its case lands here. Badges unlock as the shelf fills.</p>
         <div className="badge-rail is-preview">{all.slice(0, 4).map(b => <Badge key={b.id} badge={b} />)}</div>
       </section>
     );
@@ -139,26 +141,38 @@ export default function Trophies() {
 
   return (
     <section className="trophies" ref={rootRef}>
-      <div className="trophies-figures" data-rise>
-        <div><strong className="num">{s.total}</strong><span>on the shelf</span><small>{s.films} films · {s.series} series</small></div>
-        <div><strong className="num">{fmtHours(s.totalMs)}</strong><span>watched</span><small>{s.timed < s.total ? `${s.total - s.timed} without a time` : "from the player"}</small></div>
-        <div><strong className="num">{s.current}</strong><span>{s.current === 1 ? "day streak" : "day streak"}</span><small>longest {s.longest}</small></div>
-        <div><strong className="num">{s.thisMonth}</strong><span>this month</span><small>{s.topMonth ? `best ${s.topMonth.label.split(" ")[0]}: ${s.topMonth.count}` : ""}</small></div>
-        <div className="trophies-latest">
-          {latest?.poster ? <img src={latest.poster} alt="" /> : null}
-          <span><small>Latest</small><strong dir="auto">{latest?.name}</strong><em>{latest ? ago(latest.completedAt) : ""}</em></span>
+      <header className="trophies-top" data-rise>
+        <div className="level-ring" style={{ "--p": rank.progress }} role="img" aria-label={`Level ${rank.level}`}>
+          <strong className="num">{rank.level}</strong>
+          <span>Level</span>
         </div>
-      </div>
+        <div className="trophies-lead">
+          <span className="trophies-kicker">{rank.toNext === 1 ? "One more to level up" : `${rank.toNext} more to level ${rank.level + 1}`}</span>
+          <h2 className="trophies-headline"><span className="num">{s.total}</span> finished</h2>
+          <p dir="auto">{latest ? `Latest: ${latest.name}, ${ago(latest.completedAt)}.` : ""} {s.films} {s.films === 1 ? "film" : "films"} and {s.series} series on the shelf.</p>
+        </div>
+        <dl className="trophies-figures">
+          <div><dt>Watched</dt><dd className="num">{fmtHours(s.totalMs)}</dd><small>{s.timed < s.total ? `${s.total - s.timed} without a time` : "from the player"}</small></div>
+          <div><dt>Streak</dt><dd className="num">{s.current} <em>{s.current === 1 ? "day" : "days"}</em></dd><small>longest {s.longest}</small></div>
+          <div><dt>This month</dt><dd className="num">{s.thisMonth}</dd><small>{s.topMonth ? `best ${s.topMonth.label.split(" ")[0]}: ${s.topMonth.count}` : ""}</small></div>
+        </dl>
+      </header>
+
+      <Reach heading="In reach" />
 
       <div className="trophies-row" data-rise>
         <h2 className="trophies-h">Badges <span className="num">{earned.length} of {all.length}</span></h2>
-        <div className="seg glass-flat" role="tablist" aria-label="View">
-          <button role="tab" aria-pressed={view === "shelf"} onClick={() => setView("shelf")}>Shelf</button>
-          <button role="tab" aria-pressed={view === "year"} onClick={() => setView("year")}>Year</button>
-        </div>
       </div>
       <div className="badge-rail" data-rise>
         {[...all].sort((a, b) => Number(b.earned) - Number(a.earned)).map(b => <Badge key={b.id} badge={b} />)}
+      </div>
+
+      <div className="trophies-row" data-rise>
+        <h2 className="trophies-h">{view === "year" ? "The year" : "The shelf"}</h2>
+        <div className="seg" role="tablist" aria-label="View">
+          <button role="tab" aria-pressed={view === "shelf"} onClick={() => setView("shelf")}>By month</button>
+          <button role="tab" aria-pressed={view === "year"} onClick={() => setView("year")}>Year</button>
+        </div>
       </div>
 
       {view === "year" ? (

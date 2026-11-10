@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
 import { useApp } from "../AppContext.jsx";
 import { ContinueCard, PosterCard } from "../components/Cards.jsx";
 import { navigate } from "../lib/router.js";
-import { useSegmentPill } from "../lib/motion.js";
 import { useScreenActive } from "../lib/screen.js";
 import TorboxClear from "../components/TorboxClear.jsx";
 import Downloads from "../components/Downloads.jsx";
@@ -35,8 +34,6 @@ export default function Library({ params }) {
   const [clearing, setClearing] = useState(false);
   const loadCloud = () => call("library.cloud", {}, { timeoutMs: 30000 }).then(r => setCloud(r?.items || []), () => setCloud([]));
   useEffect(() => { if (active && tab === "cloud") loadCloud(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [active, tab]);
-  const tabsRef = useRef(null);
-  useSegmentPill(tabsRef);
 
   useEffect(() => { call("library.subscribe").catch(() => {}); }, []);
 
@@ -59,17 +56,18 @@ export default function Library({ params }) {
       <section className="library-head">
         <h1 className="t-page">Library</h1>
         <div className="library-bar">
-          <div ref={tabsRef} className="seg glass-flat" role="tablist" aria-label="Library">
+          <div className="tabs" role="tablist" aria-label="Library">
             {TABS.map(t => (
-              <button key={t.id} role="tab" aria-pressed={tab === t.id} onClick={() => navigate("library", { tab: t.id }, { replace: true })}>
-                {t.label} <span className="library-count num">{counts[t.id]}</span>
+              <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => navigate("library", { tab: t.id }, { replace: true })}>
+                {t.label} <span className="tabs-count num">{counts[t.id]}</span>
               </button>
             ))}
           </div>
+          <div className="library-tools">
           {tab === "cloud" ? (
             <div className="library-cloud-tools">
               <button className="btn btn-ghost btn-sm" onClick={loadCloud} aria-label="Reload TorBox library" title="Reload"><LuRefreshCw /></button>
-              <button className="btn btn-glass btn-sm library-clear" onClick={() => setClearing(true)}><LuTrash2 /> Clear TorBox library</button>
+              <button className="btn btn-glass btn-sm" onClick={() => setClearing(true)}><LuTrash2 /> Clear TorBox library</button>
             </div>
           ) : null}
           {tab !== "continue" && tab !== "downloads" && tab !== "completed" ? (
@@ -80,6 +78,7 @@ export default function Library({ params }) {
               </select>
             </label>
           ) : null}
+          </div>
         </div>
       </section>
 
@@ -96,11 +95,11 @@ export default function Library({ params }) {
       )}
 
       {tab !== "downloads" && tab !== "completed" && (tab === "continue" ? continueWatching.length : items.length) === 0 ? (
-        <section className="library-empty">
-          <h2 className="t-title">
-            {tab === "later" ? "Nothing saved for later" : tab === "continue" ? "Nothing in progress" : tab === "cloud" ? "Your TorBox library is empty" : "No saved titles"}
+        <section className="empty">
+          <h2>
+            {tab === "later" ? "Your list is empty" : tab === "continue" ? "Nothing in progress" : tab === "cloud" ? "Your TorBox library is empty" : "No saved titles"}
           </h2>
-          <p className="t-meta">
+          <p>
             {tab === "later"
               ? "Hover any poster and press the bookmark, or use Add to list on a title's page."
               : tab === "continue"

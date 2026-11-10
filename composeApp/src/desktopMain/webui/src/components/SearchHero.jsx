@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { LuArrowRight, LuHistory, LuSearch, LuX } from "react-icons/lu";
-import GlassSurface from "../reactbits/GlassSurface/GlassSurface.jsx";
 import { navigate } from "../lib/router.js";
 import { EASE, reduceMotion } from "../lib/motion.js";
 import { clearHistory, removeHistory, useSearchHistory } from "../lib/searchHistory.js";
 import "./SearchHero.css";
 
-/** The big frosted search field with the recent searches under it. */
-export default function SearchHero({ autoFocus = false, initial = "", onSubmit, compact = false }) {
+/** Search is typed straight into the page, in title type, with the recent searches under it. */
+export default function SearchHero({ autoFocus = false, initial = "", onSubmit }) {
   const [query, setQuery] = useState(initial);
   const history = useSearchHistory().slice(0, 6);
   const inputRef = useRef(null);
@@ -48,42 +47,30 @@ export default function SearchHero({ autoFocus = false, initial = "", onSubmit, 
   };
 
   return (
-    <div className={`search-hero${compact ? " search-hero-compact" : ""}`}>
-      <GlassSurface
-        width="100%"
-        height={compact ? 54 : 62}
-        borderRadius={compact ? 27 : 31}
-        blur={14}
-        brightness={60}
-        opacity={0.9}
-        backgroundOpacity={0.12}
-        saturation={1.4}
-        className="search-glass"
-      >
-        <form
-          className="search-form"
-          onSubmit={event => { event.preventDefault(); submit(); }}
-          role="search"
-        >
-          <LuSearch className="search-icon" aria-hidden="true" />
-          <input
-            ref={inputRef}
-            className="search-input"
-            value={query}
-            onChange={event => {
-              setQuery(event.target.value);
-              if (onSubmit && event.target.value.trim().length > 1) onSubmit(event.target.value.trim(), { live: true });
-            }}
-            placeholder="Search movies, series and anime"
-            aria-label="Search"
-            spellCheck={false}
-            autoComplete="off"
-          />
-          <button className="search-go" type="submit" aria-label="Search">
-            Go <LuArrowRight />
-          </button>
-        </form>
-      </GlassSurface>
+    <div className="search-hero">
+      <form className="search-form" onSubmit={event => { event.preventDefault(); submit(); }} role="search">
+        <LuSearch className="search-icon" aria-hidden="true" />
+        <input
+          ref={inputRef}
+          className="search-input"
+          value={query}
+          onChange={event => {
+            setQuery(event.target.value);
+            if (onSubmit && event.target.value.trim().length > 1) onSubmit(event.target.value.trim(), { live: true });
+          }}
+          placeholder="Search films, series and anime"
+          aria-label="Search"
+          spellCheck={false}
+          autoComplete="off"
+          dir="auto"
+        />
+        {query ? (
+          <>
+            <button className="search-tool" type="button" aria-label="Clear the search" title="Clear" onClick={() => { setQuery(""); inputRef.current?.focus(); }}><LuX /></button>
+            <button className="search-go" type="submit" aria-label="Search" title="Search"><LuArrowRight /></button>
+          </>
+        ) : null}
+      </form>
       {history.length ? (
         <div ref={recentRef} className="search-recent" aria-label="Recent searches">
           {history.map(item => (

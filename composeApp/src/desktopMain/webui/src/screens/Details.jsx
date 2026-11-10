@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { LuBookmark, LuBookmarkCheck, LuCheck, LuClapperboard, LuListVideo, LuPlay, LuStar, LuTrophy } from "react-icons/lu";
+import { LuBookmark, LuBookmarkCheck, LuCheck, LuClapperboard, LuListVideo, LuPlay, LuTrophy } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
 import { useApp } from "../AppContext.jsx";
@@ -123,17 +123,17 @@ export default function Details({ params }) {
   return (
     <main className="screen details">
       <section className="details-hero" ref={heroRef}>
+        <span className="details-kicker" data-rise>{[meta.type === "series" ? "Series" : "Film", ...(meta.genres?.slice(0, 3) || [])].join(" · ")}</span>
         {meta.logo ? (
           <img className="details-logo" data-rise src={meta.logo} alt={meta.name} />
         ) : (
           <h1 className="details-title" data-rise dir="auto">{meta.name}</h1>
         )}
         {meta.logo ? <h1 className="sr-only">{meta.name}</h1> : null}
-        <div className="details-meta" data-rise>
+        <div className="details-meta num" data-rise>
           {metaLine.map(item => <span key={item}>{item}</span>)}
-          {meta.imdbRating ? <span className="details-imdb"><LuStar aria-hidden="true" />{meta.imdbRating}</span> : null}
+          {meta.imdbRating ? <span>IMDb {meta.imdbRating}</span> : null}
         </div>
-        {meta.genres?.length ? <div className="details-genres" data-rise>{meta.genres.slice(0, 4).join(" · ")}</div> : null}
         {meta.description ? <p className="details-desc" data-rise dir="auto">{meta.description}</p> : null}
         <div className="details-actions">
           <button data-rise className="btn btn-primary details-play" onClick={() => target && play(target)}>
@@ -141,24 +141,17 @@ export default function Details({ params }) {
             <span>{target?.label}</span>
             {target?.sub ? <span className="details-play-sub num">{target.sub}</span> : null}
           </button>
-          <button data-rise className="btn btn-glass" onClick={() => target && setSources(target)}>
-            <LuListVideo /> Sources
+          <button data-rise className={`btn btn-glass${saved ? " is-on" : ""}`} onClick={() => toggleLater(meta)} aria-pressed={saved}>
+            {saved ? <LuBookmarkCheck /> : <LuBookmark />} {saved ? "In my list" : "Add to list"}
           </button>
-          <button
-            data-rise
-            className={`btn btn-glass btn-icon${saved ? " is-on" : ""}`}
-            onClick={() => toggleLater(meta)}
-            aria-pressed={saved}
-            aria-label={saved ? "Remove from my list" : "Add to my list"}
-            title={saved ? "In my list" : "Add to list"}
-          >
-            {saved ? <LuBookmarkCheck /> : <LuBookmark />}
+          <button data-rise className="btn btn-line" onClick={() => target && setSources(target)}>
+            <LuListVideo /> Sources
           </button>
           {meta.type !== "series" ? (
             <button
               data-rise
               className={`btn btn-glass btn-icon${topic.watched ? " is-on" : ""}`}
-              onClick={() => call("watched.toggle", { id: meta.id, type: meta.type, name: meta.name, poster: meta.poster, releaseInfo: meta.releaseInfo }).then(on => toast(on ? `${meta.name} added to your trophies` : `${meta.name} taken off the shelf`), error => toast(error.message, { tone: "error" }))}
+              onClick={() => call("watched.toggle", { id: meta.id, type: meta.type, name: meta.name, poster: meta.poster, releaseInfo: meta.releaseInfo }).then(on => { if (!on) toast(`${meta.name} taken off the shelf`); }, error => toast(error.message, { tone: "error" }))}
               aria-pressed={Boolean(topic.watched)}
               aria-label={topic.watched ? "Remove from trophies" : "Mark as watched"}
               title={topic.watched ? "On your Trophies shelf" : "Mark as watched"}
@@ -176,14 +169,14 @@ export default function Details({ params }) {
 
       {seasons.length ? (
         <section className="details-episodes">
-          <div className="details-seasons glass-flat" role="tablist" aria-label="Seasons">
+          <div className="tabs details-seasons" role="tablist" aria-label="Seasons">
             {seasons.map(s => (
               <button key={s} role="tab" aria-selected={s === season} onClick={() => setSeason(s)}>
                 {s === 0 ? "Specials" : `Season ${s}`}
               </button>
             ))}
           </div>
-          <Row title={season === 0 ? "Specials" : `Season ${season}`} subtitle={`${episodes.length} episodes`} key={season}>
+          <Row title="Episodes" subtitle={`${season === 0 ? "Specials" : `Season ${season}`} · ${episodes.length}`} key={season}>
             {episodes.map(video => (
               <WideCard
                 key={video.id}

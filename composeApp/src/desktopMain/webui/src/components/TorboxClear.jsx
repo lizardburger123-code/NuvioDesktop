@@ -92,7 +92,7 @@ export default function TorboxClear({ onClose, onCleared, mode = "clear", onConn
 
   return createPortal(
     <div className="tbx-layer" data-modal-open onClick={() => step !== "clearing" && close()}>
-      <div ref={ref} className="tbx glass-dark" role="dialog" aria-label={connectOnly ? "Connect TorBox" : "Clear TorBox library"} onClick={event => event.stopPropagation()}>
+      <div ref={ref} className="tbx" role="dialog" aria-label={connectOnly ? "Connect TorBox" : "Clear TorBox library"} onClick={event => event.stopPropagation()}>
         <header className="tbx-head">
           <span className={`tbx-icon${connectOnly ? " is-calm" : ""}`}>{connectOnly ? <LuCloudDownload /> : <LuTrash2 />}</span>
           <h2>{connectOnly ? "Connect TorBox" : "Clear your TorBox library"}</h2>

@@ -55,7 +55,7 @@ export default function Row({ title, subtitle, action, children, className = "",
     <section ref={rowRef} className={`row ${className}`}>
       <header className="row-head">
         <div className="row-titles">
-          {onMore ? <h2 className="row-title"><button className="row-title-link" onClick={onMore}>{title}</button></h2> : <h2 className="row-title">{title}</h2>}
+          {onMore ? <h2 className="row-title"><button className="row-title-link" onClick={onMore} aria-label={`${title}: ${moreLabel.toLowerCase()}`}>{title}<LuChevronRight aria-hidden="true" /></button></h2> : <h2 className="row-title">{title}</h2>}
           {subtitle ? <span className="row-sub">{subtitle}</span> : null}
         </div>
         <div className="row-tools">

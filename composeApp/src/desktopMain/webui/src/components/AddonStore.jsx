@@ -89,7 +89,7 @@ export default function AddonStore({ onChanged }) {
         <Toggle checked={showAdult} onChange={toggleAdult} label="Adult content" disabled={adultBusy} />
       </div>
 
-      <div ref={tabRef} className="seg glass-flat store-tabs" role="tablist" aria-label="Store">
+      <div ref={tabRef} className="seg store-tabs" role="tablist" aria-label="Store">
         <button role="tab" aria-pressed={tab === "featured"} onClick={() => switchTab("featured")}><LuSparkles /> Featured</button>
         <button role="tab" aria-pressed={tab === "browse"} onClick={() => switchTab("browse")}><LuStore /> Browse all</button>
       </div>
@@ -152,7 +152,7 @@ function Featured({ data, showAdult, reload, onChanged }) {
   return (
     <>
       <div className="store-bar">
-        <div ref={segRef} className="seg glass-flat" role="tablist" aria-label="Category">
+        <div ref={segRef} className="seg" role="tablist" aria-label="Category">
           {categories.map(c => <button key={c} role="tab" aria-pressed={current === c} onClick={() => setCategory(c)}>{c}</button>)}
         </div>
         <button className="btn btn-ghost btn-sm" onClick={() => reload(true)} aria-label="Check again" title="Check again"><LuRefreshCw /></button>

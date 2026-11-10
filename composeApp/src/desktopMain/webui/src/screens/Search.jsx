@@ -85,12 +85,12 @@ export default function Search({ params }) {
   return (
     <main className="screen search">
       <section className="search-top">
-        <h1 className="t-page">Search</h1>
-        <SearchHero autoFocus={active} initial={params.q || ""} onSubmit={run} compact />
+        <h1 className="sr-only">Search</h1>
+        <SearchHero autoFocus={active} initial={params.q || ""} onSubmit={run} />
         {total ? (
           <div className="search-filters" role="toolbar" aria-label="Filter results">
             {types.length > 1 ? (
-              <div ref={typeRef} className="seg glass-flat" role="group" aria-label="Kind">
+              <div ref={typeRef} className="seg" role="group" aria-label="Kind">
                 <button aria-pressed={typeFilter === "all"} onClick={() => setFilter({ type: "all" })}>All</button>
                 {types.map(([type, n]) => (
                   <button key={type} aria-pressed={typeFilter === type} onClick={() => setFilter({ type })}>
@@ -120,10 +120,9 @@ export default function Search({ params }) {
       <div ref={gridRef}>
         {shown.map(section => (
           <section key={section.key} className="search-group">
-            <h2 className="t-title">
+            <h2 className="row-title">
               {section.title}
-              {section.addonName && !section.title?.includes(section.addonName) ? <span className="search-from" dir="auto">{section.addonName}</span> : null}
-              <span className="search-count num">{section.items.length}</span>
+              <span className="search-from num" dir="auto">{[section.addonName && !section.title?.includes(section.addonName) ? section.addonName : null, section.items.length].filter(Boolean).join(" · ")}</span>
             </h2>
             <div className="search-grid">
               {section.items.map(item => (
@@ -135,16 +134,16 @@ export default function Search({ params }) {
       </div>
 
       {total && !shownTotal ? (
-        <section className="search-none">
-          <h2 className="t-title">Nothing with these filters</h2>
+        <section className="empty">
+          <h2>Nothing with these filters</h2>
           <button className="btn btn-glass btn-sm" onClick={() => setFilter({ type: "all", addon: "all" })}>Show everything</button>
         </section>
       ) : null}
 
       {query && !current.loading && !total ? (
-        <section className="search-none">
-          <h2 className="t-title">Nothing for “<span dir="auto">{query}</span>”</h2>
-          <p className="t-meta">Try the original title, fewer words, or the Arabic or English name. Search covers the catalogs of your installed addons.</p>
+        <section className="empty">
+          <h2>Nothing for “<span dir="auto">{query}</span>”</h2>
+          <p>Try the original title, fewer words, or the Arabic or English name. Search covers the catalogs of your installed addons.</p>
         </section>
       ) : null}
 

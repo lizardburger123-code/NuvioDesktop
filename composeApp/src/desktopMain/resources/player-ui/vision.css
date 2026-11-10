@@ -1306,3 +1306,70 @@ button.action:focus-visible,
 .header-actions { gap: 10px; padding: 0; border-radius: 0; background: none; box-shadow: none; }
 .header-button { border-radius: 50%; background: rgba(255, 255, 255, .12); }
 .header-button:hover { background: rgba(255, 255, 255, .24); }
+
+/* ---- Cinema: one white, no brand colour ---------------------------------------------------
+   The player takes no theme colour from the app: what is on is white, what is progress is white.
+   (These beat the inline values the page sets from the host's theme.) */
+:root {
+  --theme-accent: #fff !important;
+  --theme-accent-strong: #fff !important;
+  --theme-on-accent: #0a0b0d !important;
+  --theme-focus: #fff !important;
+  --theme-timeline-fill: #fff !important;
+  --theme-accent-gradient: none !important;
+  --theme-accent-gradient-vertical: none !important;
+  --theme-selected-surface: rgba(255, 255, 255, .16) !important;
+  --theme-selected-surface-hover: rgba(255, 255, 255, .22) !important;
+  --theme-selected-ring: rgba(255, 255, 255, .5) !important;
+}
+
+/* ---- Menus ---------------------------------------------------------------------------------- */
+.player-rail-modal .track-panel { padding: 16px 8px 8px; border-radius: 20px; }
+.player-rail-modal .track-header { padding: 0 14px 8px; font-size: 17px; line-height: 22px; font-weight: 700; letter-spacing: -.01em; }
+.subtitle-rail-title { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.player-rail-modal .track-row { min-height: 40px; padding: 8px 12px; border-radius: 12px; font-size: 14px; line-height: 19px; }
+.track-row.selected, .track-row.selected:hover:not(:disabled) { background: #fff; color: #0a0b0d; }
+.track-row.selected .track-check { color: #0a0b0d; }
+.track-row.selected .stream-subtitle, .track-row.selected .track-sub, .track-row.selected small { color: rgba(10, 11, 13, .66); }
+.subtitle-language-row.selected .subtitle-count { background: rgba(10, 11, 13, .12); color: rgba(10, 11, 13, .7); }
+.style-section .panel-button { min-height: 32px; padding: 5px 14px; font-size: 13px; font-weight: 600; }
+.style-section .panel-button:disabled { opacity: .4; cursor: default; }
+
+/* ---- Next episode and skip: a picture, a line, one white button --------------------------- */
+.next-episode-card {
+  width: min(380px, calc(100vw - (var(--hp) * 2)));
+  padding: 10px 12px 10px 10px; gap: 4px; border: 0; border-radius: 18px;
+}
+.next-episode-thumb { width: 112px; height: 63px; border-radius: 10px; }
+.next-episode-copy { padding-left: 12px; text-align: left; }
+.next-episode-header { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--v-ink-2); }
+.next-episode-title { margin-top: 4px; font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
+.next-episode-status { margin-top: 3px; font-size: 12.5px; color: var(--v-ink-2); }
+.next-episode-action { gap: 6px; height: 40px; padding: 0 16px 0 13px; border: 0; background: #fff; color: #0a0b0d; font-size: 13.5px; font-weight: 700; }
+.next-episode-card:not(.playable) .next-episode-action { background: rgba(255, 255, 255, .14); color: #fff; opacity: 1; }
+.next-episode-action svg { fill: currentColor; }
+
+.skip-prompt { border-radius: 999px; }
+.skip-prompt-row { height: 48px; padding: 0 22px 0 18px; }
+.skip-prompt-label { padding-left: 10px; font-size: 15px; font-weight: 700; }
+.skip-progress-track { position: absolute; left: 18px; right: 18px; bottom: 7px; width: auto; height: 2px; border-radius: 2px; background: rgba(255, 255, 255, .2); }
+
+/* ---- Pause: what you are watching, set like a title card ------------------------------------ */
+.pause-metadata-overlay { background: linear-gradient(90deg, rgba(7, 8, 10, .9) 0%, rgba(7, 8, 10, .5) 46%, rgba(7, 8, 10, 0) 100%); }
+.pause-metadata-content { padding-bottom: 96px; }
+.pause-kicker { font-size: 13px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--v-ink-2); }
+.pause-title { margin-top: 16px; font-size: clamp(44px, 6vw, 96px); line-height: .94; letter-spacing: -.045em; }
+.pause-episode-info { margin-top: 18px; font-size: 16px; font-weight: 600; color: var(--v-ink-2); }
+.pause-episode-title { margin-top: 6px; font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+.pause-description { max-width: 56ch; font-size: 17px; line-height: 1.5; color: #c9cfd8; }
+
+/* ---- End card ----------------------------------------------------------------------------- */
+.end-card-title { font-size: clamp(48px, 7.2vw, 104px); letter-spacing: -.045em; line-height: .92; }
+.end-card-meta { margin-top: 18px; font-size: 13px; font-weight: 700; letter-spacing: .16em; }
+.end-card-next { margin-top: 24px; padding: 10px 22px 10px 10px; border-radius: 16px; }
+.end-card-next small { font-size: 11px; font-weight: 700; letter-spacing: .16em; }
+.end-card-next strong { margin-top: 3px; font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
+.end-card-next span { font-size: 13.5px; color: var(--v-ink-2); }
+.end-card-actions { margin-top: 28px; gap: 12px; }
+.end-card-button { height: 52px; padding: 0 26px; font-size: 16px; font-weight: 700; }
+.end-card-button.primary { font-weight: 800; }

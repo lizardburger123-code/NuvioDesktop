@@ -89,9 +89,9 @@ export default function Addons({ params }) {
       </section>
 
       {addons && !addons.length ? (
-        <section className="discover-empty">
-          <h2 className="t-title">No addon catalogs</h2>
-          <p className="t-meta">Install an addon with catalogs from Settings › Addons › Store.</p>
+        <section className="empty">
+          <h2>No addon catalogs</h2>
+          <p>Install an addon with catalogs from Settings › Addons › Store.</p>
         </section>
       ) : (
         <>

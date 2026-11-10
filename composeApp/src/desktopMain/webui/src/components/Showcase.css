@@ -7,7 +7,14 @@
   background: var(--ground);
   container-type: size;
 }
-.showcase.is-short { height: clamp(460px, 68vh, 680px); }
+.showcase.is-short { height: clamp(440px, 62vh, 640px); }
+/* Under a page heading the picture rises out of the black instead of starting on a hard edge. */
+.showcase.is-short .showcase-scrim {
+  background:
+    linear-gradient(180deg, var(--ground) 0%, rgb(7 8 10 / 0) 26%),
+    linear-gradient(90deg, rgb(7 8 10 / .88) 0%, rgb(7 8 10 / .5) 38%, rgb(7 8 10 / 0) 66%),
+    linear-gradient(0deg, var(--ground) 0%, rgb(7 8 10 / .86) 16%, rgb(7 8 10 / 0) 46%);
+}
 .showcase.skel { background: var(--ground); border-radius: 0; }
 
 .showcase-art, .showcase-art img { position: absolute; inset: 0; width: 100%; height: 100%; }
