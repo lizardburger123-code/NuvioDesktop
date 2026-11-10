@@ -14,6 +14,38 @@ import "./Browse.css";
 
 const TITLES = { movie: "Movies", series: "Series", anime: "Anime" };
 
+// "Anime Catalogs": AniList and MyAnimeList lists with IMDb ids (so titles open and play like any
+// series). Its settings ride in the link: AniList trending, this season and top anime; MyAnimeList
+// top airing, popular and top films; search; Cinemeta's episode order.
+const ANIME_CATALOGS = "https://1fe84bc728af-stremio-anime-catalogs.baby-beamup.club/%7B%22anilist_trending-now%22%3A%22on%22%2C%22anilist_popular-this-season%22%3A%22on%22%2C%22myanimelist_top-airing%22%3A%22on%22%2C%22myanimelist_popular%22%3A%22on%22%2C%22anilist_top-anime%22%3A%22on%22%2C%22myanimelist_top-movies%22%3A%22on%22%2C%22search%22%3A%22on%22%2C%22cinemeta%22%3A%22on%22%7D/manifest.json";
+const isAnimeCatalogs = name => /^\s*anime catalogs\s*$/i.test(name || "");
+
+/** On the Anime tab until it's installed: AniList and MyAnimeList's lists, one click away. */
+function AnimeCatalogsOffer() {
+  const { toast } = useApp();
+  const [state, setState] = useState("checking");
+  useEffect(() => {
+    call("addons.list").then(list => setState((list || []).some(addon => isAnimeCatalogs(addon.name)) ? "installed" : "offer"), () => setState("offer"));
+  }, []);
+  if (state === "checking" || state === "installed") return null;
+  const install = () => {
+    setState("installing");
+    call("addons.install", { url: ANIME_CATALOGS }, { timeoutMs: 30000 }).then(
+      () => { setState("installed"); toast("Anime Catalogs added. Its rows replace Kitsu's (they're in Settings › Rows)."); },
+      error => { setState("offer"); toast(error.message, { tone: "error" }); },
+    );
+  };
+  return (
+    <section className="anime-offer" aria-label="Better anime catalogs">
+      <div className="anime-offer-text">
+        <h2 className="anime-offer-title">Anime from AniList and MyAnimeList</h2>
+        <p className="anime-offer-desc">The Anime Catalogs addon brings trending, this season, top airing, popular, top rated and anime films, with search. Titles open and play like any other series.</p>
+      </div>
+      <button className="btn btn-primary" onClick={install} disabled={state === "installing"}>{state === "installing" ? "Adding…" : "Add Anime Catalogs"}</button>
+    </section>
+  );
+}
+
 export const sectionKind = section => section.kind || (section.type === "movie" ? "movie" : section.type === "series" ? "series" : section.type);
 
 export default function Browse({ params }) {
@@ -28,12 +60,13 @@ export default function Browse({ params }) {
   useEffect(() => { call("home.subscribe").catch(() => {}); }, []);
   useEffect(() => { setGenre(null); }, [kind]);
 
-  // Anime comes from AniList (built in), then any other anime addon's rows.
+  // Anime Catalogs' rows come first; Kitsu's (when still shown) last.
   const sections = useMemo(() => {
-    const own = home.sections.filter(section => sectionKind(section) === kind && !String(section.key).startsWith("anilist:"));
-    return kind === "anime" ? [...(home.anime || []), ...own] : own;
-  }, [home.sections, home.anime, kind]);
-  const waiting = kind === "anime" ? Boolean(home.animeLoading) || (home.loading && !sections.length) : home.loading && !sections.length;
+    const list = home.sections.filter(section => sectionKind(section) === kind);
+    if (kind !== "anime") return list;
+    const rank = section => (isAnimeCatalogs(section.addonName) ? 0 : /kitsu/i.test(`${section.addonName} ${section.key}`) ? 2 : 1);
+    return list.map((section, i) => [section, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(([section]) => section);
+  }, [home.sections, kind]);
   const genres = useMemo(() => {
     const counts = new Map();
     sections.forEach(section => section.items.forEach(item => (item.genres || []).forEach(g => counts.set(g, (counts.get(g) || 0) + 1))));
@@ -61,15 +94,16 @@ export default function Browse({ params }) {
         ) : null}
       </section>
 
+      {kind === "anime" && mode === "highlights" ? <AnimeCatalogsOffer /> : null}
       {mode === "discover" ? <Discover kind={kind} /> : null}
 
       {mode === "highlights" && featuredList.length ? (
         <div className="browse-showcase">
-          <Showcase short items={featuredList} onPlay={item => navigate("details", { type: item.type, id: item.id, name: item.name, autoplay: true, ...(item.season ? { season: item.season } : {}) })} onToggleLater={toggleLater} laterIds={laterIds} />
+          <Showcase short items={featuredList} onPlay={item => navigate("details", { type: item.type, id: item.id, name: item.name, autoplay: true })} onToggleLater={toggleLater} laterIds={laterIds} />
         </div>
       ) : null}
 
-      {mode === "highlights" && waiting && !sections.length ? <Row title="Loading"><SkeletonPosters /></Row> : null}
+      {mode === "highlights" && home.loading && !sections.length ? <Row title="Loading"><SkeletonPosters /></Row> : null}
       {mode === "highlights" && filtered.map(section => (
         <Row
           key={section.key}
@@ -83,12 +117,8 @@ export default function Browse({ params }) {
           ))}
         </Row>
       ))}
-      {mode === "highlights" && !waiting && !sections.length ? (
-        <p className="browse-empty">
-          {kind === "anime"
-            ? `Couldn't load AniList${home.animeError ? ` (${home.animeError})` : ""}. Check your connection, then come back to this tab.`
-            : `None of your addons has a ${TITLES[kind]?.toLowerCase() || kind} catalog on Home. Turn one on in Settings, or install a catalog addon.`}
-        </p>
+      {mode === "highlights" && !home.loading && !sections.length ? (
+        <p className="browse-empty">None of your addons has a {TITLES[kind]?.toLowerCase() || kind} catalog on Home. Turn one on in Settings, or install a catalog addon.</p>
       ) : null}
       <div className="screen-end" />
     </main>

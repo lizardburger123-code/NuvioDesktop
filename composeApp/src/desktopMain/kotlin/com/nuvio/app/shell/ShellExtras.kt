@@ -263,25 +263,16 @@ internal object ShellHomeRows {
                     put("enabled", item.enabled)
                 })
             }
-            ShellAniList.rowList().forEach { (key, title) ->
-                add(buildJsonObject {
-                    put("key", key)
-                    put("title", title)
-                    put("addon", ShellAniList.AddonName)
-                    put("enabled", !ShellAniList.isHidden(key))
-                })
-            }
         }
     }
 
     fun setEnabled(key: String, enabled: Boolean) {
-        if (key.startsWith("anilist:")) ShellAniList.setHidden(key, !enabled)
-        else HomeCatalogSettingsRepository.setEnabled(key, enabled)
+        HomeCatalogSettingsRepository.setEnabled(key, enabled)
     }
 
     /**
      * Once each: the TorBox library catalog stays off Home (it's still in Library › TorBox), and
-     * Kitsu's rows make way for AniList's once those have loaded. Each waits until its rows exist
+     * Kitsu's rows make way once Anime Catalogs' rows are there. Each waits until the rows exist
      * (their addon may still be loading); after that, a manual "show" in Settings sticks.
      */
     fun applyDefaults() {
@@ -297,7 +288,7 @@ internal object ShellHomeRows {
                 store.putBoolean("hid_torbox_library_v1", true)
             }
         }
-        if (!kitsuDone && ShellAniList.state.value.rows.isNotEmpty()) {
+        if (!kitsuDone && items.any { AnimeCatalogs.isIt(it.addonName) }) {
             val matches = items.filter { !it.isCollection && (kitsu.containsMatchIn(it.addonName) || kitsu.containsMatchIn(it.key)) }
             if (matches.isNotEmpty()) {
                 matches.forEach { HomeCatalogSettingsRepository.setEnabled(it.key, false) }
@@ -305,6 +296,20 @@ internal object ShellHomeRows {
             }
         }
     }
+}
+
+/**
+ * The anime catalog addon we suggest: "Anime Catalogs" (AniList and MyAnimeList lists, with IMDb
+ * ids and Cinemeta's episode order, so titles open, play and resume like any series). The link
+ * carries its settings: AniList trending, this season and top anime; MyAnimeList top airing,
+ * popular and top films; search.
+ */
+internal object AnimeCatalogs {
+    private const val Host = "https://1fe84bc728af-stremio-anime-catalogs.baby-beamup.club"
+    const val Configure = "$Host/configure"
+    const val Manifest = "$Host/%7B%22anilist_trending-now%22%3A%22on%22%2C%22anilist_popular-this-season%22%3A%22on%22%2C%22myanimelist_top-airing%22%3A%22on%22%2C%22myanimelist_popular%22%3A%22on%22%2C%22anilist_top-anime%22%3A%22on%22%2C%22myanimelist_top-movies%22%3A%22on%22%2C%22search%22%3A%22on%22%2C%22cinemeta%22%3A%22on%22%7D/manifest.json"
+
+    fun isIt(addonName: String?) = addonName?.trim().equals("Anime Catalogs", ignoreCase = true)
 }
 
 // ---- Discover ----------------------------------------------------------------------------------
@@ -352,18 +357,19 @@ internal object ShellDiscover {
     private fun browsable(catalog: com.nuvio.app.features.addons.AddonCatalog) =
         catalog.extra.none { it.isRequired && it.name != "search" && it.options.isEmpty() }
 
-    fun sources(kind: String): JsonElement = buildJsonArray {
-        // Anime starts with AniList's lists (built in), then any anime addon's own catalogs.
-        if (kind == "anime") ShellAniList.sources().forEach { add(it) }
+    fun sources(kind: String): JsonElement {
+        val found = mutableListOf<Pair<String, JsonObject>>()
         AddonRepository.uiState.value.addons.enabledAddons().forEach { addon ->
             val manifest = addon.manifest ?: return@forEach
             manifest.catalogs.forEach catalogs@{ catalog ->
                 if (kindOf(manifest, catalog.type, catalog.id, catalog.name) != kind) return@catalogs
                 // Search-only catalogs need a query; required filters need options to choose from.
                 if (catalog.extra.any { it.isRequired && it.name == "search" } || !browsable(catalog)) return@catalogs
-                add(sourceJson(addon, catalog))
+                found += addon.displayTitle to sourceJson(addon, catalog)
             }
         }
+        // Kitsu's catalogs go last when anything better is installed.
+        return JsonArray(found.sortedBy { (name, _) -> if ("kitsu" in name.lowercase(Locale.ROOT)) 1 else 0 }.map { it.second })
     }
 
     /** Every enabled addon with catalogs, each with all its catalogs (any type, search-only too). */
@@ -382,7 +388,6 @@ internal object ShellDiscover {
                 put("catalogs", buildJsonArray { catalogs.forEach { add(sourceJson(addon, it)) } })
             })
         }
-        add(ShellAniList.addon())
     }
 
     private fun encode(value: String) = URLEncoder.encode(value, Charsets.UTF_8).replace("+", "%20")
@@ -411,7 +416,6 @@ internal object ShellDiscover {
     }
 
     suspend fun page(source: String, filters: Map<String, String>, skip: Int): JsonElement {
-        if (source.startsWith("${ShellAniList.AddonId}|")) return ShellAniList.page(source.substringAfterLast("|"), filters, skip)
         val parts = source.split("|")
         require(parts.size >= 3) { "Unknown catalog." }
         val catalogId = parts.last()
@@ -458,6 +462,7 @@ internal object ShellAddonStore {
         Pick("Catalogs", "Streaming Catalogs", "What's on Netflix, Disney+, Max, Prime Video, Apple TV+ and more.", manifest = "https://7a82163c306e-stremio-netflix-catalog-addon.baby-beamup.club/manifest.json", configure = "https://7a82163c306e-stremio-netflix-catalog-addon.baby-beamup.club/configure"),
         Pick("Catalogs", "AIOMetadata", "One addon for TMDB, TVDB, MAL and Trakt catalogs with full control over metadata.", configure = "https://aiometadata.elfhosted.com/configure/"),
         Pick("Catalogs", "Trakt", "Your Trakt watchlist, lists and recommendations as catalogs.", configure = "https://2ecbbd610840-trakt.baby-beamup.club/configure/"),
+        Pick("Anime", "Anime Catalogs", "AniList and MyAnimeList: trending, this season, top airing, popular, top rated and films. Opens like any series.", manifest = AnimeCatalogs.Manifest, configure = AnimeCatalogs.Configure),
         Pick("Anime", "Anime Kitsu", "Anime catalogs and metadata from Kitsu: trending, airing, top rated.", manifest = "https://anime-kitsu.strem.fun/manifest.json"),
         Pick("Streams", "Torrentio", "The classic torrent source with debrid support.", manifest = "https://torrentio.strem.fun/manifest.json", configure = "https://torrentio.strem.fun/configure"),
         Pick("Streams", "Comet", "Fast debrid streams from many trackers.", configure = "https://comet.elfhosted.com/configure"),
