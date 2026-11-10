@@ -1454,8 +1454,52 @@ syncRefList?.addEventListener("click", event => {
   renderSyncRefs();
 });
 
+const subFileSave = document.getElementById("subFileSave");
+const subFileAdd = document.getElementById("subFileAdd");
+const subFileFolder = document.getElementById("subFileFolder");
+const subFileList = document.getElementById("subFileList");
+let subFilesAsked = false;
+
+const renderSubFiles = () => {
+  if (!subFileList) return;
+  // The folder is read once, the first time the panel draws; saving or opening it re-reads it.
+  if (!subFilesAsked) { subFilesAsked = true; send("subtitleFilesRefresh", 0); }
+  subFileSave.disabled = !state.hasSelectedAddonSubtitle;
+  const files = normalizeItems(state.subtitleStyle?.myFiles);
+  subFileList.hidden = files.length === 0;
+  const key = files.map(file => file.name).join("\n");
+  if (subFileList.dataset.key === key) return;
+  subFileList.dataset.key = key;
+  subFileList.textContent = "";
+  files.forEach(file => {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "sync-ref-row";
+    row.dataset.index = String(file.index);
+    const tag = document.createElement("span");
+    tag.className = "sync-ref-lang";
+    tag.textContent = String(file.name).split(".").pop().slice(0, 3).toUpperCase();
+    const text = document.createElement("span");
+    text.className = "sync-ref-text";
+    text.dir = "auto";
+    text.textContent = String(file.name).replace(/\.[^.]+$/, "");
+    row.append(tag, text);
+    subFileList.appendChild(row);
+  });
+};
+subFileSave?.addEventListener("click", event => { event.stopPropagation(); send("subtitleExport", 0); });
+subFileAdd?.addEventListener("click", event => { event.stopPropagation(); send("subtitleAddFile", 0); });
+subFileFolder?.addEventListener("click", event => { event.stopPropagation(); send("subtitleOpenFolder", 0); });
+subFileList?.addEventListener("click", event => {
+  const row = event.target.closest(".sync-ref-row");
+  if (!row) return;
+  event.stopPropagation();
+  send("subtitleLoadFile", Number(row.dataset.index) || 0);
+});
+
 const renderAutoSyncCues = () => {
   renderSyncRefs();
+  renderSubFiles();
   autoSyncCueList.textContent = "";
   autoSyncReload.disabled = !state.hasSelectedAddonSubtitle;
   autoSyncCapture.disabled = !state.hasSelectedAddonSubtitle;

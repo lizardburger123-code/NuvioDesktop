@@ -594,6 +594,11 @@ internal class NativePlayerController(
             }
             "subtitleAutoSyncRun" -> runAutoSyncNow()
             "subtitleSyncToReference" -> syncToReference(value.toInt())
+            "subtitleExport" -> exportCurrentSubtitle()
+            "subtitleAddFile" -> chooseSubtitleFile()
+            "subtitleLoadFile" -> DesktopSubtitleFiles.items.getOrNull(value.toInt())?.let { loadSubtitleFile(java.io.File(it.path)) }
+            "subtitleOpenFolder" -> { DesktopSubtitleFiles.openFolder(); DesktopSubtitleFiles.refresh(); pushControlsNow() }
+            "subtitleFilesRefresh" -> { DesktopSubtitleFiles.refresh(); pushControlsNow() }
             "subtitleFont" -> {
                 DesktopSubtitleFonts.names.getOrNull(value.toInt())?.let { font -> ShellSubtitleStore.update { it.copy(font = font) } }
                 pushControlsNow()
@@ -1164,6 +1169,83 @@ internal class NativePlayerController(
         }
     }
 
+    /** The file the player is showing now when it is not the addon's own link (a retimed or local copy). */
+    @Volatile
+    private var shownSubtitleFile: String? = null
+
+    /** "Save subtitle file": writes the subtitle on screen to Documents/Nuvio Subtitles and shows it. */
+    private fun exportCurrentSubtitle() {
+        val url = shownSubtitleFile ?: lastAddonSubtitleUrl
+        if (url == null) {
+            postAutoSyncNotice("Pick a subtitle from an addon first; built-in tracks can't be saved")
+            return
+        }
+        val language = autoSyncCandidates.firstOrNull { it.url == lastAddonSubtitleUrl }?.language.orEmpty()
+        val title = listOf(controlsState.title, controlsState.episodeText).filter { it.isNotBlank() }.joinToString(" ")
+        postAutoSyncNotice("Saving subtitle…")
+        autoSyncScope.launch {
+            val saved = runCatching {
+                val body = DesktopAutoSync.readText(url, language) ?: error("download failed")
+                val extension = url.substringBefore('?').substringAfterLast('.', "srt")
+                DesktopSubtitleFiles.save(title, language, extension, body)
+            }.onFailure { log.w(it) { "subtitle export failed" } }.getOrNull()
+            SwingUtilities.invokeLater {
+                if (saved == null) {
+                    postAutoSyncNotice("Couldn't save this subtitle")
+                } else {
+                    postAutoSyncNotice("Saved to Documents › Nuvio Subtitles: ${saved.name}")
+                    DesktopSubtitleFiles.reveal(saved)
+                }
+            }
+        }
+    }
+
+    /** "Add subtitle file…": the system file picker, opened in the subtitles folder. */
+    private fun chooseSubtitleFile() {
+        SwingUtilities.invokeLater {
+            val picked = runCatching {
+                val dialog = java.awt.FileDialog(null as java.awt.Frame?, "Add subtitle file", java.awt.FileDialog.LOAD)
+                dialog.directory = DesktopSubtitleFiles.folder.also { it.mkdirs() }.absolutePath
+                dialog.file = "*.srt;*.vtt;*.ass;*.ssa;*.sub"
+                dialog.setFilenameFilter { _, name -> DesktopSubtitleFiles.isSubtitle(java.io.File(name)) }
+                dialog.isAlwaysOnTop = true
+                dialog.isVisible = true
+                val name = dialog.file
+                val directory = dialog.directory
+                dialog.dispose()
+                if (name != null && directory != null) java.io.File(directory, name) else null
+            }.onFailure { log.w(it) { "subtitle file picker failed" } }.getOrNull()
+            if (picked != null) loadSubtitleFile(picked)
+        }
+    }
+
+    private fun loadSubtitleFile(file: java.io.File) {
+        if (!file.isFile) {
+            postAutoSyncNotice("That file is no longer there")
+            DesktopSubtitleFiles.refresh()
+            return
+        }
+        val current = handle.takeIf { it != 0L } ?: return
+        cancelAutoSync()
+        autoSyncScope.launch {
+            // Re-written as UTF-8 so files in older Arabic encodings show correctly.
+            val path = runCatching {
+                val body = DesktopAutoSync.readText(file.absolutePath, "") ?: error("unreadable")
+                val copy = java.io.File(com.nuvio.app.core.storage.DesktopStorage.cacheDir.resolve("autosync").toFile().also { it.mkdirs() }, "local-${Integer.toHexString(file.absolutePath.hashCode())}.${file.extension.lowercase()}")
+                copy.writeText(body, Charsets.UTF_8)
+                copy.absolutePath
+            }.getOrDefault(file.absolutePath)
+            SwingUtilities.invokeLater {
+                if (handle != current) return@invokeLater
+                NativePlayerBridge.clearExternalSubtitles(current)
+                NativePlayerBridge.addSubtitleUrl(current, path)
+                shownSubtitleFile = path
+                setSubtitleDelayMs(0)
+                postAutoSyncNotice("Showing ${file.name}")
+            }
+        }
+    }
+
     private fun applyAutoSyncResult(result: DesktopAutoSync.Result, fromReference: String? = null) {
         when (result) {
             is DesktopAutoSync.Result.Applied -> {
@@ -1171,6 +1253,7 @@ internal class NativePlayerController(
                     NativePlayerBridge.clearExternalSubtitles(current)
                     NativePlayerBridge.addSubtitleUrl(current, result.filePath)
                 }
+                shownSubtitleFile = result.filePath
                 setSubtitleDelayMs(0)
                 autoSyncAppliedListener?.invoke(result.subtitleUrl, 0)
                 postAutoSyncNotice(
@@ -1347,6 +1430,7 @@ internal class NativePlayerController(
     override fun selectSubtitleTrack(index: Int) {
         cancelAutoSync()
         lastAddonSubtitleUrl = null
+        shownSubtitleFile = null
         val current = handle.takeIf { it != 0L } ?: return
         if (index < 0) {
             log.d { "selectSubtitleTrack off handle=$current" }
@@ -1365,6 +1449,7 @@ internal class NativePlayerController(
 
     override fun setSubtitleUri(url: String) {
         lastAddonSubtitleUrl = url
+        shownSubtitleFile = null
         log.d { "setSubtitleUri ${url.toPlaybackLogKey()} handle=$handle" }
         handle.takeIf { it != 0L }?.let { current ->
             NativePlayerBridge.clearExternalSubtitles(current)
@@ -1375,6 +1460,7 @@ internal class NativePlayerController(
     override fun clearExternalSubtitle() {
         cancelAutoSync()
         lastAddonSubtitleUrl = null
+        shownSubtitleFile = null
         log.d { "clearExternalSubtitle handle=$handle" }
         handle.takeIf { it != 0L }?.let(NativePlayerBridge::clearExternalSubtitles)
     }
@@ -1382,6 +1468,7 @@ internal class NativePlayerController(
     override fun clearExternalSubtitleAndSelect(trackIndex: Int) {
         cancelAutoSync()
         lastAddonSubtitleUrl = null
+        shownSubtitleFile = null
         val current = handle.takeIf { it != 0L } ?: return
         val trackId = if (trackIndex < 0) {
             -1
@@ -2241,6 +2328,16 @@ private fun StringBuilder.appendSubtitleStyleJson(style: SubtitleStyleState) {
     append("\"search\":")
     appendSubtitleSearchJson()
     append(',')
+    append("\"myFiles\":[")
+    DesktopSubtitleFiles.items.forEachIndexed { index, item ->
+        if (index > 0) append(',')
+        append('{')
+        appendJsonField("index", index)
+        append(',')
+        appendJsonField("name", item.name)
+        append('}')
+    }
+    append("],")
     append("\"syncRefs\":[")
     DesktopSyncReferenceUi.items.forEachIndexed { index, item ->
         if (index > 0) append(',')

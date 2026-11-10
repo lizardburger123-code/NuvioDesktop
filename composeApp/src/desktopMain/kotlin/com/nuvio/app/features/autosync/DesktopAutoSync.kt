@@ -352,6 +352,9 @@ internal object DesktopAutoSync {
         return LoadedSubtitle(candidate, body, cues)
     }
 
+    /** The subtitle at [url] (a link or a local file) as text, whatever its encoding was. */
+    fun readText(url: String, languageHint: String?): String? = download(url, languageHint)
+
     private fun download(url: String, languageHint: String?): String? {
         if (!url.startsWith("http://", true) && !url.startsWith("https://", true)) {
             return runCatching {
