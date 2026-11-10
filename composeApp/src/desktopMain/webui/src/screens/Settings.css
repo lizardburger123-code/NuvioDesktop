@@ -195,3 +195,4 @@
 .net-test.is-bad { color: #ffb4ad; }
 .rows-tools { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
 .rows-tools .field { flex: 1; max-width: 360px; }
+.preset[aria-pressed="true"] { background: #fff; color: #0a0b0d; }

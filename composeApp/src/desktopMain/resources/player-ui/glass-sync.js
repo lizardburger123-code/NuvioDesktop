@@ -13,8 +13,6 @@
   const SURFACES = [
     ".player-rail-modal:not([hidden]) .track-panel",
     ".player-side-modal:not([hidden]) .player-side-panel",
-    ".ornament",
-    ".header-actions",
     ".opening-actions",
     ".next-episode-card",
     ".skip-prompt",

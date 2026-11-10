@@ -133,3 +133,21 @@ export function newlyEarned(before, after) {
   const prev = new Map(badges(before).map(b => [b.id, b]));
   return badges(after).filter(b => b.earned && (!prev.get(b.id)?.earned || prev.get(b.id).tier !== b.tier));
 }
+
+/** Level: every finished title counts; each level asks for a little more than the last. */
+export function level(items) {
+  const total = items.length;
+  const current = Math.floor(Math.sqrt(total)) + 1;
+  const floor = (current - 1) ** 2;
+  const ceil = current ** 2;
+  return { level: current, progress: total ? (total - floor) / (ceil - floor) : 0, toNext: ceil - total, total };
+}
+
+/** The badges closest to their next tier: goals within reach, nearest first. */
+export function inReach(items, count = 3) {
+  return badges(items)
+    .filter(b => !b.maxed && b.value > 0 && b.progress < 1)
+    .sort((a, b) => b.progress - a.progress)
+    .slice(0, count)
+    .map(b => ({ ...b, nextTier: TIERS[TIERS.indexOf(b.earned ? b.tier : "") + 1] || "bronze" }));
+}

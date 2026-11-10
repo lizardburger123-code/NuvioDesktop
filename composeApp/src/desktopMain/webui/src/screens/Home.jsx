@@ -3,7 +3,7 @@ import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
 import { useApp } from "../AppContext.jsx";
 import Showcase from "../components/Showcase.jsx";
-import ShelfPulse from "../components/ShelfPulse.jsx";
+import Reach from "../components/Reach.jsx";
 import Row from "../components/Row.jsx";
 import { ContinueCard, PosterCard, SkeletonPosters } from "../components/Cards.jsx";
 import RowActions, { openCatalog } from "../components/RowActions.jsx";
@@ -29,10 +29,10 @@ export default function Home() {
       // Behind "Who's watching?" the rise would go unseen: it plays when that page lifts.
       if (played || !root || reduceMotion() || document.querySelector(".gate")) return;
       played = true;
-      const parts = [root.querySelector(".showcase"), ...[...root.querySelectorAll(".row")].slice(0, 2)].filter(Boolean);
+      const parts = [root.querySelector(".showcase-body"), ...[...root.querySelectorAll(".row")].slice(0, 1)].filter(Boolean);
       parts.forEach((part, i) => part.animate(
-        [{ transform: "translate3d(0, 34px, 0) scale(.985)" }, { transform: "none" }],
-        { duration: 1100, delay: 40 + i * 55, easing: EASE.out, fill: "backwards" },
+        [{ opacity: 0, transform: "translate3d(0, 20px, 0)" }, { opacity: 1, transform: "none" }],
+        { duration: 800, delay: 60 + i * 90, easing: EASE.out, fill: "backwards" },
       ));
     };
     window.addEventListener("nuvio:intro-out", onIntroOut);
@@ -51,17 +51,19 @@ export default function Home() {
     <main ref={rootRef} className="screen home">
       <h1 className="sr-only">Home</h1>
       <div className="home-top">
-        <Showcase items={home.hero} resumeEntry={continueWatching[0]} onPlay={playFromSpotlight} onResume={resume} onToggleLater={toggleLater} laterIds={laterIds} />
+        <Showcase items={home.hero} strip={continueWatching.length > 0} onPlay={playFromSpotlight} onToggleLater={toggleLater} laterIds={laterIds} />
       </div>
 
       {continueWatching.length ? (
-        <Row title="Continue watching" subtitle={`${continueWatching.length} in progress`} action={<ShelfPulse />}>
+        <Row title="Continue watching" className="home-strip">
           {continueWatching.map(entry => <ContinueCard key={entry.key} entry={entry} onResume={resume} onRemove={removeContinue} />)}
         </Row>
       ) : null}
 
+      <Reach />
+
       {watchLater.length ? (
-        <Row title="Watch later" onMore={() => navigate("library", { tab: "later" })}>
+        <Row title="My list" onMore={() => navigate("library", { tab: "later" })}>
           {watchLater.map(item => <PosterCard key={`${item.type}:${item.id}`} {...cardProps(item)} />)}
         </Row>
       ) : null}

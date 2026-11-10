@@ -157,30 +157,21 @@ function Appearance() {
   const mode = appearance.wallpaper?.mode || "featured";
   return (
     <>
-      <Panel title="Gradient colours" description="Three colours drive the background, the tiles and every highlight. The highlight colour is picked from them and lightened until it stays readable." aside={<Saved show={saved} />}>
-        <div className="colour-row">
-          {colors.map((c, i) => <ColourField key={i} index={i} value={c} onChange={hex => setColour(i, hex)} />)}
-        </div>
-        <div className="preview-gradient" style={{ background: `linear-gradient(120deg, ${colors[0]}, ${colors[1]} 55%, ${colors[2]})` }}>
-          <div className="preview-tile" style={{ background: `linear-gradient(140deg, ${colors[1]}, ${colors[2]})` }}><span>Watch later</span><strong className="num">12</strong></div>
-          <div className="preview-tile" style={{ background: `linear-gradient(150deg, ${colors[0]}, ${colors[1]} 120%)` }}><span>New episode</span><strong className="num">9:00</strong></div>
-          <div className="preview-chip" style={{ background: "var(--accent)", color: "var(--on-accent)" }}>Highlight</div>
-        </div>
+      <Panel title="Accent" description="The room is black and the type is white. One colour marks what is switched on, focused or selected.">
         <div className="preset-row">
-          <span className="t-meta">Start from</span>
           {PRESETS.map(preset => (
-            <button key={preset.name} className="preset" onClick={() => update({ colors: preset.colors })} title={preset.name}>
-              <span style={{ background: `linear-gradient(120deg, ${preset.colors.join(", ")})` }} />
+            <button key={preset.name} className="preset" aria-pressed={preset.colors.join() === colors.join()} onClick={() => update({ colors: preset.colors })} title={preset.name}>
+              <span style={{ background: preset.colors[1] }} />
               {preset.name}
             </button>
           ))}
         </div>
       </Panel>
 
-      <Panel title="Wallpaper" description="The picture behind Home and Search, tinted with your colours. Featured artwork rotates through the titles on Home; a title's page always shows that title's artwork.">
-        <div ref={wallSeg} className="seg glass-flat" role="group" aria-label="Wallpaper">
-          {[["featured", "Featured artwork"], ["custom", "My image"], ["none", "Gradient only"]].map(([id, label]) => (
-            <button key={id} aria-pressed={mode === id} onClick={() => (id === "custom" && !appearance.wallpaper?.image ? fileRef.current?.click() : update({ wallpaper: { ...appearance.wallpaper, mode: id } }))}>{label}</button>
+      <Panel title="Backdrop" description="Home and every title show their own artwork. Other pages are black, or a dimmed picture of yours.">
+        <div ref={wallSeg} className="seg glass-flat" role="group" aria-label="Backdrop">
+          {[["none", "Black"], ["custom", "My image"]].map(([id, label]) => (
+            <button key={id} aria-pressed={(mode === "custom") === (id === "custom")} onClick={() => (id === "custom" && !appearance.wallpaper?.image ? fileRef.current?.click() : update({ wallpaper: { ...appearance.wallpaper, mode: id } }))}>{label}</button>
           ))}
         </div>
         <div className="wall-row">
@@ -190,16 +181,11 @@ function Appearance() {
           <div className="wall-actions">
             <button className="btn btn-glass btn-sm" onClick={() => fileRef.current?.click()}><LuImage /> Choose image…</button>
             {appearance.wallpaper?.image ? (
-              <button className="btn btn-ghost btn-sm" onClick={() => update({ wallpaper: { mode: mode === "custom" ? "featured" : mode, image: null } })}><LuTrash2 /> Remove</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => update({ wallpaper: { mode: "none", image: null } })}><LuTrash2 /> Remove</button>
             ) : null}
             <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} />
           </div>
         </div>
-        <label className="slider-row">
-          <span>Dim</span>
-          <input className="range" type="range" min="0" max="0.8" step="0.05" value={appearance.dim ?? 0.35} onChange={event => update({ dim: Number(event.target.value) })} />
-          <span className="num slider-value">{Math.round((appearance.dim ?? 0.35) * 100)}%</span>
-        </label>
         <label className="slider-row">
           <span>Blur</span>
           <input className="range" type="range" min="0" max="40" step="1" value={appearance.blur ?? 0} onChange={event => update({ blur: Number(event.target.value) })} />
@@ -214,12 +200,6 @@ function Appearance() {
         </div>
       </Panel>
 
-      <Panel title="Motion" description="The background gradient drifts slowly. Turn it off to keep the GPU free for 4K playback on slower machines.">
-        <div className="toggle-row">
-          <span>Animated background</span>
-          <Toggle checked={appearance.animate !== false} onChange={value => update({ animate: value })} label="Animated background" />
-        </div>
-      </Panel>
 
       <HomeRows />
     </>
@@ -716,7 +696,7 @@ function Profile() {
     <>
       <Panel
         title="Who's watching"
-        description="Each profile keeps its own progress, Watch later and settings."
+        description="Each profile keeps its own progress, list and settings."
         aside={<button className="btn btn-glass btn-sm panel-aside-btn" onClick={() => window.dispatchEvent(new CustomEvent(PROFILE_CARD, { detail: { view: "picture" } }))}><LuCamera /> Change picture</button>}
       >
         <div className="profiles">

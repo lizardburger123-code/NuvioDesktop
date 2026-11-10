@@ -1,5 +1,5 @@
-/* Nuvio desktop: design system. Dark ground, user gradient (--g1..--g3) and wallpaper behind
-   glass surfaces; colour tiles carry the content. One family (Plus Jakarta Sans) with IBM Plex
+/* Nuvio desktop: Cinema. A near-black room, white type, and the film's own picture as the only
+   colour. Chrome is words and one white button. One family (Plus Jakarta Sans) with IBM Plex
    Sans Arabic for Arabic text. */
 
 @font-face { font-family: "Jakarta"; src: url("fonts/PlusJakartaSans.ttf") format("truetype"); font-weight: 200 800; font-display: block; }
@@ -32,10 +32,11 @@
   --accent: #a98be0; --accent-rgb: 169 139 224; --on-accent: #0a0a0c;
 
   /* Ground and ink: deep grey, not black, so lightness steps read as elevation. Two greys only. */
-  --ground: #0a0a0e;
-  --ink: #f9f9f9;
-  --ink-2: rgb(249 249 249 / .72);
-  --ink-3: rgb(249 249 249 / .5);
+  --ground: #07080a;
+  --ink: #f4f5f7;
+  --ink-2: #c3c9d4;
+  --ink-3: #8b929e;
+  --warm: #f0b27a;
   --line: rgb(255 255 255 / .08);
   --line-strong: rgb(255 255 255 / .14);
 
@@ -58,8 +59,8 @@
   --blur-clear: blur(16px) saturate(1.5);
 
   /* Radii step down with nesting: 24 showcase, 18 cards and panels, 12 tiles, 8 small. */
-  --r-xl: 24px; --r-l: 18px; --r-m: 14px; --r-s: 12px; --r-xs: 8px;
-  --gutter: clamp(24px, 3.2vw, 56px);
+  --r-xl: 20px; --r-l: 16px; --r-m: 14px; --r-s: 10px; --r-xs: 6px;
+  --gutter: clamp(24px, 3.9vw, 64px);
 
   /* Type: one family, seven sizes. 11 only for tertiary captions. */
   --fs-11: 11px; --fs-12: 12px; --fs-13: 13px; --fs-14: 14px; --fs-15: 15px; --fs-16: 16px;
@@ -72,13 +73,14 @@
   --t-fast: 140ms; --t-med: 220ms; --t-slow: 360ms; --t-cine: 560ms;
 
   --wall-dim: .35; --wall-blur: 0px;
-  --topbar-h: 72px;
+  --topbar-h: 76px;
   color-scheme: dark;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; background: var(--ground); color: var(--ink); }
-html { scrollbar-gutter: stable; }
+/* The window itself scrolls without a bar: the picture runs edge to edge. Inner lists keep theirs. */
+html::-webkit-scrollbar { width: 0; height: 0; }
 body {
   font-family: "Jakarta", "Plex Arabic", "Segoe UI", system-ui, sans-serif;
   font-size: var(--fs-14);
@@ -124,34 +126,36 @@ p { text-wrap: pretty; }
 /* Content surfaces: flat, a lightness step and a hairline. */
 .surface { background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); border-radius: var(--r-l); }
 
-/* ---- Buttons ----------------------------------------------------------------------------- */
+/* ---- Buttons: one white pill for the main action, a quiet fill and an outline for the rest. */
 .btn {
-  height: 44px;
-  padding: 0 20px;
+  height: 48px;
+  padding: 0 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 9px;
+  gap: 10px;
   border-radius: 999px;
-  font-size: var(--fs-14);
-  font-weight: 600;
+  font-size: var(--fs-15);
+  font-weight: 700;
   white-space: nowrap;
   transition: transform var(--t-fast) var(--ease-soft), background-color var(--t-fast) ease, color var(--t-fast) ease, box-shadow var(--t-fast) ease;
 }
 .btn:active { transform: scale(.96); }
 .btn svg { width: 18px; height: 18px; flex: none; }
-.btn-primary { background: #fff; color: #0a0a0c; }
-.btn-primary:hover { background: rgb(255 255 255 / .9); }
+.btn-primary { background: #fff; color: #0a0b0d; font-weight: 800; }
+.btn-primary:hover { background: #e6e9ee; }
 .btn-accent { background: var(--accent); color: var(--on-accent); }
-.btn-glass { background: var(--glass-clear); color: var(--ink); box-shadow: var(--glass-edge); -webkit-backdrop-filter: var(--blur-clear); backdrop-filter: var(--blur-clear); }
-.btn-glass:hover { background: rgb(60 60 76 / .5); }
-.btn-glass.is-on { background: rgb(255 255 255 / .9); color: #0a0a0c; }
+.btn-glass { background: rgb(255 255 255 / .14); color: #fff; }
+.btn-glass:hover { background: rgb(255 255 255 / .22); }
+.btn-glass.is-on { background: #fff; color: #0a0b0d; }
+.btn-line { color: #fff; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .3); }
+.btn-line:hover { background: rgb(255 255 255 / .1); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .5); }
 .btn-ghost { color: var(--ink-2); padding: 0 14px; }
 .btn-ghost:hover { color: var(--ink); background: var(--surface-2); }
-.btn-sm { height: 34px; padding: 0 14px; font-size: var(--fs-13); }
+.btn-sm { height: 36px; padding: 0 16px; font-size: var(--fs-13); font-weight: 600; }
 .btn-sm svg { width: 16px; height: 16px; }
-.btn-icon { width: 44px; padding: 0; }
-.btn-icon.btn-sm { width: 34px; }
+.btn-icon { width: 48px; padding: 0; }
+.btn-icon.btn-sm { width: 36px; }
 
 /* ---- Chips ------------------------------------------------------------------------------- */
 .chip {
@@ -280,11 +284,9 @@ p { text-wrap: pretty; }
 }
 .intro-glow {
   position: absolute; width: 70vmax; height: 70vmax; border-radius: 50%;
-  background: radial-gradient(circle, rgb(var(--g2-rgb) / .55), rgb(var(--g1-rgb) / .25) 40%, transparent 68%);
-  filter: blur(40px);
+  display: none;
 }
-.intro-word { position: relative; display: flex; gap: .04em; font-size: clamp(56px, 9vw, 128px); font-weight: 800; letter-spacing: .08em; }
+.intro-word { position: relative; display: flex; gap: .04em; font-size: clamp(48px, 7vw, 104px); font-weight: 800; letter-spacing: -.045em; text-transform: lowercase; }
 .intro-clip { display: inline-block; overflow: hidden; padding: 0 .02em; }
 .intro-letter { display: inline-block; color: var(--ink); }
-.intro-line { position: relative; width: min(260px, 40vw); height: 2px; border-radius: 2px; transform-origin: left;
-  background: linear-gradient(90deg, transparent, var(--g3), transparent); }
+.intro-line { position: relative; width: min(120px, 30vw); height: 2px; border-radius: 2px; transform-origin: left; background: #fff; }

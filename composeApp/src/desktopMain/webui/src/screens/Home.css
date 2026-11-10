@@ -2,8 +2,10 @@
 .screen-end { height: 80px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-.home-top { padding-top: clamp(18px, 3vh, 32px); }
-.home-top + .row { margin-top: clamp(28px, 5vh, 48px); }
+/* Home starts under the bar: the picture runs to the top edge, and your queue sits on its floor. */
+.screen.home { padding-top: 0; }
+.home-top + .row.home-strip { position: relative; z-index: 3; margin-top: calc(-1 * clamp(240px, 30vh, 268px)); }
+.home-strip .row-title { font-size: var(--fs-15); }
 
 .home-empty {
   margin: 56px var(--gutter);

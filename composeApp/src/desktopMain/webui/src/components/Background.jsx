@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { EASE, reduceMotion } from "../lib/motion.js";
-import Grainient from "../reactbits/Grainient/Grainient.jsx";
 import "./Background.css";
 
 /**
@@ -65,25 +64,6 @@ export default function Background({ appearance, featured, art, scrolled }) {
 
   return (
     <div className={`scene${scrolled ? " scene-scrolled" : ""}${wallpaper ? " has-wall" : ""}${art ? " has-art" : ""}${blurred ? " has-blur" : ""}`} aria-hidden="true">
-      <div className="scene-grain">
-        <Grainient
-          colors={grainColors}
-          angle={125}
-          speed={animate ? 0.35 : 0}
-          flow={0.7}
-          softness={1}
-          silk={0.4}
-          grainAmount={0.06}
-          // Still grain and 24 fps: the drift is slow enough that more frames buy nothing,
-          // and the glass above it (search bar, buttons) re-blurs on every frame drawn.
-          grainAnimated={false}
-          interactive={false}
-          clickSwirl={false}
-          intro={false}
-          dpr={1}
-          fps={24}
-        />
-      </div>
       <div className="scene-walls">
         {layers.map((layer, i) => (
           <img

@@ -87,6 +87,7 @@ function Screens() {
   ));
 }
 
+const NO_FEATURED = [];
 const appearanceSpark = appearance => (appearance?.colors?.length ? ["#ffffff", ...appearance.colors] : "#ffffff");
 
 function Shell() {
@@ -147,7 +148,7 @@ function Shell() {
 
   return (
     <>
-      <Background appearance={appearance} featured={home.hero} art={sceneArt} scrolled={scrolled && top.name === "home"} />
+      <Background appearance={appearance} featured={NO_FEATURED} art={sceneArt} scrolled={scrolled} />
       <TopBar route={top} stack={router.stack} profile={useApp().profile} compact={compact} />
       <ClickSpark className={gate ? "app-stage is-gated" : "app-stage"} sparkColor={appearanceSpark(appearance)} sparkCount={10} sparkRadius={26} sparkSize={12} duration={520} shape="streak" glow={0.6}>
         <Screens />

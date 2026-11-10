@@ -10,8 +10,7 @@
 .browse-genres { grid-column: 1 / -1; }
 .browse-genres { display: flex; flex-wrap: wrap; gap: 8px; }
 
-.browse-showcase { padding-top: 18px; }
-.browse-showcase .showcase { height: clamp(360px, 52vh, 520px); }
-.browse-showcase + .row { margin-top: clamp(28px, 5vh, 48px); }
+.browse-showcase { margin-top: 24px; }
+.browse-showcase + .row { margin-top: 8px; }
 
 .browse-empty { margin: 40px var(--gutter); color: var(--ink-2); max-width: 60ch; }

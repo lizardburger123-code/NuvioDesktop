@@ -149,8 +149,8 @@ export default function Details({ params }) {
             className={`btn btn-glass btn-icon${saved ? " is-on" : ""}`}
             onClick={() => toggleLater(meta)}
             aria-pressed={saved}
-            aria-label={saved ? "Remove from Watch later" : "Add to Watch later"}
-            title={saved ? "In Watch later" : "Watch later"}
+            aria-label={saved ? "Remove from my list" : "Add to my list"}
+            title={saved ? "In my list" : "Add to list"}
           >
             {saved ? <LuBookmarkCheck /> : <LuBookmark />}
           </button>

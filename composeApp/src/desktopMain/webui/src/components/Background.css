@@ -1,82 +1,17 @@
-.scene {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background: var(--ground);
-  overflow: hidden;
-}
-
-.scene-grain {
-  position: absolute;
-  inset: 0;
-  opacity: .9;
-}
-
-.scene.has-wall .scene-grain {
-  opacity: .55;
-}
-
-.scene-walls {
-  position: absolute;
-  inset: 0;
-  transition: transform 900ms var(--ease-out);
-}
-/* Only filter when the user asked for blur: even blur(0) costs a render surface every frame. */
+/* The room behind every screen: black. A title's own picture fills it on its page, held back by
+   a scrim on the left and the floor so the words stay readable. */
+.scene { position: fixed; inset: 0; z-index: 0; pointer-events: none; background: var(--ground); overflow: hidden; }
+.scene-walls { position: absolute; inset: 0; opacity: 0; transition: opacity 500ms var(--ease-soft); }
+.scene.has-art .scene-walls, .scene.has-wall:not(.has-art) .scene-walls { opacity: 1; }
+.scene.has-wall:not(.has-art) .scene-walls { opacity: .28; }
 .scene.has-blur .scene-walls { filter: blur(var(--wall-blur)); }
-
-.scene-wall {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center 30%;
-  will-change: opacity, transform;
-}
-
-.scene-wall:not(:last-child) {
-  opacity: 1;
-}
-
-/* The user's colours tint the picture: a soft-light wash keeps the image's detail while
-   pulling it toward the palette, and a dim layer keeps text readable. */
-.scene-wash {
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(115deg, rgb(var(--g1-rgb) / .78) 0%, rgb(var(--g2-rgb) / .42) 48%, rgb(var(--g3-rgb) / .34) 100%);
-  mix-blend-mode: soft-light;
-}
-
-.scene.has-wall .scene-wash::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: rgb(4 4 8 / var(--wall-dim));
-}
-
+.scene-wall { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 22%; }
+.scene-wash { display: none; }
 .scene-fade {
-  position: absolute;
-  inset: 0;
+  position: absolute; inset: 0;
   background:
-    linear-gradient(90deg, rgb(7 7 11 / .55) 0%, rgb(7 7 11 / .12) 45%, rgb(7 7 11 / 0) 70%),
-    linear-gradient(180deg, rgb(7 7 11 / .28) 0%, rgb(7 7 11 / 0) 18%, rgb(7 7 11 / 0) 45%, rgb(7 7 11 / .82) 78%, var(--ground) 100%);
-  transition: background-color 600ms ease;
+    linear-gradient(90deg, rgb(7 8 10 / .9) 0%, rgb(7 8 10 / .55) 36%, rgb(7 8 10 / 0) 68%),
+    linear-gradient(0deg, var(--ground) 0%, rgb(7 8 10 / .82) 22%, rgb(7 8 10 / 0) 60%);
 }
-
-.scene-scrolled .scene-walls {
-  transform: translateY(-6vh) scale(1.02);
-}
-
-.scene-scrolled .scene-fade {
-  background-color: rgb(7 7 11 / .55);
-}
-
-/* A title's artwork is shown close to how it was made: less palette wash, lighter dim, and the
-   blur transitions off when you open a title (and back on when you leave). */
-.scene-walls { transition: transform 900ms var(--ease-out), filter 700ms var(--ease-soft); }
-.scene-wash { transition: opacity 700ms var(--ease-soft); }
-.scene.has-art .scene-wash { opacity: .3; }
-.scene.has-art .scene-grain { opacity: .3; }
-.scene.has-art.has-wall .scene-wash::after { background: rgb(4 4 8 / calc(var(--wall-dim) * .55)); }
+/* Once the page has moved on from the title, the picture steps back behind what follows. */
+.scene-scrolled.has-art .scene-walls { opacity: .22; }

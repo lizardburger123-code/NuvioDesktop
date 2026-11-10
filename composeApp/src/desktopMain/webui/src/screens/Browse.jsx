@@ -60,7 +60,7 @@ export default function Browse({ params }) {
 
       {mode === "highlights" && featuredList.length ? (
         <div className="browse-showcase">
-          <Showcase items={featuredList} onPlay={item => navigate("details", { type: item.type, id: item.id, name: item.name, autoplay: true })} onToggleLater={toggleLater} laterIds={laterIds} />
+          <Showcase short items={featuredList} onPlay={item => navigate("details", { type: item.type, id: item.id, name: item.name, autoplay: true })} onToggleLater={toggleLater} laterIds={laterIds} />
         </div>
       ) : null}
 

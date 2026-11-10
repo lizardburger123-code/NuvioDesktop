@@ -1,143 +1,73 @@
+/* Chrome is four words, a search glass and you. No bar: a soft shade so the words read over any
+   picture, and a solid floor once the page has moved under it. */
 .topbar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 40;
+  position: fixed; top: 0; left: 0; right: 0; z-index: 40;
   height: var(--topbar-h);
   padding: 0 var(--gutter);
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  gap: 16px;
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 24px;
+  background: linear-gradient(180deg, rgb(7 8 10 / .72), rgb(7 8 10 / 0));
+  transition: background-color var(--t-med) ease;
 }
+.topbar.is-solid { background-color: rgb(7 8 10 / .92); }
 
-.topbar-left { position: relative; display: flex; align-items: center; min-width: 0; }
-
-/* Back appears without shoving the date: the button scales in where it sits and the date glides
-   aside on the compositor. */
+.topbar-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .topbar-back {
-  position: absolute;
-  left: 0;
-  opacity: 0;
-  transform: scale(.6);
-  pointer-events: none;
-  transition: opacity 180ms var(--ease-soft), transform 420ms var(--ease-out), background-color var(--t-fast) ease;
+  width: 0; height: 44px; border-radius: 50%; display: grid; place-items: center; color: #fff; overflow: hidden;
+  opacity: 0; pointer-events: none;
+  transition: width 320ms var(--ease-out), opacity var(--t-fast) ease, background-color var(--t-fast) ease;
 }
-.has-back .topbar-back { opacity: 1; transform: none; pointer-events: auto; }
-.has-back .topbar-back:active { transform: scale(.96); }
-.topbar-brand { transition: transform 520ms var(--ease-out); }
-.has-back .topbar-brand { transform: translateX(54px); }
+.topbar-back svg { width: 20px; height: 20px; flex: none; }
+.has-back .topbar-back { width: 44px; opacity: 1; pointer-events: auto; }
+.topbar-back:hover { background: rgb(255 255 255 / .12); }
+.topbar-back:active { transform: scale(.96); }
+.topbar-brand { height: 44px; display: flex; align-items: center; font-size: 22px; font-weight: 800; letter-spacing: -.04em; color: #fff; }
 
-.topbar-brand { display: flex; align-items: center; gap: 9px; height: 40px; padding: 0 6px; border-radius: 999px; background: none; color: var(--ink); }
-.topbar-brand:hover .topbar-brand-text { color: var(--ink); }
-/* The mark: an N whose strokes are a play notch, drawn in the accent. */
-.topbar-brand-mark { width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center; background: var(--accent); color: var(--on-accent); }
-.topbar-brand-mark svg { width: 15px; height: 15px; fill: currentColor; }
-.topbar-brand-text { font-size: var(--fs-16); font-weight: 700; letter-spacing: -.01em; line-height: 1; color: var(--ink-2); transition: color var(--t-fast) ease; }
-
-
-@property --pill-l { syntax: "<length>"; inherits: false; initial-value: 0px; }
-@property --pill-r { syntax: "<length>"; inherits: false; initial-value: 9999px; }
-
-.topbar-nav {
-  position: relative;
-  border-radius: 999px;
-  background: rgb(18 18 26 / .62);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .09), inset 0 1px 0 rgb(255 255 255 / .06), 0 10px 30px rgb(0 0 0 / .22);
-}
-
-.topbar-nav-track {
-  display: flex;
-  gap: 2px;
-  padding: 4px;
-}
-
+.topbar-nav { display: flex; gap: clamp(20px, 2.6vw, 38px); }
 .topbar-nav-item {
-  display: inline-flex;
-  align-items: center;
-  height: 34px;
-  padding: 0 16px;
-  border-radius: 999px;
-  font-size: var(--fs-13);
-  font-weight: 650;
-  white-space: nowrap;
-  color: var(--ink-2);
-  transition: background-color var(--t-fast) ease, color var(--t-fast) ease;
+  position: relative; height: 44px; display: inline-flex; align-items: center;
+  font-size: var(--fs-15); font-weight: 600; color: var(--ink-2); white-space: nowrap;
+  transition: color var(--t-fast) ease;
 }
-button.topbar-nav-item:hover { color: var(--ink); background: rgb(255 255 255 / .07); }
-button.topbar-nav-item[aria-current="page"]:hover { background: transparent; }
-
-/* The pill: the same labels in dark ink on white, clipped to the active tab. */
-.topbar-nav-pill {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: #fff;
-  clip-path: inset(4px var(--pill-r) 4px var(--pill-l) round 999px);
+.topbar-nav-item::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 4px; height: 2px; border-radius: 2px; background: #fff;
+  transform: scaleX(0); transition: transform 320ms var(--ease-out);
 }
-.topbar-nav-pill .topbar-nav-item { color: #0a0a0c; }
-.avatar-img { object-fit: cover; padding: 0; }
+.topbar-nav-item:hover { color: #fff; }
+.topbar-nav-item[aria-current="page"] { color: #fff; }
+.topbar-nav-item[aria-current="page"]::after { transform: scaleX(1); }
 
-.topbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
+.topbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.topbar-tool {
+  width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; color: #fff;
+  background: rgb(255 255 255 / .1);
+  transition: background-color var(--t-fast) ease, color var(--t-fast) ease, transform var(--t-fast) var(--ease-soft);
+}
+.topbar-tool svg { width: 18px; height: 18px; }
+.topbar-tool:hover { background: rgb(255 255 255 / .2); }
+.topbar-tool:active { transform: scale(.96); }
+.topbar-tool.is-on { background: #fff; color: #0a0b0d; }
 
-.topbar-search.is-on, .topbar-settings.is-on { background: #fff; color: #0a0a0c; }
+/* The streak, when there is one: a number and a flame, nothing more. */
+.topbar-streak {
+  height: 44px; padding: 0 14px 0 11px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px;
+  font-size: var(--fs-14); font-weight: 700; color: #fff; background: rgb(255 255 255 / .1);
+  transition: background-color var(--t-fast) ease, transform var(--t-fast) var(--ease-soft);
+}
+.topbar-streak svg { width: 17px; height: 17px; color: #ffb454; }
+.topbar-streak:hover { background: rgb(255 255 255 / .2); }
+.topbar-streak:active { transform: scale(.96); }
 
-
+/* You, with your level drawn as a ring around the picture. */
 .topbar-profile {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  height: 40px;
-  padding: 0 4px;
-  border-radius: 999px;
-  background: rgb(255 255 255 / .07);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .08);
-  transition: background-color var(--t-fast) ease;
+  --level: 0;
+  width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
+  background: conic-gradient(#fff calc(var(--level) * 1turn), rgb(255 255 255 / .18) 0);
+  transition: transform var(--t-fast) var(--ease-soft);
 }
-.topbar-profile:hover { background: rgb(255 255 255 / .13); }
-
+.topbar-profile:active { transform: scale(.96); }
+.topbar-profile .avatar { width: 38px; height: 38px; box-shadow: 0 0 0 2px var(--ground); }
 .avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  font-size: 12px;
-  font-weight: 800;
-  color: #fff;
-  background: linear-gradient(135deg, var(--g2), var(--g3));
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .25);
+  width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 12px; font-weight: 800; color: #14161a; background: #e9e4dc;
 }
-.topbar-profile.is-open { background: rgb(255 255 255 / .16); }
-
-/* Scrolled or away from Home: the day and the clock float in their own capsules (like the tab
-   bar), so content passing underneath never collides with them — no full-width bar. */
-/* One frosted material for every capsule, on every page: Home and the other sections look the same.
-   The page under the bar shows through, blurred and a little more saturated. */
-.topbar {
-  --bar-glass: rgb(24 24 32 / .46);
-  --bar-glass-hover: rgb(56 56 70 / .5);
-  --bar-edge: inset 0 0 0 1px rgb(255 255 255 / .1), inset 0 1px 0 rgb(255 255 255 / .07), 0 10px 30px rgb(0 0 0 / .2);
-  --bar-blur: blur(22px) saturate(1.6);
-}
-.topbar-profile,
-.topbar .btn-glass:not(.is-on) {
-  background: var(--bar-glass);
-  box-shadow: var(--bar-edge);
-  -webkit-backdrop-filter: var(--bar-blur);
-  backdrop-filter: var(--bar-blur);
-}
-.topbar-profile:hover, .topbar .btn-glass:not(.is-on):hover { background: var(--bar-glass-hover); }
-.topbar-profile.is-open { background: rgb(255 255 255 / .2); }
-
-.topbar-center { position: relative; display: grid; }
-.topbar-center > * { grid-area: 1 / 1; }
-.topbar-nav-glass {
-  border-radius: 999px;
-  -webkit-backdrop-filter: var(--bar-blur);
-  backdrop-filter: var(--bar-blur);
-  pointer-events: none;
-}
-/* The nav itself only tints; its frost is the underlay above. */
-.topbar-nav, .topbar-compact .topbar-nav { background: var(--bar-glass); box-shadow: var(--bar-edge); }
+.avatar-img { object-fit: cover; padding: 0; }

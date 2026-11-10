@@ -1,0 +1,22 @@
+.reach { margin: 48px var(--gutter) 0; display: flex; flex-direction: column; gap: 14px; }
+.reach-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.reach-card {
+  --metal: #c98a5e; --metal-ink: #2b1407;
+  display: flex; align-items: center; gap: 16px; padding: 16px 20px 16px 16px; border-radius: var(--r-l); text-align: left;
+  background: var(--surface-1); box-shadow: inset 0 0 0 1px var(--line);
+  transition: background-color var(--t-fast) ease, transform var(--t-fast) var(--ease-soft);
+}
+.reach-card:hover { background: var(--surface-2); }
+.reach-card:active { transform: scale(.98); }
+.reach-card.tier-silver { --metal: #c9d2de; --metal-ink: #1a2330; }
+.reach-card.tier-gold { --metal: #e2b659; --metal-ink: #2a1c05; }
+.reach-card.tier-platinum { --metal: #dfe9f2; --metal-ink: #16202a; }
+.reach-medal { width: 52px; height: 52px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--metal); color: var(--metal-ink); }
+.reach-medal svg { width: 22px; height: 22px; }
+.reach-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.reach-line { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: var(--fs-15); }
+.reach-line strong { font-weight: 700; }
+.reach-line span { font-size: var(--fs-13); font-weight: 600; color: var(--ink-2); }
+.reach-bar { height: 6px; border-radius: 3px; background: rgb(255 255 255 / .14); overflow: hidden; }
+.reach-bar span { display: block; height: 100%; border-radius: 3px; background: var(--metal); }
+.reach-what { font-size: var(--fs-13); color: var(--ink-3); }

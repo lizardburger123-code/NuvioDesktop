@@ -13,7 +13,7 @@ import { LuRefreshCw, LuTrash2 } from "react-icons/lu";
 import "./Library.css";
 
 const TABS = [
-  { id: "later", label: "Watch later" },
+  { id: "later", label: "My list" },
   { id: "continue", label: "Continue watching" },
   { id: "saved", label: "Saved" },
   { id: "completed", label: "Trophies" },
@@ -102,7 +102,7 @@ export default function Library({ params }) {
           </h2>
           <p className="t-meta">
             {tab === "later"
-              ? "Hover any poster and press the bookmark, or use Watch later on a title's page."
+              ? "Hover any poster and press the bookmark, or use Add to list on a title's page."
               : tab === "continue"
                 ? "Anything you start watching shows up here with the time you have left."
                 : tab === "cloud"

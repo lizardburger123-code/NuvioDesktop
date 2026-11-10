@@ -1,64 +1,48 @@
-/* The first screen of Home: one title, full width, its own picture. */
+/* The film is the interface: one title fills the window, edge to edge, under the words of the bar. */
 .showcase {
   position: relative;
-  height: clamp(420px, 64vh, 640px);
-  margin: 0 var(--gutter);
-  border-radius: var(--r-xl);
+  height: max(600px, 100vh);
   overflow: hidden;
   isolation: isolate;
-  background: rgb(14 14 20);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .07), 0 30px 80px rgb(0 0 0 / .35);
-  container-type: inline-size;
+  background: var(--ground);
+  container-type: size;
 }
-.showcase.skel { background: linear-gradient(120deg, rgb(255 255 255 / .04), rgb(255 255 255 / .08), rgb(255 255 255 / .04)); }
+.showcase.is-short { height: clamp(460px, 68vh, 680px); }
+.showcase.skel { background: var(--ground); border-radius: 0; }
 
 .showcase-art, .showcase-art img { position: absolute; inset: 0; width: 100%; height: 100%; }
-.showcase-art img { object-fit: cover; object-position: center 20%; transform-origin: 60% 40%; }
+.showcase-art img { object-fit: cover; object-position: center 18%; transform-origin: 62% 38%; }
 .showcase-scrim {
   position: absolute; inset: 0; z-index: 1; pointer-events: none;
   background:
-    linear-gradient(90deg, rgb(8 8 12 / .86) 0%, rgb(8 8 12 / .55) 36%, rgb(8 8 12 / .05) 68%, transparent),
-    linear-gradient(0deg, rgb(8 8 12 / .92) 0%, rgb(8 8 12 / .35) 34%, transparent 60%);
+    linear-gradient(90deg, rgb(7 8 10 / .88) 0%, rgb(7 8 10 / .5) 38%, rgb(7 8 10 / 0) 66%),
+    linear-gradient(0deg, var(--ground) 0%, rgb(7 8 10 / .86) 16%, rgb(7 8 10 / 0) 46%);
 }
 
 .showcase-body {
   position: absolute; z-index: 2;
-  left: clamp(24px, 4.5cqw, 64px); right: clamp(24px, 4.5cqw, 64px); bottom: clamp(26px, 6cqh, 56px);
-  max-width: 620px;
-  display: flex; flex-direction: column; align-items: flex-start; gap: 14px;
+  left: var(--gutter); bottom: var(--showcase-floor, 72px);
+  width: min(640px, calc(100% - var(--gutter) * 2));
+  display: flex; flex-direction: column; align-items: flex-start; gap: 16px;
 }
-.showcase-logo { max-width: min(440px, 52cqw); max-height: 150px; object-fit: contain; object-position: left bottom; filter: drop-shadow(0 14px 32px rgb(0 0 0 / .5)); }
-.showcase-name { font-size: clamp(36px, 5.2cqw, 68px); font-weight: 800; letter-spacing: -.03em; line-height: .96; text-wrap: balance; text-shadow: 0 14px 32px rgb(0 0 0 / .5); }
-.showcase-meta { display: flex; gap: 12px; align-items: center; font-size: var(--fs-14); font-weight: 600; color: var(--ink-2); }
-.showcase-meta span + span::before { content: ""; display: inline-block; width: 3px; height: 3px; border-radius: 50%; background: var(--ink-3); margin-right: 12px; vertical-align: middle; }
-.showcase-desc { max-width: 54ch; font-size: var(--fs-14); line-height: 1.5; color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-wrap: pretty; }
-.showcase-actions { display: flex; gap: 8px; margin-top: 6px; }
-.showcase-actions .btn-glass.is-on { background: rgb(255 255 255 / .22); }
+.showcase.has-strip { --showcase-floor: clamp(280px, 34cqh, 320px); }
+.showcase-kicker { font-size: var(--fs-13); font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--warm); }
+.showcase-logo { max-width: min(460px, 100%); max-height: clamp(96px, 20cqh, 170px); object-fit: contain; object-position: left bottom; filter: drop-shadow(0 14px 32px rgb(0 0 0 / .5)); }
+.showcase-name { font-size: clamp(48px, 7.2cqw, 104px); font-weight: 800; letter-spacing: -.045em; line-height: .92; text-wrap: balance; }
+.showcase-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: var(--fs-15); font-weight: 600; color: #d3d8e0; }
+.showcase-desc { max-width: 52ch; font-size: 17px; line-height: 1.5; color: #c9cfd8; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-wrap: pretty; }
+.showcase-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 6px; }
+.showcase-actions .btn { height: 52px; font-size: var(--fs-16); }
+.showcase-actions .btn-primary { padding: 0 28px 0 22px; }
+.showcase-actions .btn-primary svg { fill: currentColor; width: 16px; height: 16px; }
 
-/* The resume card sits in the opposite corner, small, with its own picture. */
-.showcase-resume {
-  position: absolute; z-index: 2; right: clamp(20px, 3cqw, 36px); bottom: clamp(26px, 6cqh, 56px);
-  display: grid; grid-template-columns: 96px 1fr; grid-template-rows: 1fr auto; column-gap: 12px;
-  width: min(320px, 40cqw); padding: 8px; border-radius: 18px; text-align: left; overflow: hidden;
-  background: rgb(14 14 20 / .5); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1);
-  -webkit-backdrop-filter: blur(20px) saturate(1.5); backdrop-filter: blur(20px) saturate(1.5);
-  transition: background-color var(--t-fast) ease, transform var(--t-fast) var(--ease-soft);
-}
-.showcase-resume:hover { background: rgb(40 40 54 / .6); }
-.showcase-resume:active { transform: scale(.98); }
-.showcase-resume-art { grid-row: 1; display: grid; place-items: center; aspect-ratio: 16 / 9; border-radius: 11px; background-size: cover; background-position: center; background-color: rgb(255 255 255 / .06); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1); }
-.showcase-resume-art svg { width: 18px; height: 18px; filter: drop-shadow(0 2px 8px rgb(0 0 0 / .6)); }
-.showcase-resume-text { grid-row: 1; display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; }
-.showcase-resume-text small { font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); }
-.showcase-resume-text strong { font-size: var(--fs-14); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.showcase-resume-text > span { font-size: var(--fs-12); color: var(--ink-2); }
-.showcase-resume-bar { grid-column: 1 / -1; height: 2px; margin: 8px 2px 0; border-radius: 2px; background: rgb(255 255 255 / .14); overflow: hidden; }
-.showcase-resume-bar span { display: block; height: 100%; background: #fff; }
+/* Which of the featured titles this is: short lines beside the buttons. */
+.showcase-dots { display: flex; gap: 6px; margin-left: 10px; }
+.showcase-dots button { position: relative; width: 18px; height: 44px; padding: 0; }
+.showcase-dots button::after { content: ""; position: absolute; left: 0; right: 0; top: 21px; height: 2px; border-radius: 2px; background: rgb(255 255 255 / .32); transition: background-color 200ms ease; }
+.showcase-dots button:hover::after { background: rgb(255 255 255 / .6); }
+.showcase-dots button[aria-selected="true"]::after { background: #fff; }
 
-.showcase-dots { position: absolute; z-index: 2; top: 20px; right: 24px; display: flex; gap: 6px; }
-.showcase-dots button { width: 6px; height: 6px; padding: 0; border-radius: 999px; background: rgb(255 255 255 / .35); transition: width 320ms var(--ease-out), background-color 200ms ease; }
-.showcase-dots button[aria-selected="true"] { width: 22px; background: #fff; }
-
-@container (max-width: 900px) {
-  .showcase-resume { display: none; }
+@container (max-height: 700px) {
+  .showcase-desc { display: none; }
 }

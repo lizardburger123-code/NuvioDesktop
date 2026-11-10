@@ -42,7 +42,7 @@ export function AppProvider({ boot, children }) {
     const was = laterIds.has(`${item.type}:${item.id}`);
     const payload = { id: item.id, type: item.type, name: item.name, poster: item.poster, banner: item.banner, logo: item.logo, releaseInfo: item.releaseInfo, imdbRating: item.imdbRating, genres: item.genres };
     call("watchLater.toggle", { item: payload }).then(
-      () => toast(was ? `Removed ${item.name} from Watch later` : `Added ${item.name} to Watch later`, {
+      () => toast(was ? `Removed ${item.name} from your list` : `Added ${item.name} to your list`, {
         // Taking something off by accident is easy (the bookmark sits on every poster): one click undoes it.
         action: was ? { label: "Undo", run: () => call("watchLater.toggle", { item: payload }).catch(() => {}) } : undefined,
       }),
