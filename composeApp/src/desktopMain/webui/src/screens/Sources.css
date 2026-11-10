@@ -136,7 +136,6 @@ button.source-cache:active { transform: translateY(-50%) scale(.96); }
 .source-item[data-kind="remux"] { --kind: 242 196 109; }
 .source-item[data-kind="hdr"] { --kind: 255 159 90; }
 .source-item[data-kind="web"] { --kind: 210 216 226; }
-.source-item[data-kind="disc"] { --kind: 143 227 168; }
 
 .source-item[data-kind] .source-q { background: rgb(var(--kind) / .14); box-shadow: inset 0 0 0 1px rgb(var(--kind) / .42); color: #fff; }
 .source-item[data-kind] .source-q small { color: rgb(var(--kind)); }
@@ -150,9 +149,6 @@ button.source-cache:active { transform: translateY(-50%) scale(.96); }
 .source-tag.tag-dv { background: rgb(186 150 255 / .18); color: #d6c6ff; }
 .source-tag.tag-remux { background: rgb(242 196 109 / .18); color: #f7d99c; }
 .source-tag.tag-hdr { background: rgb(255 159 90 / .16); color: #ffc49b; }
-.source-tag.tag-disc { gap: 5px; background: #8fe3a8; color: #0b1f12; font-weight: 700; }
-.source-tag.tag-disc svg { width: 13px; height: 13px; }
-.source-tag.tag-inside { background: rgb(143 227 168 / .14); color: #8fe3a8; }
 
 /* The strip: one file per kind, its colour washing in from the left. */
 .sources-picks { margin-top: 4px; padding-bottom: 6px; }
@@ -175,8 +171,3 @@ button.source-cache:active { transform: translateY(-50%) scale(.96); }
 .source-pick { font-size: var(--fs-12); font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: rgb(var(--kind)); }
 .source-pick em { font-style: normal; font-weight: 600; letter-spacing: .04em; text-transform: none; color: var(--ink-2); }
 .source-item.is-pick[data-kind="web"] .source-pick { color: #fff; }
-
-/* The disc-subtitle search: green once it has found the official track somewhere. */
-.chip-disc:disabled { cursor: progress; opacity: 1; }
-.chip-disc.has-found { color: #8fe3a8; background: rgb(143 227 168 / .14); }
-.chip-disc.has-found[aria-pressed="true"] { background: #8fe3a8; color: #0b1f12; }

@@ -247,3 +247,14 @@
 @media (prefers-reduced-motion: reduce) {
   .subsearch-status.busy::before { animation: none; }
 }
+
+/* From the disc: the official Blu-ray subtitles copied from another source. */
+.subtitle-online-row + .subtitle-disc-row { margin-top: 2px; box-shadow: none; }
+.disc-intro { display: flex; flex-direction: column; gap: 4px; padding: 2px 4px 10px; }
+.disc-intro strong { font-size: 14px; font-weight: 700; }
+.disc-intro span { font-size: 12.5px; line-height: 1.45; opacity: .72; text-wrap: pretty; }
+.disc-row .subtitle-option-metadata { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.disc-row.loading { opacity: 1; cursor: progress; }
+.disc-progress { display: block; height: 4px; margin-top: 8px; border-radius: 2px; background: rgba(255, 255, 255, .16); overflow: hidden; }
+.disc-progress i { display: block; height: 100%; border-radius: 2px; background: #8fe3a8; transition: width 240ms linear; }
+.disc-again { margin: 10px 2px 2px; }

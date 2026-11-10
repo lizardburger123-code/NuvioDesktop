@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { DURATION, EASE, reduceMotion, useSegmentPill } from "../lib/motion.js";
 import { holdAmbient } from "../lib/hold.js";
-import { LuCloudDownload, LuDisc3, LuDownload, LuLoaderCircle, LuMaximize, LuPlay, LuRefreshCw, LuX, LuZap } from "react-icons/lu";
+import { LuCloudDownload, LuDownload, LuLoaderCircle, LuMaximize, LuPlay, LuRefreshCw, LuX, LuZap } from "react-icons/lu";
 import { navigate } from "../lib/router.js";
 import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
@@ -14,24 +14,6 @@ import { cacheItem, etaText, isSending, onCacheReady, refreshCache, sendToTorbox
 import "./Sources.css";
 
 const QUALITIES = ["All", "4K", "1080p", "720p"];
-const LANGUAGE_NAMES = { ar: "Arabic", en: "English", fr: "French", tr: "Turkish", es: "Spanish", de: "German", fa: "Persian", ur: "Urdu", it: "Italian", pt: "Portuguese", ru: "Russian", nl: "Dutch" };
-
-// What each file was found to carry inside, remembered by release so the next visit shows it at once.
-const INSIDE = "nuvio.inside.v1";
-const insideKey = info => `${info.release}|${info.size}`;
-const loadInside = () => { try { return JSON.parse(localStorage.getItem(INSIDE)) || {}; } catch { return {}; } };
-const saveInside = map => {
-  try {
-    const entries = Object.entries(map).sort((a, b) => (b[1].t || 0) - (a[1].t || 0)).slice(0, 400);
-    localStorage.setItem(INSIDE, JSON.stringify(Object.fromEntries(entries)));
-  } catch { /* storage full or blocked: the search still works this time */ }
-};
-/** A file that can be opened without side effects: ready on the debrid service, or a plain link. */
-const canLookInside = (stream, info) => !stream.p2p && !stream.external && stream.cached !== false && !info.removed && (info.cached || !stream.hash);
-/** Disc subtitles live in disc copies: remuxes first, then Blu-ray encodes, biggest first. */
-const insideLikelihood = info => (info.tags.includes("Remux") ? 3 : info.tags.includes("Blu-ray") ? 2 : 0) * 1000 + qualityRank(info.quality) * 100 + Math.min(99, (info.sizeBytes || 0) / 1024);
-
-
 /** Side sheet listing every addon's sources for one movie or episode. */
 export default function Sources({ meta, video, onClose }) {
   const { toast } = useApp();
@@ -50,18 +32,6 @@ export default function Sources({ meta, video, onClose }) {
   useEffect(() => {
     call("settings.subtitles.get").then(s => { askSubtitles.current = s?.askBeforePlay !== false; }, () => {});
   }, []);
-  // The language the disc-subtitle search looks for: the first one in Settings › Subtitles.
-  const [discLang, setDiscLang] = useState("ar");
-  useEffect(() => {
-    call("settings.subtitles.get").then(settings => {
-      const first = (settings?.languages || []).find(Boolean);
-      if (first) setDiscLang(String(first).toLowerCase().slice(0, 2));
-    }, () => {});
-  }, []);
-  const discName = LANGUAGE_NAMES[discLang] || discLang.toUpperCase();
-  const [inside, setInside] = useState(loadInside);
-  const [looking, setLooking] = useState(null);
-  const [discOnly, setDiscOnly] = useState(false);
   const topic = useTopic("streams", { key: null, loading: true, groups: [] });
   const state = topic.key === video.videoId ? topic : { loading: true, groups: [] };
 
@@ -95,42 +65,29 @@ export default function Sources({ meta, video, onClose }) {
     );
   }, []);
 
-  // What a file was found to carry: "disc" (official Blu-ray track in the language), "text" (a
-  // text track in it), "none", or null (not looked at yet).
-  const carries = info => {
-    const entry = inside[insideKey(info)];
-    if (!entry) return null;
-    if (!entry.tracks) return "none";
-    const wanted = entry.tracks.filter(track => track.language === discLang && !track.forced);
-    if (wanted.some(track => track.disc)) return "disc";
-    return wanted.length ? "text" : "none";
-  };
-
   const groups = useMemo(() => (state.groups || []).map(group => {
     const rows = (group.streams || []).map(stream => ({ stream, info: parseStream(stream) }))
       .filter(({ info }) => (quality === "All" || info.quality === quality) && (!cachedOnly || info.cached)
-        && (showRemoved || !info.removed) && (!discOnly || carries(info) === "disc"))
+        && (showRemoved || !info.removed))
       // "IMAX first": expanded-ratio releases lead the list instead of hiding everything else.
       .sort((a, b) => (fullFrameOnly ? (b.info.fullFrame - a.info.fullFrame) : 0)
         || (b.info.cached - a.info.cached) || (qualityRank(b.info.quality) - qualityRank(a.info.quality)));
     return { ...group, rows };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [state.groups, quality, cachedOnly, fullFrameOnly, showRemoved, discOnly, inside, discLang]);
+  }), [state.groups, quality, cachedOnly, fullFrameOnly, showRemoved]);
 
   const total = groups.reduce((sum, group) => sum + group.rows.length, 0);
 
   // The best file of each kind, lifted into its own strip at the top. Every row there is a
   // different file: a file that tops several kinds says so once, and those kinds then offer their
-  // next best file. Files with the disc subtitles lead.
+  // next best file.
   const highlights = useMemo(() => {
     const rows = groups.flatMap(group => group.rows).filter(({ info }) => !info.removed);
     if (rows.length < 3) return [];
     const ready = row => row.info.cached || Boolean(cacheItem(row.stream.hash)?.ready);
     const ranked = list => [...list].sort((a, b) => sourceScore(b.info, ready(b)) - sourceScore(a.info, ready(a)));
-    const kinds = [
-      { id: "disc", label: `${discName} disc subtitles`, rows: ranked(rows.filter(({ info }) => carries(info) === "disc")) },
-      ...SOURCE_KINDS.map(kind => ({ id: kind.id, label: kind.label, rows: ranked(rows.filter(({ info }) => kind.test(info))) })),
-    ].filter(kind => kind.rows.length);
+    const kinds = SOURCE_KINDS
+      .map(kind => ({ id: kind.id, label: kind.label, rows: ranked(rows.filter(({ info }) => kind.test(info))) }))
+      .filter(kind => kind.rows.length);
     const picks = [];
     const taken = new Set();
     kinds.forEach(kind => {
@@ -143,48 +100,8 @@ export default function Sources({ meta, video, onClose }) {
       picks.push({ kind: kind.id, label: kind.label, best: !holder, also: [], row });
     });
     return picks;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groups, inside, discLang]);
+  }, [groups]);
 
-  // Look inside files for the official disc subtitles: reads each file's header (half a megabyte),
-  // two at a time, likeliest first.
-  const lookInside = async () => {
-    if (looking) return;
-    const seen = new Set();
-    const queue = (state.groups || []).flatMap(group => group.streams || [])
-      .map(stream => ({ stream, info: parseStream(stream) }))
-      .filter(({ stream, info }) => canLookInside(stream, info) && !inside[insideKey(info)])
-      .filter(({ info }) => (seen.has(insideKey(info)) ? false : seen.add(insideKey(info))))
-      .sort((a, b) => insideLikelihood(b.info) - insideLikelihood(a.info))
-      .slice(0, 10);
-    if (!queue.length) {
-      toast(discCount ? "Every ready file has been checked." : `None of the ready files could be checked for ${discName} disc subtitles. Remuxes cached on TorBox are the likeliest to have them.`);
-      return;
-    }
-    setLooking({ done: 0, total: queue.length });
-    let done = 0;
-    const next = async () => {
-      const item = queue.shift();
-      if (!item) return;
-      try {
-        const result = await call("streams.probeSubs", { streamKey: item.stream.key }, { timeoutMs: 45000 });
-        setInside(current => {
-          const updated = { ...current, [insideKey(item.info)]: { t: Date.now(), tracks: result?.readable ? (result.tracks || []).map(({ language, disc, forced, format }) => ({ language, disc, forced, format })) : null } };
-          saveInside(updated);
-          return updated;
-        });
-      } catch { /* that file couldn't be read; the rest still can */ }
-      done += 1;
-      setLooking({ done, total: queue.length + done });
-      await next();
-    };
-    await Promise.all([next(), next()]);
-    setLooking(null);
-  };
-  const discCount = useMemo(() => (state.groups || []).flatMap(group => group.streams || [])
-    .filter(stream => carries(parseStream(stream)) === "disc").length,
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  [state.groups, inside, discLang]);
   const allCount = (state.groups || []).reduce((sum, group) => sum + (group.streams?.length || 0), 0);
   const imaxCount = useMemo(() => (state.groups || []).reduce((sum, group) =>
     sum + (group.streams || []).filter(stream => parseStream(stream).fullFrame).length, 0), [state.groups]);
@@ -296,7 +213,6 @@ export default function Sources({ meta, video, onClose }) {
   /** One file in the list. [pick] marks it as the best of its kind(s) in the strip at the top. */
   const renderItem = ({ stream, info }, pick = null) => {
     const kind = pick?.kind || sourceKind(info);
-    const found = carries(info);
     const canCache = Boolean(stream.hash) && !info.cached;
     const item = canCache ? cacheItem(stream.hash) : null;
     const onTorbox = Boolean(item?.ready);
@@ -321,8 +237,6 @@ export default function Sources({ meta, video, onClose }) {
             ) : null}
             <span className="source-release" title={info.release}>{info.release || stream.name}</span>
             <span className="source-tags">
-              {found === "disc" ? <span className="source-tag tag-disc"><LuDisc3 /> {discName} disc subtitles</span> : null}
-              {found === "text" ? <span className="source-tag tag-inside">{discName} built in</span> : null}
               {info.cached || onTorbox ? <span className="source-cached"><LuZap /> {onTorbox ? "On TorBox" : "Cached"}</span> : null}
               {stream.p2p && !onTorbox ? <span className="source-tag">P2P</span> : null}
               {info.tags.filter(t => t !== "DV" && !t.startsWith("HDR")).map(tag => <span key={tag} className={`source-tag${TAG_KIND[tag] ? ` tag-${TAG_KIND[tag]}` : ""}`}>{tag}</span>)}
@@ -386,21 +300,6 @@ export default function Sources({ meta, video, onClose }) {
           >
             <LuMaximize /> IMAX first{imaxCount ? ` (${imaxCount})` : ""}
           </button>
-          <button
-            className={`chip chip-disc${discCount ? " has-found" : ""}`}
-            aria-pressed={discOnly}
-            disabled={Boolean(looking)}
-            title={`Looks inside the files for the ${discName} subtitles from the Blu-ray (PGS), the official translation`}
-            onClick={() => (discCount && !looking ? setDiscOnly(value => !value) : lookInside())}
-          >
-            {looking ? <LuLoaderCircle className="spin" /> : <LuDisc3 />}
-            {looking
-              ? `Looking inside ${looking.done} of ${looking.total}`
-              : discCount ? `${discName} disc subtitles (${discCount})` : `Find ${discName} disc subtitles`}
-          </button>
-          {discCount && !looking ? (
-            <button className="chip" onClick={lookInside} title="Look inside more files">More</button>
-          ) : null}
           {removedCount ? (
             <button className="chip" aria-pressed={showRemoved} onClick={() => setShowRemoved(v => !v)} title="Streams AIOStreams filtered out, listed with the reason">
               Filtered out ({removedCount})

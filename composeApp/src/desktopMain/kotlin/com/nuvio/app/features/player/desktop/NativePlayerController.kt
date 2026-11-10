@@ -46,6 +46,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.async
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
@@ -595,6 +598,8 @@ internal class NativePlayerController(
             "subtitleAutoSyncRun" -> runAutoSyncNow()
             "subtitleSyncToReference" -> syncToReference(value.toInt())
             "subtitleExport" -> exportCurrentSubtitle()
+            "discSubsSearch" -> searchDiscSubtitles()
+            "discSubsApply" -> applyDiscSubtitle(value.toInt())
             "subtitleAddFile" -> chooseSubtitleFile()
             "subtitleLoadFile" -> DesktopSubtitleFiles.items.getOrNull(value.toInt())?.let { loadSubtitleFile(java.io.File(it.path)) }
             "subtitleOpenFolder" -> { DesktopSubtitleFiles.openFolder(); DesktopSubtitleFiles.refresh(); pushControlsNow() }
@@ -1172,6 +1177,181 @@ internal class NativePlayerController(
     /** The file the player is showing now when it is not the addon's own link (a retimed or local copy). */
     @Volatile
     private var shownSubtitleFile: String? = null
+
+    // ---- From the disc ---------------------------------------------------------------------
+
+    private var discJob: Job? = null
+
+    private fun discLikelihood(stream: com.nuvio.app.features.streams.StreamItem): Long {
+        val text = listOfNotNull(stream.name, stream.title, stream.description, stream.behaviorHints.filename).joinToString(" ")
+        val kind = when {
+            Regex("remux", RegexOption.IGNORE_CASE).containsMatchIn(text) -> 3L
+            Regex("blu-?ray|bdrip|\\bbd\\b", RegexOption.IGNORE_CASE).containsMatchIn(text) -> 2L
+            else -> 0L
+        }
+        return kind * 1_000_000_000_000L + (stream.behaviorHints.videoSize ?: 0L) / 1_000_000L
+    }
+
+    private fun discDetail(stream: com.nuvio.app.features.streams.StreamItem): String {
+        val text = listOfNotNull(stream.name, stream.title, stream.behaviorHints.filename).joinToString(" ")
+        val quality = when {
+            Regex("2160p|\\b4k\\b|uhd", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "4K"
+            Regex("1080p", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "1080p"
+            Regex("720p", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "720p"
+            else -> null
+        }
+        val kind = when {
+            Regex("remux", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "Remux"
+            Regex("blu-?ray", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "Blu-ray"
+            else -> null
+        }
+        val size = stream.behaviorHints.videoSize?.takeIf { it > 0 }?.let { String.format(java.util.Locale.ROOT, "%.1f GB", it / 1_073_741_824.0) }
+        return listOfNotNull(listOfNotNull(quality, kind).joinToString(" ").ifBlank { null }, size, stream.addonName.takeIf { it.isNotBlank() }).joinToString(" · ")
+    }
+
+    /** Looks inside this title's other ready sources for the official disc subtitles in the user's language. */
+    private fun searchDiscSubtitles() {
+        val playing = AppPresenceState.current.value as? PresenceSnapshot.Player
+        val videoId = playing?.videoId?.takeIf { it.isNotBlank() } ?: playing?.contentId?.takeIf { it.isNotBlank() }
+        val language = SubtitleSearchService.normalizeLanguage(ShellSubtitleStore.prefs.value.languages.firstOrNull() ?: "ar")
+        discJob?.cancel()
+        DesktopDiscSubsUi.beginSearch(language)
+        if (playing == null || videoId == null) {
+            DesktopDiscSubsUi.fail("This title's sources aren't known here. Play it from its page once, then try again.")
+            pushControlsNow()
+            return
+        }
+        pushControlsNow()
+        val type = playing.contentType?.takeIf { it.isNotBlank() } ?: if (playing.seasonNumber != null) "series" else "movie"
+        discJob = autoSyncScope.launch {
+            val token = com.nuvio.app.features.streams.StreamsRepository.requestToken(type, videoId, playing.seasonNumber, playing.episodeNumber, manualSelection = true)
+            com.nuvio.app.features.streams.StreamsRepository.load(type, videoId, playing.parentMetaId, playing.seasonNumber, playing.episodeNumber, manualSelection = true)
+            val loaded = kotlinx.coroutines.withTimeoutOrNull(45_000L) {
+                com.nuvio.app.features.streams.StreamsRepository.uiState.first { it.requestToken == token && !it.isAnyLoading && (it.groups.isNotEmpty() || it.emptyStateReason != null) }
+            } ?: com.nuvio.app.features.streams.StreamsRepository.uiState.value.takeIf { it.requestToken == token }
+            val candidates = loaded?.groups.orEmpty()
+                .flatMap { it.streams }
+                .filter { com.nuvio.app.shell.ShellEmbeddedSubs.canProbe(it) }
+                .distinctBy { it.behaviorHints.filename?.takeIf { name -> name.isNotBlank() } ?: it.playableDirectUrl }
+                .sortedByDescending { discLikelihood(it) }
+                .take(12)
+            if (candidates.isEmpty()) {
+                DesktopDiscSubsUi.fail("None of this title's sources is ready to look inside. Sources cached on TorBox (⚡) can be checked; remuxes are the likeliest to carry the disc subtitles.")
+                pushControlsNow()
+                return@launch
+            }
+            DesktopDiscSubsUi.checking(candidates.size)
+            pushControlsNow()
+            val results = candidates.map { stream ->
+                async {
+                    val tracks = com.nuvio.app.shell.ShellEmbeddedSubs.probe(stream)
+                    DesktopDiscSubsUi.oneChecked()
+                    pushControlsNow()
+                    stream to tracks
+                }
+            }.awaitAll()
+            val found = results.mapNotNull { (stream, tracks) ->
+                val track = tracks.orEmpty().firstOrNull {
+                    it.format == "PGS" && !it.forced && !it.commentary && SubtitleSearchService.normalizeLanguage(it.language) == language
+                } ?: return@mapNotNull null
+                val name = stream.behaviorHints.filename?.takeIf { it.isNotBlank() }?.substringBeforeLast('.')
+                    ?: stream.title?.lineSequence()?.firstOrNull { it.isNotBlank() } ?: stream.name ?: "Source"
+                DesktopDiscSubsUi.Item(stream, name, discDetail(stream), track.name)
+            }
+            val languageName = DesktopDiscSubsUi.languageName(language)
+            DesktopDiscSubsUi.finish(
+                found,
+                if (found.isEmpty()) "None of the ${candidates.size} ready sources carries the $languageName disc subtitles. Try again after caching a remux on TorBox."
+                else "Found in ${found.size} of ${candidates.size} sources. Pick one to copy its subtitles onto this film.",
+            )
+            pushControlsNow()
+        }
+    }
+
+    /** Copies the disc subtitles out of a found source and shows them on the film that's playing. */
+    private fun applyDiscSubtitle(index: Int) {
+        val item = DesktopDiscSubsUi.items.getOrNull(index) ?: return
+        val current = handle.takeIf { it != 0L } ?: return
+        val url = item.stream.playableDirectUrl ?: return
+        val playingSource = pendingSource
+        val playing = AppPresenceState.current.value as? PresenceSnapshot.Player
+        val language = DesktopDiscSubsUi.language
+        val languageName = DesktopDiscSubsUi.languageName(language)
+        discJob?.cancel()
+        DesktopDiscSubsUi.beginApply(index)
+        pushControlsNow()
+        discJob = autoSyncScope.launch {
+            var lastPush = 0L
+            val outcome = com.nuvio.app.features.autosync.DesktopEmbeddedSubtitleTimelineLoader.extractPgsTrack(
+                sourceUrl = url,
+                sourceHeaders = item.stream.behaviorHints.proxyHeaders?.request.orEmpty(),
+                language = language,
+                languageOf = SubtitleSearchService::normalizeLanguage,
+            ) { done, total ->
+                DesktopDiscSubsUi.progress(done, total)
+                val now = System.currentTimeMillis()
+                if (now - lastPush > 250L || done == total) {
+                    lastPush = now
+                    pushControlsNow()
+                }
+            }
+            when (outcome) {
+                is com.nuvio.app.features.autosync.DesktopEmbeddedSubtitleTimelineLoader.PgsOutcome.Failed -> {
+                    DesktopDiscSubsUi.applyFailed(outcome.reason)
+                    pushControlsNow()
+                }
+                is com.nuvio.app.features.autosync.DesktopEmbeddedSubtitleTimelineLoader.PgsOutcome.Done -> {
+                    val directory = com.nuvio.app.core.storage.DesktopStorage.cacheDir.resolve("disc-subtitles").toFile().also { it.mkdirs() }
+                    val safe = item.title.replace(Regex("[^\\p{L}\\p{N}._-]+"), "_").take(80)
+                    val file = java.io.File(directory, "$safe.$language.sup")
+                    runCatching { file.writeBytes(outcome.extraction.sup) }.onFailure {
+                        DesktopDiscSubsUi.applyFailed("The subtitles couldn't be saved on this PC.")
+                        pushControlsNow()
+                        return@launch
+                    }
+                    // The disc copy and this file may start at different moments (studio logos,
+                    // a different master): line the disc's lines up with this file's own subtitles.
+                    val fit = if (playingSource == null || playingSource.sourceUrl == url) null else runCatching {
+                        val reference = com.nuvio.app.features.autosync.DesktopEmbeddedSubtitleTimelineLoader.load(
+                            playingSource.sourceUrl, playingSource.headerLines.toHeaderMap(),
+                        )
+                        reference?.tracks.orEmpty()
+                            .filter { it.cues.size >= 20 }
+                            .mapNotNull { track -> DiscTiming.fit(outcome.extraction.showTimesMs, track.cues.map { cue -> cue.startTimeMs }) }
+                            .maxByOrNull { it.ratio }
+                    }.getOrNull()
+                    val delayMs = (fit?.delayMs ?: 0).coerceIn(SUBTITLE_DELAY_MIN_MS, SUBTITLE_DELAY_MAX_MS)
+                    SwingUtilities.invokeLater {
+                        if (handle != current || releaseRequested) return@invokeLater
+                        cancelAutoSync()
+                        lastAddonSubtitleUrl = null
+                        shownSubtitleFile = null
+                        NativePlayerBridge.clearExternalSubtitles(current)
+                        NativePlayerBridge.addSubtitleUrl(current, file.absolutePath)
+                        setSubtitleDelayMs(delayMs)
+                        autoSyncAppliedListener?.invoke(file.absolutePath, delayMs)
+                        // Continue watching brings these subtitles (and their timing) back.
+                        val parent = playing?.parentMetaId ?: playing?.contentId
+                        val video = playing?.videoId ?: playing?.contentId
+                        if (!parent.isNullOrBlank() && !video.isNullOrBlank()) {
+                            ShellSubtitlePicker.remember(
+                                ShellSubtitlePicker.Target(parent, video, playing?.seasonNumber, playing?.episodeNumber),
+                                file.absolutePath, language, "$languageName (Blu-ray disc)", "Blu-ray disc",
+                            )
+                        }
+                        val timing = when {
+                            playingSource?.sourceUrl == url -> "from this file"
+                            fit != null && kotlin.math.abs(delayMs) >= 100 -> "moved ${String.format(java.util.Locale.ROOT, "%+.1f", delayMs / 1000.0)} s to fit this file"
+                            fit != null -> "already in time with this file"
+                            else -> "timed as on the disc; nudge with G / H if they're early or late"
+                        }
+                        DesktopDiscSubsUi.applied(index, "$languageName disc subtitles on, $timing.")
+                        postAutoSyncNotice("$languageName disc subtitles on")
+                    }
+                }
+            }
+        }
+    }
 
     /** "Save subtitle file": writes the subtitle on screen to Documents/Nuvio Subtitles and shows it. */
     private fun exportCurrentSubtitle() {
@@ -2328,6 +2508,43 @@ private fun StringBuilder.appendSubtitleStyleJson(style: SubtitleStyleState) {
     append("\"search\":")
     appendSubtitleSearchJson()
     append(',')
+    (AppPresenceState.current.value as? PresenceSnapshot.Player)?.let { playing ->
+        DesktopDiscSubsUi.forVideo("${playing.parentMetaId ?: playing.contentId}|${playing.videoId}|${playing.seasonNumber}|${playing.episodeNumber}")
+    }
+    append("\"disc\":{")
+    appendJsonField("status", DesktopDiscSubsUi.status)
+    append(',')
+    appendJsonField("message", DesktopDiscSubsUi.message)
+    append(',')
+    appendJsonField("languageName", DesktopDiscSubsUi.languageName(SubtitleSearchService.normalizeLanguage(ShellSubtitleStore.prefs.value.languages.firstOrNull() ?: "ar")))
+    append(',')
+    appendJsonField("videoKey", DesktopDiscSubsUi.videoKey)
+    append(',')
+    appendJsonField("checked", DesktopDiscSubsUi.checked)
+    append(',')
+    appendJsonField("toCheck", DesktopDiscSubsUi.toCheck)
+    append(',')
+    appendJsonField("applying", DesktopDiscSubsUi.applyingIndex)
+    append(',')
+    appendJsonField("applied", DesktopDiscSubsUi.appliedIndex)
+    append(',')
+    appendJsonField("done", DesktopDiscSubsUi.progressDone)
+    append(',')
+    appendJsonField("total", DesktopDiscSubsUi.progressTotal)
+    append(",\"items\":[")
+    DesktopDiscSubsUi.items.forEachIndexed { index, item ->
+        if (index > 0) append(',')
+        append('{')
+        appendJsonField("index", index)
+        append(',')
+        appendJsonField("title", item.title)
+        append(',')
+        appendJsonField("detail", item.detail)
+        append(',')
+        appendJsonField("track", item.trackName ?: "")
+        append('}')
+    }
+    append("]},")
     append("\"myFiles\":[")
     DesktopSubtitleFiles.items.forEachIndexed { index, item ->
         if (index > 0) append(',')

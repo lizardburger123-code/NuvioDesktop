@@ -12,6 +12,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.async
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.OkHttpClient
@@ -298,6 +305,379 @@ internal object DesktopEmbeddedSubtitleTimelineLoader {
                 commentary = track.commentary,
             )
         }
+    }
+
+    // ---- Disc subtitles from another file -------------------------------------------------------
+
+    /** A disc subtitle track pulled out of a file: a ready-to-load .sup, and when each line appears. */
+    class PgsExtraction(val sup: ByteArray, val showTimesMs: List<Long>, val trackName: String?)
+
+    sealed interface PgsOutcome {
+        class Done(val extraction: PgsExtraction) : PgsOutcome
+        class Failed(val reason: String) : PgsOutcome
+    }
+
+    private const val ID_CONTENT_ENCODINGS = 0x6D80L
+    private const val ID_CONTENT_ENCODING = 0x6240L
+    private const val ID_CONTENT_ENCODING_TYPE = 0x5033L
+    private const val ID_CONTENT_COMPRESSION = 0x5034L
+    private const val ID_CONTENT_COMP_ALGO = 0x4254L
+    private const val ID_CONTENT_COMP_SETTINGS = 0x4255L
+    private const val ID_CUE_CLUSTER_POSITION = 0xF1L
+    private const val ID_CUE_RELATIVE_POSITION = 0xF0L
+    private const val ID_SIMPLE_BLOCK = 0xA3L
+    private const val ID_BLOCK_GROUP = 0xA0L
+    private const val ID_BLOCK = 0xA1L
+    private const val PGS_BLOCK_WINDOW = 96 * 1024
+    private const val PGS_MAX_BLOCK_BYTES = 2 * 1024 * 1024
+    private const val PGS_PARALLEL = 8
+    private const val PGS_TOTAL_TIMEOUT_MS = 300_000L
+
+    private class PgsTrackSpec(
+        val number: Int,
+        val language: String?,
+        val name: String?,
+        val forced: Boolean,
+        val hearingImpaired: Boolean,
+        val commentary: Boolean,
+        val isDefault: Boolean,
+        /** 0 = zlib, 3 = header stripping, null = stored as is. */
+        val compression: Int?,
+        val strippedHeader: ByteArray?,
+    )
+
+    private class PgsCue(val ticks: Long, val clusterPosition: Long, val relativePosition: Long?)
+
+    /**
+     * Copies the [language] disc subtitle track (PGS) out of the Matroska file at [sourceUrl]
+     * without downloading the film: the file's index (Cues) says where every subtitle block sits,
+     * and each block is fetched on its own with a small range request. [languageOf] turns a track's
+     * language tag into the same two-letter code as [language].
+     */
+    suspend fun extractPgsTrack(
+        sourceUrl: String,
+        sourceHeaders: Map<String, String>,
+        language: String,
+        languageOf: (String?) -> String,
+        onProgress: (done: Int, total: Int) -> Unit,
+    ): PgsOutcome = try {
+        withTimeout(PGS_TOTAL_TIMEOUT_MS) {
+            withContext(Dispatchers.IO) { extractPgs(sourceUrl, sourceHeaders, language, languageOf, onProgress) }
+        }
+    } catch (_: TimeoutCancellationException) {
+        PgsOutcome.Failed("The file answered too slowly. Try another source.")
+    } catch (cancel: CancellationException) {
+        throw cancel
+    } catch (error: Exception) {
+        PgsOutcome.Failed("The subtitles couldn't be read from this file (${error.message ?: error::class.simpleName}).")
+    }
+
+    /** Debrid links redirect to a CDN; asking the service once and then the CDN directly saves thousands of round trips. */
+    private fun resolveFinalUrl(sourceUrl: String, sourceHeaders: Map<String, String>): String? = runCatching {
+        val request = Request.Builder()
+            .url(sourceUrl)
+            .header("Range", "bytes=0-0")
+            .header("Accept-Encoding", "identity")
+            .apply { sourceHeaders.forEach { (name, value) -> if (!name.equals("Range", true)) header(name, value) } }
+            .build()
+        httpClient.newCall(request).execute().use { response ->
+            if (response.isSuccessful) response.request.url.toString() else null
+        }
+    }.getOrNull()
+
+    private suspend fun extractPgs(
+        sourceUrl: String,
+        sourceHeaders: Map<String, String>,
+        language: String,
+        languageOf: (String?) -> String,
+        onProgress: (done: Int, total: Int) -> Unit,
+    ): PgsOutcome {
+        val url = resolveFinalUrl(sourceUrl, sourceHeaders) ?: sourceUrl
+        val stats = RangeStats(
+            deadlineNs = System.nanoTime() + 60_000L * 1_000_000L,
+            maxBytes = 40L * 1024L * 1024L,
+            maxRequests = 24,
+        )
+        val initial = fetchRange(url, sourceHeaders, 0L, INITIAL_PROBE_BYTES, false, stats)
+            ?: return PgsOutcome.Failed("The file couldn't be opened.")
+        val segment = findSegment(initial.bytes) ?: return PgsOutcome.Failed("This file isn't an MKV, so its disc subtitles can't be read.")
+        val segmentDataStart = segment.dataStart.toLong()
+        val positions = HashMap(findInitialTopLevelPositions(bytes = initial.bytes, segment = segment))
+        positions[ID_SEEK_HEAD]?.let { seekHeadPosition ->
+            val seekHead = extractElementFromInitialProbe(initial.bytes, seekHeadPosition, ID_SEEK_HEAD, MAX_SEEK_HEAD_BYTES)
+                ?: fetchElementAt(url, sourceHeaders, seekHeadPosition, ID_SEEK_HEAD, MAX_SEEK_HEAD_BYTES, stats)
+            seekHead?.let { bytes -> parseSeekHead(bytes).forEach { (id, relative) -> positions.putIfAbsent(id, segmentDataStart + relative) } }
+        }
+        suspend fun element(id: Long, maxBytes: Int): ByteArray? {
+            val position = positions[id] ?: return null
+            return extractElementFromInitialProbe(initial.bytes, position, id, maxBytes)
+                ?: fetchElementAt(url, sourceHeaders, position, id, maxBytes, stats)
+        }
+
+        val timestampScaleNs = element(ID_INFO, MAX_INFO_BYTES)?.let(::parseTimestampScaleNs) ?: DEFAULT_TIMESTAMP_SCALE_NS
+        val tracks = element(ID_TRACKS, MAX_TRACKS_BYTES)?.let(::parsePgsTrackSpecs)
+            ?: return PgsOutcome.Failed("The file's track list couldn't be read.")
+        val track = tracks
+            .filter { languageOf(it.language) == language && !it.forced && !it.commentary }
+            .sortedWith(compareBy<PgsTrackSpec>({ it.hearingImpaired }, { !it.isDefault }))
+            .firstOrNull()
+            ?: return PgsOutcome.Failed("This file has no disc subtitles in that language.")
+        val cuesBytes = element(ID_CUES, MAX_CUES_BYTES)
+            ?: return PgsOutcome.Failed("This file has no index, so its subtitles can't be read without downloading the whole film.")
+        val cues = parsePgsCues(cuesBytes, track.number)
+        if (cues.size < MIN_INDEXED_CUES) return PgsOutcome.Failed("This file's index doesn't list its subtitles. Try another source.")
+        if (cues.any { it.relativePosition == null }) {
+            return PgsOutcome.Failed("This file's index doesn't say exactly where its subtitles are. Try another source.")
+        }
+
+        val total = cues.size
+        val done = AtomicInteger(0)
+        val gate = Semaphore(PGS_PARALLEL)
+        val headerSizes = ConcurrentHashMap<Long, Int>()
+        onProgress(0, total)
+        val frames = coroutineScope {
+            cues.map { cue ->
+                async {
+                    gate.withPermit {
+                        val frame = runCatching { fetchPgsFrame(url, sourceHeaders, segmentDataStart, cue, track, headerSizes) }
+                            .getOrElse { if (it is CancellationException) throw it else null }
+                        onProgress(done.incrementAndGet(), total)
+                        cue to frame
+                    }
+                }
+            }.awaitAll()
+        }
+        val missing = frames.count { it.second == null }
+        if (missing > total / 10) return PgsOutcome.Failed("$missing of $total subtitle pieces couldn't be read. Try again, or another source.")
+
+        val out = java.io.ByteArrayOutputStream()
+        val shows = mutableListOf<Long>()
+        frames.sortedBy { it.first.ticks }.forEach { (cue, frame) ->
+            if (frame == null) return@forEach
+            val ns = cue.ticks * timestampScaleNs
+            val pts = ns / 100_000L * 9L
+            val timeMs = ns / 1_000_000L
+            var index = 0
+            var shown = false
+            while (index + 3 <= frame.size) {
+                val type = frame[index].toInt() and 0xFF
+                val size = ((frame[index + 1].toInt() and 0xFF) shl 8) or (frame[index + 2].toInt() and 0xFF)
+                if (index + 3 + size > frame.size) break
+                // A presentation segment with objects on screen starts a line; with none it clears one.
+                if (type == 0x16 && size >= 11 && (frame[index + 3 + 10].toInt() and 0xFF) > 0) shown = true
+                out.write('P'.code); out.write('G'.code)
+                out.write((pts ushr 24).toInt() and 0xFF); out.write((pts ushr 16).toInt() and 0xFF)
+                out.write((pts ushr 8).toInt() and 0xFF); out.write(pts.toInt() and 0xFF)
+                repeat(4) { out.write(0) }
+                out.write(frame, index, 3 + size)
+                index += 3 + size
+            }
+            if (shown) shows += timeMs
+        }
+        if (shows.isEmpty()) return PgsOutcome.Failed("The subtitle track in this file is empty.")
+        return PgsOutcome.Done(PgsExtraction(out.toByteArray(), shows, track.name))
+    }
+
+    private suspend fun fetchPgsFrame(
+        url: String,
+        headers: Map<String, String>,
+        segmentDataStart: Long,
+        cue: PgsCue,
+        track: PgsTrackSpec,
+        headerSizes: ConcurrentHashMap<Long, Int>,
+    ): ByteArray? {
+        val clusterStart = segmentDataStart + cue.clusterPosition
+        val relative = cue.relativePosition ?: return null
+        val known = headerSizes[clusterStart]
+        // The block sits [relative] bytes after the cluster's own header (5 to 12 bytes long).
+        val windowStart = clusterStart + relative + (known ?: 0)
+        val stats = RangeStats(deadlineNs = System.nanoTime() + 30_000L * 1_000_000L, maxBytes = 6L * 1024L * 1024L, maxRequests = 3)
+        val window = fetchRange(url, headers, windowStart, PGS_BLOCK_WINDOW, true, stats)?.bytes ?: return null
+        val offsets = if (known != null) listOf(0) else (5..12).toList()
+        for (offset in offsets) {
+            val block = readElement(window, offset, window.size) ?: continue
+            if (block.id != ID_SIMPLE_BLOCK && block.id != ID_BLOCK_GROUP) continue
+            val size = block.size ?: continue
+            if (size <= 0L || size > PGS_MAX_BLOCK_BYTES) continue
+            val bytes: ByteArray
+            val start: Int
+            if (block.dataStart + size <= window.size) {
+                bytes = window
+                start = offset
+            } else {
+                bytes = fetchRange(url, headers, windowStart + offset, (block.headerSize + size).toInt(), true, stats)?.bytes ?: continue
+                start = 0
+            }
+            val element = readElement(bytes, start, bytes.size) ?: continue
+            val frame = blockFrame(bytes, element, track.number) ?: continue
+            if (known == null) headerSizes[clusterStart] = offset
+            return decodeFrame(frame, track)
+        }
+        return null
+    }
+
+    /** The frame of a SimpleBlock or BlockGroup for [trackNumber]; null for another track or laced blocks. */
+    private fun blockFrame(bytes: ByteArray, element: EbmlElement, trackNumber: Int): ByteArray? {
+        val end = element.endWithin(bytes.size) ?: return null
+        if (element.id == ID_BLOCK_GROUP) {
+            var frame: ByteArray? = null
+            forEachChild(bytes, element.dataStart, end) { child ->
+                if (child.id == ID_BLOCK && frame == null) frame = blockPayload(bytes, child.dataStart, child.endWithin(end) ?: return@forEachChild, trackNumber)
+            }
+            return frame
+        }
+        return blockPayload(bytes, element.dataStart, end, trackNumber)
+    }
+
+    private fun blockPayload(bytes: ByteArray, start: Int, end: Int, trackNumber: Int): ByteArray? {
+        if (start >= end) return null
+        val first = bytes[start].toInt() and 0xFF
+        val length = vintLength(first) ?: return null
+        if (start + length + 3 > end) return null
+        var number = (first and ((1 shl (8 - length)) - 1)).toLong()
+        for (index in 1 until length) number = (number shl 8) or (bytes[start + index].toLong() and 0xFFL)
+        if (number.toInt() != trackNumber) return null
+        val flags = bytes[start + length + 2].toInt() and 0xFF
+        if ((flags and 0x06) != 0) return null
+        return bytes.copyOfRange(start + length + 3, end)
+    }
+
+    private fun decodeFrame(frame: ByteArray, track: PgsTrackSpec): ByteArray? = when (track.compression) {
+        null -> frame
+        3 -> (track.strippedHeader ?: ByteArray(0)) + frame
+        0 -> runCatching {
+            val inflater = java.util.zip.Inflater()
+            try {
+                inflater.setInput(frame)
+                val out = java.io.ByteArrayOutputStream(frame.size * 4)
+                val buffer = ByteArray(16 * 1024)
+                while (!inflater.finished()) {
+                    val count = inflater.inflate(buffer)
+                    if (count == 0 && (inflater.needsInput() || inflater.needsDictionary())) break
+                    out.write(buffer, 0, count)
+                }
+                out.toByteArray()
+            } finally {
+                inflater.end()
+            }
+        }.getOrNull()
+        else -> null
+    }
+
+    private fun parsePgsTrackSpecs(tracksElement: ByteArray): List<PgsTrackSpec> {
+        val root = readElement(tracksElement, 0, tracksElement.size) ?: return emptyList()
+        if (root.id != ID_TRACKS) return emptyList()
+        val rootEnd = root.endWithin(tracksElement.size) ?: return emptyList()
+        val result = mutableListOf<PgsTrackSpec>()
+        forEachChild(tracksElement, root.dataStart, rootEnd) { entry ->
+            if (entry.id != ID_TRACK_ENTRY) return@forEachChild
+            val entryEnd = entry.endWithin(rootEnd) ?: return@forEachChild
+            var number: Int? = null
+            var type: Long? = null
+            var codecId: String? = null
+            var language: String? = null
+            var languageIetf: String? = null
+            var name: String? = null
+            var isDefault = true
+            var forced = false
+            var hearingImpaired = false
+            var commentary = false
+            var compression: Int? = null
+            var stripped: ByteArray? = null
+            forEachChild(tracksElement, entry.dataStart, entryEnd) { child ->
+                when (child.id) {
+                    ID_TRACK_NUMBER -> number = readUnsigned(tracksElement, child)?.toInt()
+                    ID_TRACK_TYPE -> type = readUnsigned(tracksElement, child)
+                    ID_CODEC_ID -> codecId = readUtf8(tracksElement, child)
+                    ID_LANGUAGE -> language = readUtf8(tracksElement, child)
+                    ID_LANGUAGE_IETF -> languageIetf = readUtf8(tracksElement, child)
+                    ID_NAME -> name = readUtf8(tracksElement, child)
+                    ID_FLAG_DEFAULT -> isDefault = readUnsigned(tracksElement, child) != 0L
+                    ID_FLAG_FORCED -> forced = readUnsigned(tracksElement, child) == 1L
+                    ID_FLAG_HEARING_IMPAIRED -> hearingImpaired = readUnsigned(tracksElement, child) == 1L
+                    ID_FLAG_COMMENTARY -> commentary = readUnsigned(tracksElement, child) == 1L
+                    ID_CONTENT_ENCODINGS -> {
+                        val encodingsEnd = child.endWithin(entryEnd) ?: return@forEachChild
+                        forEachChild(tracksElement, child.dataStart, encodingsEnd) { encoding ->
+                            if (encoding.id != ID_CONTENT_ENCODING) return@forEachChild
+                            val encodingEnd = encoding.endWithin(encodingsEnd) ?: return@forEachChild
+                            var encodingType = 0L
+                            var algo: Int? = null
+                            var settings: ByteArray? = null
+                            forEachChild(tracksElement, encoding.dataStart, encodingEnd) { part ->
+                                when (part.id) {
+                                    ID_CONTENT_ENCODING_TYPE -> encodingType = readUnsigned(tracksElement, part) ?: 0L
+                                    ID_CONTENT_COMPRESSION -> {
+                                        algo = 0
+                                        val compressionEnd = part.endWithin(encodingEnd) ?: return@forEachChild
+                                        forEachChild(tracksElement, part.dataStart, compressionEnd) { option ->
+                                            when (option.id) {
+                                                ID_CONTENT_COMP_ALGO -> algo = readUnsigned(tracksElement, option)?.toInt() ?: 0
+                                                ID_CONTENT_COMP_SETTINGS -> settings = option.endWithin(compressionEnd)?.let { tracksElement.copyOfRange(option.dataStart, it) }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if (encodingType == 0L && algo != null) {
+                                compression = algo
+                                stripped = settings
+                            }
+                        }
+                    }
+                }
+            }
+            val trackNumber = number ?: return@forEachChild
+            if (type != TRACK_TYPE_SUBTITLE || !codecId.equals(MATROSKA_PGS_CODEC_ID, ignoreCase = true)) return@forEachChild
+            result += PgsTrackSpec(
+                number = trackNumber,
+                language = languageIetf?.takeIf { it.isNotBlank() } ?: language?.takeIf { it.isNotBlank() } ?: "eng",
+                name = name?.takeIf { it.isNotBlank() },
+                forced = forced,
+                hearingImpaired = hearingImpaired,
+                commentary = commentary,
+                isDefault = isDefault,
+                compression = compression,
+                strippedHeader = stripped,
+            )
+        }
+        return result
+    }
+
+    private fun parsePgsCues(cuesElement: ByteArray, trackNumber: Int): List<PgsCue> {
+        val root = readElement(cuesElement, 0, cuesElement.size) ?: return emptyList()
+        if (root.id != ID_CUES) return emptyList()
+        val rootEnd = root.endWithin(cuesElement.size) ?: return emptyList()
+        val result = mutableListOf<PgsCue>()
+        forEachChild(cuesElement, root.dataStart, rootEnd) { point ->
+            if (point.id != ID_CUE_POINT) return@forEachChild
+            val pointEnd = point.endWithin(rootEnd) ?: return@forEachChild
+            var time: Long? = null
+            val found = mutableListOf<Pair<Long, Long?>>()
+            forEachChild(cuesElement, point.dataStart, pointEnd) { child ->
+                when (child.id) {
+                    ID_CUE_TIME -> time = readUnsigned(cuesElement, child)
+                    ID_CUE_TRACK_POSITIONS -> {
+                        val positionEnd = child.endWithin(pointEnd) ?: return@forEachChild
+                        var cueTrack: Int? = null
+                        var cluster: Long? = null
+                        var relative: Long? = null
+                        forEachChild(cuesElement, child.dataStart, positionEnd) { part ->
+                            when (part.id) {
+                                ID_CUE_TRACK -> cueTrack = readUnsigned(cuesElement, part)?.toInt()
+                                ID_CUE_CLUSTER_POSITION -> cluster = readUnsigned(cuesElement, part)
+                                ID_CUE_RELATIVE_POSITION -> relative = readUnsigned(cuesElement, part)
+                            }
+                        }
+                        val clusterPosition = cluster
+                        if (cueTrack == trackNumber && clusterPosition != null) found += clusterPosition to relative
+                    }
+                }
+            }
+            val ticks = time ?: return@forEachChild
+            found.forEach { (cluster, relative) -> result += PgsCue(ticks, cluster, relative) }
+        }
+        return result.distinctBy { "${it.clusterPosition}:${it.relativePosition}:${it.ticks}" }.sortedBy { it.ticks }
     }
 
     private suspend fun loadAndCache(

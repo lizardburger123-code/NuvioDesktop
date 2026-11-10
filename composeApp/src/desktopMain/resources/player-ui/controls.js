@@ -1203,6 +1203,7 @@ const subtitleSelectionOptions = () => normalizeItems(state.subtitleOptionItems)
 }));
 
 const ONLINE_SUBTITLE_KEY = "__online__";
+const DISC_SUBTITLE_KEY = "__disc__";
 const subtitleLanguages = () => [
   ...normalizeItems(state.subtitleLanguageItems).map(item => ({
     key: String(item.key || "__unknown__"),
@@ -1212,6 +1213,8 @@ const subtitleLanguages = () => [
   })),
   // Manual search on OpenSubtitles, SubDL, SubSource and Podnapisi (subtitle-search.js).
   { key: ONLINE_SUBTITLE_KEY, count: 0, label: "Search online", selected: false, online: true },
+  // The official subtitles from a Blu-ray, found inside another source (disc-subtitles.js).
+  { key: DISC_SUBTITLE_KEY, count: 0, label: "From the disc", selected: false, online: true, disc: true },
 ];
 
 const selectedSubtitleOption = options => options.find(option => option.selected) ||
@@ -1231,7 +1234,7 @@ const resetSubtitleSelectionState = () => {
 const appendSubtitleLanguageRow = item => {
   const row = document.createElement("button");
   row.type = "button";
-  row.className = `track-row subtitle-language-row${item.online ? " subtitle-online-row" : ""}${item.key === activeSubtitleLanguageKey ? " selected" : ""}`;
+  row.className = `track-row subtitle-language-row${item.online ? " subtitle-online-row" : ""}${item.disc ? " subtitle-disc-row" : ""}${item.key === activeSubtitleLanguageKey ? " selected" : ""}`;
   row.addEventListener("click", event => {
     event.stopPropagation();
     activeSubtitleLanguageKey = item.key;
@@ -1329,6 +1332,13 @@ const renderSubtitleSelectionRails = () => {
   languages.forEach(appendSubtitleLanguageRow);
   addonSubtitleList.textContent = "";
   const activeOptions = options.filter(option => option.languageKey === activeSubtitleLanguageKey);
+  if (activeSubtitleLanguageKey === DISC_SUBTITLE_KEY && typeof window.renderDiscSubtitles === "function") {
+    window.renderDiscSubtitles(addonSubtitleList);
+    subtitleStyleRail.hidden = false;
+    subtitleStyleRail.parentElement.classList.add("style-visible");
+    renderSubtitleStylePanel();
+    return;
+  }
   if (activeSubtitleLanguageKey === ONLINE_SUBTITLE_KEY && typeof window.renderSubtitleSearch === "function") {
     window.renderSubtitleSearch(addonSubtitleList);
     subtitleStyleRail.hidden = false;
