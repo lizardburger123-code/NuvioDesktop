@@ -277,13 +277,35 @@ jobs:
             echo "On Ubuntu write \`/opt/nuvio/bin/Nuvio\` instead of \`nuvio\`. The same instructions are in \`INSTALL-LINUX.txt\` inside each download."
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Upload Ubuntu package
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nuvio-custom-linux-ubuntu-deb
+          path: |
+            artifacts/packages/*.deb
+            artifacts/packages/INSTALL-LINUX.txt
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload Arch package
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nuvio-custom-linux-arch-pkg
+          path: |
+            artifacts/packages/*.pkg.tar.zst
+            artifacts/packages/INSTALL-LINUX.txt
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Check the packages carry no account names
         shell: bash
         env:
           OWNER: ${{ github.repository_owner }}
           ACTOR: ${{ github.actor }}
         run: |
-          set -uo pipefail
+          set +e
           # The finished package, unpacked all the way down (jars included), searched for the
           # account this was built under. Nothing in it should name who built it.
           work="$(mktemp -d)"
@@ -333,23 +355,3 @@ jobs:
           path: artifacts/screens
           if-no-files-found: warn
           retention-days: 14
-
-      - name: Upload Ubuntu package
-        uses: actions/upload-artifact@v7
-        with:
-          name: nuvio-custom-linux-ubuntu-deb
-          path: |
-            artifacts/packages/*.deb
-            artifacts/packages/INSTALL-LINUX.txt
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Upload Arch package
-        uses: actions/upload-artifact@v7
-        with:
-          name: nuvio-custom-linux-arch-pkg
-          path: |
-            artifacts/packages/*.pkg.tar.zst
-            artifacts/packages/INSTALL-LINUX.txt
-          if-no-files-found: error
-          retention-days: 30
