@@ -468,6 +468,16 @@ void onPlayerMessage(WebKitUserContentManager *, WebKitJavascriptResult *js, gpo
             // must not un-hide it). Composite through a bounded window covering
             // the toast's 1400ms + fade at the 33ms tick.
             player->toastTicks = 55;
+        } else if (strcmp(type, "overlayHold") == 0) {
+            // Nuvio fork: the page is showing something over the video while the chrome is
+            // hidden (trophy pop-up, end card) and asks to be composited for `value` ms more.
+            // Same bounded window as the keyboard toast; the page renews it while it's needed.
+            int ticks = (int)(value / 33.0) + 1;
+            if (ticks > 600) ticks = 600;
+            if (ticks > player->toastTicks) player->toastTicks = ticks;
+        } else if (strcmp(type, "subtitleOverlayMode") == 0 || strcmp(type, "glassRects") == 0) {
+            // Nuvio fork, Windows only (page-drawn subtitles, frosted panels): here mpv draws
+            // the subtitles itself. Must not latch the composite gate open.
         } else if (strcmp(type, "hideChrome") == 0) {
             player->overlayActive = false;
             player->fadeTicks = 18;  // keep compositing ~0.5s to render the fade-out

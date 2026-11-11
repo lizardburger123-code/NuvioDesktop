@@ -96,6 +96,18 @@
     run();
   };
 
+  // Linux draws this page into the video only while something is showing. The chrome announces
+  // itself; a pop-up or the end card over a hidden chrome has to ask (the bridge composites for
+  // the time asked, and this renews it while they are up).
+  const composited = Boolean(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.player)
+    && !(window.chrome && window.chrome.webview);
+  if (composited && typeof send === "function") {
+    window.setInterval(() => {
+      const showing = document.querySelector(".tpop.is-in, #endCard.visible");
+      if (showing) send("overlayHold", 900);
+    }, 400);
+  }
+
   const previous = window.playerControls;
   if (typeof previous === "function") {
     window.playerControls = nextState => {

@@ -718,6 +718,28 @@ val buildLinuxPlayerBridge = tasks.register<Exec>("buildLinuxPlayerBridge") {
     )
 }
 
+// ---- Linux app shell host (Nuvio fork): the new interface's WebKitGTK window, as a helper process ----
+val linuxShellHostSourceFile = layout.projectDirectory.file("src/desktopMain/native/linux/shell_host.c").asFile
+val linuxShellHostOutput = layout.buildDirectory.file("native/linux/nuvio-shell-host")
+val linuxShellHostOutputFile = linuxShellHostOutput.get().asFile
+val buildLinuxShellHost = tasks.register<Exec>("buildLinuxShellHost") {
+    notCompatibleWithConfigurationCache("Builds a host-local helper against system WebKitGTK.")
+    enabled = isLinuxHost
+    inputs.file(linuxShellHostSourceFile)
+    outputs.file(linuxShellHostOutputFile)
+    val src = linuxShellHostSourceFile.absolutePath
+    val out = linuxShellHostOutputFile.absolutePath
+    val outParent = linuxShellHostOutputFile.parentFile
+    doFirst { outParent.mkdirs() }
+    commandLine(
+        "bash", "-c",
+        "cc -std=gnu11 -O2 -Wall -Wno-deprecated-declarations " +
+            "$(pkg-config --cflags webkit2gtk-4.1 gtk+-3.0 x11) " +
+            "'$src' -o '$out' " +
+            "$(pkg-config --libs webkit2gtk-4.1 gtk+-3.0 x11)",
+    )
+}
+
 val windowsPlayerBridgeArch = when (System.getProperty("os.arch").lowercase()) {
     "aarch64", "arm64" -> "arm64"
     "x86" -> "x86"
@@ -975,6 +997,10 @@ tasks.withType<Jar>().configureEach {
     if (isLinuxHost && name == "desktopJar") {
         dependsOn(buildLinuxPlayerBridge)
         from(linuxPlayerBridgeOutput) {
+            into("native/linux")
+        }
+        dependsOn(buildLinuxShellHost)
+        from(linuxShellHostOutput) {
             into("native/linux")
         }
         from(layout.projectDirectory.file("src/desktopMain/native/linux/engine/libnuvio_engine.so")) {

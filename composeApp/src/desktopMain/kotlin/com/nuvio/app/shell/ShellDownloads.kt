@@ -80,9 +80,9 @@ internal object ShellDownloads {
             ?.let { DownloadsRepository.playableLocalFileUri(it) }
             ?.let { runCatching { File(URI(it)) }.getOrNull() }
         if (file != null && file.exists()) {
-            runCatching { ProcessBuilder("explorer.exe", "/select,${file.absolutePath}").start() }
+            com.nuvio.app.core.storage.DesktopFileManager.reveal(file)
         } else {
-            runCatching { ProcessBuilder("explorer.exe", folder().absolutePath).start() }
+            com.nuvio.app.core.storage.DesktopFileManager.openFolder(folder())
         }
     }
 

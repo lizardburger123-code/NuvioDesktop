@@ -328,6 +328,16 @@ internal object NativePlayerBridge {
                 "/composeResources/nuvio.composeapp.generated.resources/font/jetbrains_sans_bold.ttf",
             ),
         )
+        // Every script and stylesheet the page asks for goes with it, listed above or not: a file
+        // added to controls.html but forgotten here would silently never load.
+        val page = files.getValue("controls.html").toString(Charsets.UTF_8)
+        Regex("""(?:src|href)="([A-Za-z0-9_./-]+\.(?:js|css))"""").findAll(page)
+            .map { it.groupValues[1] }
+            .filter { it !in files && !it.startsWith("/") && ".." !in it }
+            .forEach { name ->
+                val bytes = resourceBytesOrNull("/player-ui/$name")
+                if (bytes != null) files[name] = bytes else log.w { "controls page asks for missing file $name" }
+            }
         // Subtitle fonts ship once, with the new interface (resources/app-ui/fonts).
         SubtitleFontFiles.forEach { name ->
             resourceBytesOrNull("/app-ui/fonts/$name")?.let { files["fonts/$name"] = it }

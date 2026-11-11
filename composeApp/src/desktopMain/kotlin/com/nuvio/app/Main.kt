@@ -220,9 +220,11 @@ fun main(args: Array<String>) {
             }
 
             if (smokePlayerUrl == null) {
-                // Windows: the rebuilt web interface replaces the classic tabs (classic stays as fallback).
+                // Windows and Linux: the rebuilt web interface replaces the classic tabs (classic stays
+                // as fallback).
                 val appShell = remember(window) {
-                    if (DesktopHostOs.current == DesktopHostOs.WINDOWS && System.getenv("NUVIO_CLASSIC_UI") == null) {
+                    val hasShell = DesktopHostOs.current == DesktopHostOs.WINDOWS || DesktopHostOs.current == DesktopHostOs.LINUX
+                    if (hasShell && System.getenv("NUVIO_CLASSIC_UI") == null) {
                         DesktopAppShell(window)
                     } else {
                         null

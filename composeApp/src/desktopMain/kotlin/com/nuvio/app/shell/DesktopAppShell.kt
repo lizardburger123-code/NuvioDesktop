@@ -26,6 +26,7 @@ import com.nuvio.app.core.shell.AppShellActions
 import com.nuvio.app.core.shell.AppShellOverride
 import com.nuvio.app.core.storage.DesktopCache
 import com.nuvio.app.features.player.desktop.AwtNativeViewResolver
+import com.nuvio.app.features.player.desktop.DesktopHostOs
 import com.nuvio.app.features.player.desktop.toggleDesktopAppFullscreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -43,7 +44,7 @@ private val ShellGround = Color(0xFF07070B)
 
 /**
  * Hosts the web interface (webui/) over the main window in place of the classic tabs.
- * The WebView2 window is created once and only hidden while other routes (details opened from
+ * The web view (WebView2 on Windows, a WebKitGTK helper on Linux) is created once and only hidden while other routes (details opened from
  * classic screens, sources, the player) are on screen, so the page keeps its state.
  */
 internal class DesktopAppShell(private val window: Window) : AppShellOverride, ShellHost {
@@ -54,7 +55,7 @@ internal class DesktopAppShell(private val window: Window) : AppShellOverride, S
         ShellNav.sink = { topic, data -> rpc.push(topic, data) }
     }
 
-    @Volatile private var handle: Long = 0L
+    @Volatile private var shell: AppShellWindow? = null
     @Volatile private var actions: AppShellActions? = null
     @Volatile private var visible = false
     private var creating = false
@@ -78,12 +79,17 @@ internal class DesktopAppShell(private val window: Window) : AppShellOverride, S
     private val windowListener = object : WindowAdapter() {
         override fun windowClosed(e: WindowEvent?) = dispose()
         override fun windowStateChanged(e: WindowEvent?) = relayout()
+        // Linux: the window manager hands the keyboard to the app window, not to the page inside it.
+        override fun windowGainedFocus(e: WindowEvent?) {
+            if (visible && DesktopHostOs.current == DesktopHostOs.LINUX) shell?.focus()
+        }
     }
 
     init {
         window.addComponentListener(resizeListener)
         window.addWindowListener(windowListener)
         window.addWindowStateListener(windowListener)
+        window.addWindowFocusListener(windowListener)
     }
 
     @Composable
@@ -134,17 +140,19 @@ internal class DesktopAppShell(private val window: Window) : AppShellOverride, S
     }
 
     private suspend fun ensureCreated() {
-        if (handle != 0L || creating || failure != null) return
+        if (shell != null || creating || failure != null) return
         creating = true
         try {
-            val hwnd = AwtNativeViewResolver.resolveNativeViewPointer(window)
+            val host = AwtNativeViewResolver.resolveNativeViewPointer(window)
             val created = withContext(Dispatchers.IO) {
-                NativeAppShellBridge.ensureLoaded()
-                NativeAppShellBridge.createShell(hwnd, pageUrl(), sink)
+                if (DesktopHostOs.current == DesktopHostOs.LINUX) {
+                    LinuxAppShellWindow.create(host, pageUrl(), sink, ::onShellGone)
+                } else {
+                    WindowsAppShellWindow.create(host, pageUrl(), sink)
+                }
             }
-            check(created != 0L) { "The interface window could not be created." }
-            handle = created
-            NativeAppShellBridge.layoutShell(created)
+            shell = created
+            created.layout()
         } catch (error: Throwable) {
             log.e(error) { "new interface unavailable, using the classic one" }
             failure = error.message ?: error::class.simpleName
@@ -153,25 +161,32 @@ internal class DesktopAppShell(private val window: Window) : AppShellOverride, S
         }
     }
 
+    /** Linux: the interface's helper process ended on its own. The classic interface takes over. */
+    private fun onShellGone(reason: String) {
+        SwingUtilities.invokeLater {
+            if (shell == null) return@invokeLater
+            log.e { "new interface lost, using the classic one: $reason" }
+            shell = null
+            failure = reason
+        }
+    }
+
     private fun setVisible(show: Boolean) {
         visible = show
-        val h = handle
-        if (h == 0L) return
-        if (show) NativeAppShellBridge.layoutShell(h)
-        NativeAppShellBridge.setShellVisible(h, show)
-        if (show) NativeAppShellBridge.focusShell(h)
+        val current = shell ?: return
+        if (show) current.layout()
+        current.setVisible(show)
+        if (show) current.focus()
     }
 
     private fun relayout() {
-        val h = handle
-        if (h != 0L && visible) NativeAppShellBridge.layoutShell(h)
+        if (visible) shell?.layout()
     }
 
     // ---- ShellHost ---------------------------------------------------------------------------
 
     override fun post(json: String) {
-        val h = handle
-        if (h != 0L) NativeAppShellBridge.postShellMessage(h, json)
+        shell?.post(json)
     }
 
     override fun actions(): AppShellActions? = actions
@@ -198,7 +213,15 @@ internal class DesktopAppShell(private val window: Window) : AppShellOverride, S
 
     override fun openUrl(url: String) {
         Thread {
-            runCatching { Desktop.getDesktop().browse(URI(url)) }.onFailure { log.w(it) { "couldn't open $url" } }
+            runCatching {
+                // AWT's browse() isn't available on every Linux desktop; xdg-open is.
+                if (DesktopHostOs.current == DesktopHostOs.LINUX) {
+                    ProcessBuilder("xdg-open", URI(url).toASCIIString())
+                        .redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start()
+                } else {
+                    Desktop.getDesktop().browse(URI(url))
+                }
+            }.onFailure { log.w(it) { "couldn't open $url" } }
         }.apply { isDaemon = true }.start()
     }
 
@@ -206,10 +229,11 @@ internal class DesktopAppShell(private val window: Window) : AppShellOverride, S
         window.removeComponentListener(resizeListener)
         window.removeWindowListener(windowListener)
         window.removeWindowStateListener(windowListener)
+        window.removeWindowFocusListener(windowListener)
         rpc.dispose()
-        val h = handle
-        handle = 0L
-        if (h != 0L) runCatching { NativeAppShellBridge.disposeShell(h) }
+        val current = shell
+        shell = null
+        current?.let { runCatching { it.dispose() } }
     }
 
     private fun pageUrl(): String {

@@ -1,0 +1,179 @@
+name: Custom Linux Build
+
+# Builds this fork for Linux without the upstream project's private release secrets:
+#   * Ubuntu / Debian:  Nuvio-Linux-x86_64-<version>.deb          (Ubuntu 24.04 or newer)
+#   * Arch Linux:       nuvio-fork-bin-<version>-1-x86_64.pkg.tar.zst
+# Each is launched on a virtual display before it is published, with screenshots kept as an
+# artifact. Local (offline) accounts work fully; Nuvio cloud sign-in, Trakt and MDBList
+# integrations are unavailable in these builds, as in the custom Windows build.
+
+on:
+  push:
+    branches:
+      - "custom/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: custom-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Linux x64 (deb + Arch package)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+        with:
+          lfs: false
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Install build and test dependencies
+        shell: bash
+        run: |
+          bash ./scripts/linux/install-desktop-build-dependencies.sh \
+            fakeroot openbox imagemagick xdotool x11-utils x11-apps \
+            libmpv2 gstreamer1.0-plugins-good gstreamer1.0-libav glib-networking \
+            libgl1-mesa-dri dbus-x11 xdg-utils
+
+      - name: Version
+        shell: bash
+        run: |
+          # The same version line as the Windows fork builds (0.1.1000+run).
+          echo "NUVIO_DESKTOP_VERSION_NAME=0.1.$((1000 + GITHUB_RUN_NUMBER))-fork" >> "$GITHUB_ENV"
+          echo "FORK_VERSION=0.1.$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+
+      - name: Interface host smoke test
+        shell: bash
+        run: |
+          mkdir -p artifacts/screens/host
+          xvfb-run -a -s "-screen 0 1440x900x24" \
+            bash ./scripts/linux/custom/smoke-shell-host.sh artifacts/screens/host
+
+      - name: Write placeholder runtime config
+        shell: bash
+        run: |
+          # Placeholders keep client construction valid. Offline/local accounts never contact
+          # these endpoints.
+          printf '%s\n' \
+            'NUVIO_SUPABASE_URL=https://offline.invalid' \
+            'NUVIO_SUPABASE_ANON_KEY=offline-build' > local.properties
+
+      - name: Build DEB
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew \
+            :composeApp:packageReleaseDeb \
+            -Pcompose.desktop.packaging.checkJdkVendor=false \
+            --no-configuration-cache \
+            --no-daemon \
+            --stacktrace 2>&1 | tee build-output.log
+
+      # Job logs live on storage that some viewers cannot reach; surface compiler errors as
+      # annotations so they show up in the run summary and the checks API.
+      - name: Report build errors
+        if: failure()
+        shell: bash
+        run: |
+          [ -f build-output.log ] || exit 0
+          lines="$(grep -E '^e: |error:|undefined reference' build-output.log | head -n 10)"
+          [ -n "$lines" ] || lines="$(grep -E 'What went wrong|^\s*> |Exception:|FAIL' build-output.log | head -n 10)"
+          while IFS= read -r line; do
+            [ -n "$line" ] && echo "::error::${line:0:900}"
+          done <<< "$lines"
+          for f in artifacts/screens/host/err1.log artifacts/screens/host/err2.log; do
+            [ -f "$f" ] && tail -n 5 "$f" | while IFS= read -r line; do echo "::warning::${line:0:400}"; done
+          done
+          exit 0
+
+      - name: Collect DEB
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/packages
+          deb="$(find composeApp/build/compose/binaries -name '*.deb' | head -n 1)"
+          test -n "$deb"
+          cp "$deb" "artifacts/packages/Nuvio-Linux-x86_64-${NUVIO_DESKTOP_VERSION_NAME}.deb"
+          dpkg-deb -I "$deb" | sed -n 1,25p
+          dpkg-deb -c "$deb" | awk '{print $6}' | grep -vE '/lib/runtime/|/lib/app/.*\.jar$' | head -n 40
+
+      - name: Install the DEB and launch it on a virtual display
+        shell: bash
+        run: |
+          set -uo pipefail
+          sudo apt-get install --yes "./artifacts/packages/Nuvio-Linux-x86_64-${NUVIO_DESKTOP_VERSION_NAME}.deb"
+          mkdir -p artifacts/screens/app
+          cat > run-app.sh <<'EOF'
+          set -uo pipefail
+          out="$1"
+          export HOME="$(mktemp -d)"
+          (openbox >/dev/null 2>&1 &)
+          sleep 1
+          /opt/nuvio/bin/Nuvio > "$out/app.log" 2>&1 &
+          pid=$!
+          for t in 20 40 60; do
+            sleep 20
+            import -window root "$out/app-${t}s.png" || true
+          done
+          xwininfo -root -tree > "$out/windows.txt" 2>&1 || true
+          ps -ef | grep -E 'nuvio-shell-host|WebKit|Nuvio' | grep -v grep > "$out/processes.txt" || true
+          alive=0; kill -0 "$pid" 2>/dev/null && alive=1
+          kill "$pid" 2>/dev/null; sleep 2; kill -9 "$pid" 2>/dev/null
+          echo "app alive after 60s: $alive"
+          [ "$alive" = 1 ]
+          EOF
+          status=0
+          xvfb-run -a -s "-screen 0 1440x900x24" bash run-app.sh "$PWD/artifacts/screens/app" || status=$?
+          echo "---- processes"; cat artifacts/screens/app/processes.txt || true
+          echo "---- app log (interface lines)"
+          grep -iE 'shell|interface|webkit|exception|error' artifacts/screens/app/app.log | head -n 60 || true
+          if ! grep -q 'nuvio-shell-host' artifacts/screens/app/processes.txt; then
+            echo "::warning::The app started without the new interface (helper not running)."
+          fi
+          exit $status
+
+      - name: Build and verify the Arch Linux package
+        shell: bash
+        run: |
+          bash ./scripts/linux/custom/build-arch-package.sh \
+            "artifacts/packages/Nuvio-Linux-x86_64-${NUVIO_DESKTOP_VERSION_NAME}.deb" \
+            "${FORK_VERSION}" artifacts/arch
+          cp artifacts/arch/*.pkg.tar.zst artifacts/packages/
+          mkdir -p artifacts/screens/arch && cp -r artifacts/arch/smoke-arch/. artifacts/screens/arch/ || true
+
+      - name: Upload screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nuvio-custom-linux-test-screens
+          path: artifacts/screens
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload Ubuntu package
+        uses: actions/upload-artifact@v7
+        with:
+          name: nuvio-custom-linux-ubuntu-deb
+          path: artifacts/packages/*.deb
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Arch package
+        uses: actions/upload-artifact@v7
+        with:
+          name: nuvio-custom-linux-arch-pkg
+          path: artifacts/packages/*.pkg.tar.zst
+          if-no-files-found: error
+          retention-days: 30

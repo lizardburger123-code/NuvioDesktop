@@ -234,8 +234,8 @@ export const createMockBackend = deliver => {
   let net = { mode: "off", proxy: "", port: 47231, restartForPictures: false, warp: { available: true, state: "off" } };
   const handlers = {
     "app.bootstrap": () => ({
-      profile: { id: 1, name: "ren amamiya lol", avatar: null },
-      profiles: [{ id: 1, name: "ren amamiya lol" }, { id: 2, name: "Sara", color: "#b0476f" }, { id: 3, name: "Kids", color: "#2f8f6b", pin: true }],
+      profile: { id: 1, name: "Alex", avatar: null },
+      profiles: [{ id: 1, name: "Alex" }, { id: 2, name: "Sara", color: "#b0476f" }, { id: 3, name: "Kids", color: "#2f8f6b", pin: true }],
       version: "0.1.1008-fork (preview)",
       appearance,
       native: false,

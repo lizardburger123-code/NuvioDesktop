@@ -1,6 +1,5 @@
 package com.nuvio.app.features.player.desktop
 
-import java.awt.Desktop
 import java.io.File
 
 /**
@@ -58,22 +57,11 @@ internal object DesktopSubtitleFiles {
     }
 
     fun openFolder() {
-        runCatching {
-            val directory = folder.also { it.mkdirs() }
-            Desktop.getDesktop().open(directory)
-        }
+        com.nuvio.app.core.storage.DesktopFileManager.openFolder(folder.also { it.mkdirs() })
     }
 
-    /** Shows the saved file selected in Explorer where that is possible, else just opens the folder. */
+    /** Shows the saved file selected in the file manager where that is possible, else opens the folder. */
     fun reveal(file: File) {
-        val shown = runCatching {
-            if (System.getProperty("os.name").orEmpty().startsWith("Windows", ignoreCase = true)) {
-                ProcessBuilder("explorer.exe", "/select,${file.absolutePath}").start()
-                true
-            } else {
-                false
-            }
-        }.getOrDefault(false)
-        if (!shown) openFolder()
+        if (!com.nuvio.app.core.storage.DesktopFileManager.reveal(file)) openFolder()
     }
 }
