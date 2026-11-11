@@ -70,12 +70,17 @@ for jar in /opt/nuvio/lib/app/*.jar; do
 done
 ls -la native/linux
 status=0
-for lib in native/linux/libplayer_bridge.so native/linux/nuvio-shell-host; do
+chmod +x native/linux/*
+for lib in native/linux/libplayer_bridge.so native/linux/nuvio-shell-host native/linux/libnuvio_engine.so; do
     test -f "$lib" || { echo "FAIL: $lib is not in the package"; status=1; continue; }
     if ldd "$lib" | grep "not found"; then echo "FAIL: $lib has missing libraries"; status=1; else echo "ok: $lib"; fi
 done
-ldd /opt/nuvio/lib/runtime/lib/libjava.so | grep "not found" && status=1 || echo "ok: bundled Java runtime"
-/opt/nuvio/lib/runtime/bin/java -version 2>&1 | head -1 || true
+# The bundled Java runtime finds its own libraries beside itself; only system ones can be missing.
+if LD_LIBRARY_PATH=/opt/nuvio/lib/runtime/lib:/opt/nuvio/lib/runtime/lib/server ldd /opt/nuvio/lib/runtime/lib/libawt_xawt.so | grep "not found"; then
+    echo "FAIL: the bundled Java runtime has missing libraries"; status=1
+else
+    echo "ok: bundled Java runtime"
+fi
 echo "== interface host on a virtual display"
 pacman -S --noconfirm --needed xorg-server-xvfb xorg-xauth openbox imagemagick xdotool xorg-xwininfo xorg-xwd mesa ttf-dejavu >/dev/null
 chmod +x native/linux/nuvio-shell-host

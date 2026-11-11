@@ -14,7 +14,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  # write: the test screenshots are pushed to the ci/linux-screens branch (see the last steps).
+  contents: write
 
 concurrency:
   group: custom-linux-${{ github.ref }}
@@ -139,6 +140,8 @@ jobs:
           echo "---- processes"; cat artifacts/screens/app/processes.txt || true
           echo "---- app log (interface lines)"
           grep -iE 'shell|interface|webkit|exception|error' artifacts/screens/app/app.log | head -n 60 || true
+          echo "---- app log (end)"; tail -n 40 artifacts/screens/app/app.log || true
+          echo "---- windows"; grep -iE 'nuvio|com-nuvio' artifacts/screens/app/windows.txt | head -n 12 || true
           if ! grep -q 'nuvio-shell-host' artifacts/screens/app/processes.txt; then
             echo "::warning::The app started without the new interface (helper not running)."
           fi
@@ -152,6 +155,54 @@ jobs:
             "${FORK_VERSION}" artifacts/arch
           cp artifacts/arch/*.pkg.tar.zst artifacts/packages/
           mkdir -p artifacts/screens/arch && cp -r artifacts/arch/smoke-arch/. artifacts/screens/arch/ || true
+
+      - name: Check the packages carry no account names
+        shell: bash
+        env:
+          OWNER: ${{ github.repository_owner }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -uo pipefail
+          # The finished package, unpacked all the way down (jars included), searched for the
+          # account this was built under. Nothing in it should name who built it.
+          work="$(mktemp -d)"
+          dpkg-deb -x artifacts/packages/*.deb "$work/deb"
+          mkdir "$work/jars"
+          find "$work/deb" -name '*.jar' | while read -r jar; do
+            unzip -q -o "$jar" -d "$work/jars/$(basename "$jar")" 2>/dev/null || true
+          done
+          hits=0
+          for name in "$OWNER" "$ACTOR" "${OWNER%-code}"; do
+            [ -n "$name" ] || continue
+            found="$(grep -r -a -i -l -F -- "$name" "$work/deb" "$work/jars" 2>/dev/null | grep -v '\.jar$' | head -n 5)"
+            if [ -n "$found" ]; then echo "::error::account name found in the package"; echo "$found"; hits=1; fi
+          done
+          emails="$(grep -r -a -h -o -E '[A-Za-z0-9._%+-]+@(gmail|outlook|hotmail|yahoo|icloud|proton)[a-z.]*' "$work/deb" "$work/jars" 2>/dev/null | sort -u | head -n 10)"
+          if [ -n "$emails" ]; then echo "::error::personal-looking email address found in the package"; echo "$emails"; hits=1; fi
+          [ "$hits" = 0 ] && echo "No account name or personal email address anywhere in the package."
+          exit $hits
+
+      - name: Publish screenshots to the ci/linux-screens branch
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          [ -d artifacts/screens ] || exit 0
+          pub="$(mktemp -d)"
+          ( cd artifacts/screens && find . -name '*.png' | while read -r f; do
+              mkdir -p "$pub/$(dirname "$f")"
+              convert "$f" -quality 82 "$pub/${f%.png}.jpg" 2>/dev/null || cp "$f" "$pub/$f"
+            done
+            find . \( -name '*.log' -o -name '*.txt' \) | while read -r f; do
+              mkdir -p "$pub/$(dirname "$f")"; tail -c 200000 "$f" > "$pub/$f"
+            done ) || true
+          cd "$pub"
+          git init -q -b ci/linux-screens
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Linux test screenshots for run ${GITHUB_RUN_NUMBER}" || exit 0
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${GITHUB_REPOSITORY}.git" ci/linux-screens || echo "::warning::could not publish screenshots"
 
       - name: Upload screenshots and logs
         if: always()

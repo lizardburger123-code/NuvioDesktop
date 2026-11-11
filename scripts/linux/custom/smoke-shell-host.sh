@@ -51,24 +51,23 @@ mkfifo "$out/in1"
 "$helper" 0 "$page?mock" "$out/data1" < "$out/in1" > "$out/out1.log" 2> "$out/err1.log" &
 pid=$!
 exec 3> "$out/in1"
-sleep 9
-shot 1-gate
-echo "Edocument.querySelector('.gate-profile.is-current, .gate-profile')?.click()" >&3
-sleep 4
-shot 2-home
-echo "E[...document.querySelectorAll('.topbar-nav button, .topbar-nav a')].find(b => /Library/.test(b.textContent))?.click()" >&3
-sleep 2
-echo "E[...document.querySelectorAll('.screen-host:not(.is-parked) button')].find(b => /Trophies/.test(b.textContent))?.click()" >&3
-sleep 3
-echo "Edocument.querySelector('.screen-host:not(.is-parked) .bd-slot')?.scrollIntoView({block:'center'})" >&3
-sleep 1
-shot 3-shelf
-echo "Edocument.querySelectorAll('.screen-host:not(.is-parked) .bd-slot')[2]?.click()" >&3
-sleep 3
-shot 4-case
-echo "Ewindow.webkit.messageHandlers.shell.postMessage('probe:' + [document.querySelectorAll('.bd-slot').length, !!document.querySelector('.bd-lift'), getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(), CSS.supports('transform-style','preserve-3d'), CSS.supports('backdrop-filter','blur(2px)') || CSS.supports('-webkit-backdrop-filter','blur(2px)'), navigator.userAgent].join('|'))" >&3
-sleep 1
-grep '^Mprobe:' "$out/out1.log" | tee "$out/probe.txt"
+# One script drives the page and reports each step, so slow machines only take longer.
+driver="(async()=>{const say=m=>window.webkit.messageHandlers.shell.postMessage(m);const till=(f,t=30000)=>new Promise(r=>{const s=Date.now();const i=setInterval(()=>{let v=null;try{v=f()}catch(e){}if(v||Date.now()-s>t){clearInterval(i);r(v)}},250)});const nap=ms=>new Promise(r=>setTimeout(r,ms));const act='.screen-host:not(.is-parked) ';const gate=await till(()=>document.querySelector('.gate-profile.is-current, .gate-profile'));say('step:gate:'+!!gate);await nap(1500);gate&&gate.click();const lib=await till(()=>[...document.querySelectorAll('.topbar-nav button, .topbar-nav a')].find(b=>/Library/.test(b.textContent)));await nap(2500);say('step:home:'+!!lib);await nap(1500);lib&&lib.click();const tab=await till(()=>[...document.querySelectorAll(act+'button')].find(b=>/Trophies/.test(b.textContent)));tab&&tab.click();const slot=await till(()=>document.querySelector(act+'.bd-slot'));slot&&slot.scrollIntoView({block:'center'});await nap(1500);say('step:shelf:'+document.querySelectorAll('.bd-slot').length);await nap(1500);const third=document.querySelectorAll(act+'.bd-slot')[2];third&&third.click();await till(()=>document.querySelector('.bd-lift'),8000);await nap(2500);say('step:case:'+!!document.querySelector('.bd-lift'));await nap(1500);say('probe:'+[document.querySelectorAll('.bd-slot').length,!!document.querySelector('.bd-lift'),getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),CSS.supports('transform-style','preserve-3d'),CSS.supports('backdrop-filter','blur(2px)')||CSS.supports('-webkit-backdrop-filter','blur(2px)'),navigator.userAgent].join('|'));})()"
+wait_for() { # <log> <pattern> <seconds>
+    local n=0
+    until grep -q "$2" "$1" 2>/dev/null; do
+        sleep 0.5; n=$((n + 1))
+        [[ $n -ge $(($3 * 2)) ]] && { echo "timeout waiting for $2"; return 1; }
+    done
+}
+wait_for "$out/out1.log" '"event":"loaded"' 40
+echo "E$driver" >&3
+wait_for "$out/out1.log" '^Mstep:gate' 40 && shot 1-gate
+wait_for "$out/out1.log" '^Mstep:home' 40 && shot 2-home
+wait_for "$out/out1.log" '^Mstep:shelf' 60 && shot 3-shelf
+wait_for "$out/out1.log" '^Mstep:case' 30 && shot 4-case
+wait_for "$out/out1.log" '^Mprobe:' 15
+grep '^Mstep:\|^Mprobe:' "$out/out1.log" | tee "$out/probe.txt"
 kill -0 "$pid" 2>/dev/null || { echo "FAIL: standalone helper died"; fail=1; }
 echo "Q" >&3
 exec 3>&-
@@ -90,7 +89,8 @@ exec 4> "$out/in2"
 sleep 2
 shot 5-embedded-hidden
 echo "V1" >&4; echo "F" >&4
-sleep 9
+wait_for "$out/out2.log" '"method"' 40
+sleep 6
 shot 6-embedded-shown
 xdotool windowsize "$xid" 1000 640 2>/dev/null
 echo "L" >&4
