@@ -30,11 +30,11 @@ export const PosterCard = memo(function PosterCard({ item, onOpen, onToggleLater
 });
 
 /** Landscape card for continue watching and episodes: progress runs along its bottom edge. */
-export const WideCard = memo(function WideCard({ image, logo, title, kicker, meta, progress, watched, onOpen, onRemove, removeLabel, width = 300, badge }) {
+export const WideCard = memo(function WideCard({ image, fallbackImage, logo, title, kicker, meta, progress, watched, onOpen, onRemove, removeLabel, width = 300, badge }) {
   return (
     <div className="wide" data-card style={{ width }}>
       <button className="card-face" data-hero style={{ height: Math.round(width * 9 / 16) }} onClick={onOpen} aria-label={title}>
-        {image ? <img src={image} alt="" loading="lazy" decoding="async" /> : null}
+        {image ? <img src={image} data-alt={fallbackImage && fallbackImage !== image ? fallbackImage : undefined} alt="" loading="lazy" decoding="async" /> : null}
         <span className="wide-scrim" />
         {logo ? <img className="wide-logo" src={logo} alt="" loading="lazy" decoding="async" /> : null}
         {badge ? <span className="wide-badge">{badge}</span> : null}
@@ -62,6 +62,7 @@ export const ContinueCard = ({ entry, onResume, onRemove, width }) => (
   <WideCard
     width={width}
     image={entry.thumbnail || entry.backdrop}
+    fallbackImage={entry.backdrop || entry.poster}
     logo={entry.season == null ? entry.logo : null}
     title={entry.name}
     kicker={entry.season != null ? `${episodeCode(entry.season, entry.episode)}${entry.episodeTitle ? ` · ${entry.episodeTitle}` : ""}` : null}

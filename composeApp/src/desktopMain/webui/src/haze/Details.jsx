@@ -7,6 +7,7 @@ import { useApp } from "../AppContext.jsx";
 import { useArtColor } from "../lib/artColor.js";
 import Row from "../components/Row.jsx";
 import { PosterCard, WideCard } from "../components/Cards.jsx";
+import TitleMark from "../components/TitleMark.jsx";
 import { year } from "../lib/format.js";
 import "./Details.css";
 
@@ -24,7 +25,7 @@ function Episode({ video, meta, next, nextLabel, onPlay }) {
     <button className={`hz-ep${next ? " is-next" : ""}${video.watched ? " is-watched" : ""}`} onClick={() => onPlay(asVideo(video))} disabled={video.available === false}>
       <span className="hz-ep-n num">{video.episode}</span>
       <span className="hz-ep-thumb">
-        {video.thumbnail || meta.background ? <img src={video.thumbnail || meta.background} alt="" loading="lazy" decoding="async" /> : null}
+        {video.thumbnail || meta.background ? <img src={video.thumbnail || meta.background} data-alt={video.thumbnail && meta.background ? meta.background : undefined} alt="" loading="lazy" decoding="async" /> : null}
         <span className="hz-ep-play" aria-hidden="true"><LuPlay /></span>
         {video.watched ? <span className="hz-ep-seen" aria-label="Watched"><LuCheck /></span> : null}
         {video.progress > 0 ? <span className="wide-progress"><span style={{ width: `${Math.min(100, Math.round(video.progress * 100))}%` }} /></span> : null}
@@ -47,7 +48,7 @@ function EpisodeTile({ video, meta, next, onPlay }) {
   return (
     <button className={`hz-tile${next ? " is-next" : ""}`} onClick={() => onPlay(asVideo(video))} disabled={video.available === false}>
       <span className="hz-ep-thumb">
-        {video.thumbnail || meta.background ? <img src={video.thumbnail || meta.background} alt="" loading="lazy" decoding="async" /> : null}
+        {video.thumbnail || meta.background ? <img src={video.thumbnail || meta.background} data-alt={video.thumbnail && meta.background ? meta.background : undefined} alt="" loading="lazy" decoding="async" /> : null}
         <span className="hz-ep-play" aria-hidden="true"><LuPlay /></span>
         {video.watched ? <span className="hz-ep-seen" aria-label="Watched"><LuCheck /></span> : null}
         {video.progress > 0 ? <span className="wide-progress"><span style={{ width: `${Math.min(100, Math.round(video.progress * 100))}%` }} /></span> : null}
@@ -175,8 +176,7 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
           {meta.ageRating ? <span className="hz-tag">{meta.ageRating}</span> : null}
           {meta.status ? <span className="hz-tag">{meta.status}</span> : null}
         </div>
-        {meta.logo ? <img className="details-logo" data-rise src={meta.logo} alt={meta.name} /> : <h1 className="details-title" data-rise dir="auto">{meta.name}</h1>}
-        {meta.logo ? <h1 className="sr-only">{meta.name}</h1> : null}
+        <TitleMark meta={meta} />
         <div className="hz-hero-meta num" data-rise>
           {meta.imdbRating ? <span className="hz-rating"><LuStar aria-hidden="true" /><b>{meta.imdbRating}</b>IMDb</span> : null}
           {year(meta.releaseInfo) ? <span>{year(meta.releaseInfo)}</span> : null}

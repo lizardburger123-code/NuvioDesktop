@@ -189,18 +189,44 @@ function Shell() {
   );
 }
 
-// Pictures that fail to load (plain http, hotlink-protected or blocked) retry once through
-// Nuvio's local fetcher, which adds browser headers and uses the unblock route.
+// A picture that fails to load is never left as a broken-image icon. In order:
+//   1. once more through Nuvio's local fetcher (browser headers, the unblock route), which gets
+//      plain-http, hotlink-protected and blocked pictures;
+//   2. the stand-in the card named (data-alt: an episode without a still shows the series' picture);
+//   3. a drawn tile instead: the title in type for a poster, a quiet panel for a still, initials
+//      for a person (see "Pictures that didn't load" in base.css).
+// The stage is read from the address itself, so an <img> React reuses for another title starts over.
 let imageProxy = null;
+const initialsOf = name => String(name || "").split(/\s+/).map(word => word[0] || "").join("").slice(0, 2).toUpperCase();
+const markBroken = img => {
+  const holder = img.parentElement;
+  img.dataset.broken = "1";
+  if (!holder) return;
+  const label = img.getAttribute("alt") || holder.closest("[aria-label]")?.getAttribute("aria-label") || "";
+  holder.dataset.brokenName = holder.classList.contains("person")
+    ? initialsOf(holder.querySelector(".person-name")?.textContent)
+    : holder.classList.contains("card-face") && !holder.closest(".wide") ? label.replace(/^\d+\.\s/, "") : "";
+};
 if (typeof document !== "undefined") {
   document.addEventListener("error", event => {
     const img = event.target;
-    if (!imageProxy || img?.tagName !== "IMG" || img.dataset.proxied) return;
+    if (img?.tagName !== "IMG") return;
     const src = img.getAttribute("src") || "";
-    if (!/^https?:\/\//i.test(src) || src.startsWith("http://127.0.0.1")) return;
-    img.dataset.proxied = "1";
-    img.src = imageProxy + encodeURIComponent(src);
-    window.requestAnimationFrame(() => { img.style.display = ""; });
+    const viaProxy = Boolean(imageProxy) && src.startsWith(imageProxy);
+    const original = viaProxy ? decodeURIComponent(src.slice(imageProxy.length)) : src;
+    if (!viaProxy && imageProxy && /^https?:\/\//i.test(src) && !src.startsWith("http://127.0.0.1")) {
+      img.src = imageProxy + encodeURIComponent(src);
+      return;
+    }
+    const alt = img.dataset.alt || "";
+    if (alt && alt !== original) { img.src = alt; return; }
+    markBroken(img);
+  }, true);
+  document.addEventListener("load", event => {
+    const img = event.target;
+    if (img?.tagName !== "IMG" || !img.dataset.broken) return;
+    delete img.dataset.broken;
+    if (img.parentElement) delete img.parentElement.dataset.brokenName;
   }, true);
 }
 

@@ -60,7 +60,7 @@ export function Art({ src, fallback }) {
 /** The title as its logo, or in type when there's no logo (or it won't load). */
 export function Title({ item }) {
   const [broken, setBroken] = useState(false);
-  if (item.logo && !broken) return <img className="showcase-logo" src={item.logo} alt={item.name} onError={() => setBroken(true)} />;
+  if (item.logo && !broken) return <img className="showcase-logo" src={item.logo} alt={item.name} onError={event => { if (event.currentTarget.dataset.broken) setBroken(true); }} />;
   return <h2 className="showcase-name" dir="auto">{item.name}</h2>;
 }
 
