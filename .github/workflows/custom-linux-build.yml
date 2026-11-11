@@ -119,11 +119,11 @@ jobs:
           pid=$!
           sleep 40
           alive=0; kill -0 "$pid" 2>/dev/null && alive=1
-          size="$(xwininfo -root -tree | grep -E '"Nuvio": \("com-nuvio-app-MainKt"' | grep -oE '[0-9]+x[0-9]+' | head -n 1)"
+          width="$(xwininfo -root -tree | grep -E '"Nuvio": \("com-nuvio-app-MainKt"' | sed -E 's/.*\)[[:space:]]+([0-9]+)x[0-9]+.*/\1/' | head -n 1)"
           kill "$pid" 2>/dev/null; sleep 2; kill -9 "$pid" 2>/dev/null
-          echo "app running after 40s: $alive, window ${size:-none}"
+          echo "app running after 40s: $alive, window width ${width:-none}"
           # Running, and its window is really on screen (not the 1x1 placeholder of a stuck start).
-          [ "$alive" = 1 ] && [ "${size%%x*}" -ge 400 ] 2>/dev/null
+          [ "$alive" = 1 ] && [ "${width:-0}" -ge 400 ] 2>/dev/null
           EOF
           status=0
           # dbus-run-session: a desktop always has a session bus, and without one the app's
@@ -147,7 +147,7 @@ jobs:
           set -uo pipefail
           mkdir -p artifacts/packages
           deb="Nuvio-Linux-x86_64-${NUVIO_DESKTOP_VERSION_NAME}.deb"
-          arch="$(cd artifacts/packages && ls *.pkg.tar.zst 2>/dev/null | head -n 1)"
+          arch="$(cd artifacts/packages && ls *.pkg.tar.zst 2>/dev/null | head -n 1 || true)"
           arch="${arch:-nuvio-fork-bin-${FORK_VERSION}-1-x86_64.pkg.tar.zst}"
           cat > artifacts/packages/INSTALL-LINUX.txt <<EOF
           Nuvio for Linux (fork build ${NUVIO_DESKTOP_VERSION_NAME})

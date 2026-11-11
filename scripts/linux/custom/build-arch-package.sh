@@ -101,9 +101,9 @@ sleep 1
 pid=$!
 sleep 45
 alive=0; kill -0 "$pid" 2>/dev/null && alive=1
-size="$(xwininfo -root -tree | grep -E '"Nuvio": \("com-nuvio-app-MainKt"' | grep -oE '[0-9]+x[0-9]+' | head -n 1)"
+width="$(xwininfo -root -tree | grep -E '"Nuvio": \("com-nuvio-app-MainKt"' | sed -E 's/.*\)[[:space:]]+([0-9]+)x[0-9]+.*/\1/' | head -n 1)"
 kill "$pid" 2>/dev/null; sleep 2; kill -9 "$pid" 2>/dev/null
-echo "ARCH APP: running after 45s: $alive, window ${size:-none}"
+echo "ARCH APP: running after 45s: $alive, window width ${width:-none}"
 APP
 xvfb-run -a -s "-screen 0 1440x900x24" dbus-run-session -- bash /tmp/run-app.sh || true
 grep -iE "exception|error|UnsatisfiedLink" /work/smoke-arch/app.log | head -n 8 || true
