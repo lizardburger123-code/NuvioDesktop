@@ -342,6 +342,7 @@ internal class NativePlayerController(
                     val accepted = synchronized(lifecycleLock) {
                         if (!releaseRequested && terminalReleaseFailure == null && pendingSource === pending) {
                             handle = created
+                            DesktopTrophyPop.attach(this@NativePlayerController, ::refreshForTrophy)
                             true
                         } else {
                             false
@@ -1002,12 +1003,22 @@ internal class NativePlayerController(
         }
     }
 
+    /** A trophy pop-up was posted from the app: send the controls page a fresh state now. */
+    private fun refreshForTrophy() {
+        SwingUtilities.invokeLater {
+            if (releaseRequested || handle == 0L) return@invokeLater
+            lastSentControlsStructureKey = null
+            updateControls(controlsState)
+        }
+    }
+
     private fun disposePlayerHandle() {
         synchronized(lifecycleLock) {
             if (releaseRequested) return
             val current = handle
             if (current == 0L) return
             handle = 0L
+            DesktopTrophyPop.detach(this)
             lastSentControlsStructureKey = null
             // Register and start teardown atomically so terminal release cannot sample an empty
             // worker slot between detaching the handle and starting native disposal.
@@ -1843,6 +1854,9 @@ private fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageRea
     buildString {
         append('{')
         appendJsonField("title", title)
+        append(',')
+        // Trophy pop-ups posted by the app while this film plays (see DesktopTrophyPop).
+        append("\"trophy\":{\"version\":").append(DesktopTrophyPop.version).append(",\"cards\":").append(DesktopTrophyPop.cards).append('}')
         append(',')
         appendJsonField("episodeText", episodeText)
         append(',')

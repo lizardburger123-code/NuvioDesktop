@@ -269,6 +269,10 @@ internal class ShellRpc(private val host: ShellHost) {
             ShellTrophyStore.restore(item.type, item.id)
             JsonPrimitive(WatchedRepository.isWatched(item.id, item.type))
         }
+        // The trophy pop-up: shown inside the player when one is open, else the app shows it.
+        "player.trophy" -> JsonPrimitive(
+            com.nuvio.app.features.player.desktop.DesktopTrophyPop.post((params["cards"] as? JsonArray ?: JsonArray(emptyList())).toString()),
+        )
         "completed.remove" -> {
             ShellTrophyStore.hide(params.string("type") ?: "movie", params.string("id") ?: "")
             JsonPrimitive(true)
@@ -445,6 +449,9 @@ internal class ShellRpc(private val host: ShellHost) {
                 (parts[3] as WatchProgressUiState).entries,
             )
         }
+        // Season finishes, for the trophy pop-up.
+        ShellSeasons.start()
+        watch("seasonsDone", ShellSeasons.events) { JsonArray(it) }
         subscribeLibrary()
         return JsonPrimitive(true)
     }

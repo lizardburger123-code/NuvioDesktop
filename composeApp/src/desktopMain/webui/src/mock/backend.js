@@ -184,6 +184,12 @@ const streamRows = [
 
 export const createMockBackend = deliver => {
   const push = (topic, data, delay = 0) => window.setTimeout(() => deliver({ topic, data }), delay);
+  // Season finishes (the preview's stand-in for the app noticing the last episode of a season).
+  let seasonsDone = [];
+  window.__mockSeasonDone = (name = "Severance", season = 2, episodes = 10) => {
+    seasonsDone = [{ key: `${name}:${season}`, id: "tt11280740", type: "series", name, poster: null, season, episodes, final: false, at: Date.now() }, ...seasonsDone];
+    push("seasonsDone", seasonsDone, 50);
+  };
   const reply = (id, result, delay = 30) => {
     if (!id) return;
     if (result && typeof result.then === "function") {
@@ -246,6 +252,7 @@ export const createMockBackend = deliver => {
           durationMs: item.type === "series" ? (8 + i % 5) * 50 * 60e3 : (95 + (i * 37) % 80) * 60e3, episodes: item.type === "series" ? 8 + i % 5 : undefined };
       });
       push("completed", completedItems, 150);
+      push("seasonsDone", seasonsDone, 160);
       push("upcoming", [{ id: "tt5875444", type: "series", name: "Slow Horses", season: 5, episode: 2, title: "Episode 2", airsAt: Date.now() + 5.5 * 3600_000, thumbnail: still("Slow Horses", 52) }], 160);
       return true;
     },
@@ -392,6 +399,7 @@ export const createMockBackend = deliver => {
       push("details", { key, loading: false, meta: detailsFor(type, id), watchLater: watchLater.some(item => item.id === id), watched: watchedIds.has(id) }, 220);
       return true;
     },
+    "player.trophy": () => false,
     "watched.toggle": ({ id, type, name, poster, releaseInfo }) => {
       if (watchedIds.has(id)) watchedIds.delete(id); else watchedIds.add(id);
       if (completedItems) {

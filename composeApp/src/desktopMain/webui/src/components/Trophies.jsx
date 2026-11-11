@@ -1,14 +1,15 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
-  LuCalendar, LuClock, LuFilm, LuFlame, LuHistory, LuHourglass, LuLayers, LuLibrary, LuMoon, LuStar, LuSun, LuTrophy, LuTv, LuX,
+  LuCalendar, LuClock, LuFilm, LuFlame, LuHistory, LuHourglass, LuLayers, LuLibrary, LuMoon, LuStar, LuSun, LuTrophy, LuTv,
 } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
 import { useApp } from "../AppContext.jsx";
-import { year } from "../lib/format.js";
 import { EASE, reduceMotion } from "../lib/motion.js";
 import { badges, fmtHours, level, stats, yearGrid } from "../lib/trophies.js";
 import Reach from "./Reach.jsx";
+import Shelf from "./Shelf.jsx";
+import { navigate } from "../lib/router.js";
 import "./Trophies.css";
 
 const ICONS = { shelf: LuLibrary, film: LuFilm, tv: LuTv, flame: LuFlame, layers: LuLayers, clock: LuClock, moon: LuMoon, history: LuHistory, star: LuStar, sun: LuSun, hourglass: LuHourglass, calendar: LuCalendar };
@@ -23,26 +24,6 @@ const ago = ms => {
   if (days < 30) return `${days} days ago`;
   return new Date(ms).toLocaleDateString([], { month: "short", day: "numeric" });
 };
-
-/** One finished film or series as a case standing on the shelf. */
-export function Case({ item, onOpen, onRemove }) {
-  return (
-    <div className="case">
-      {onRemove ? (
-        <button className="case-remove" onClick={() => onRemove(item)} aria-label={`Remove ${item.name} from trophies`} title="Remove from trophies"><LuX /></button>
-      ) : null}
-      <button className="case-hit" onClick={() => onOpen?.(item)} title={item.name} aria-label={item.name}>
-        <span className="case-box">
-          {item.poster ? <img src={item.poster} alt="" loading="lazy" decoding="async" /> : <span className="case-blank">{item.name}</span>}
-          <span className="case-spine" />
-          <span className="case-gloss" />
-        </span>
-        <span className="case-name" dir="auto">{item.name}</span>
-        <span className="case-year num">{[item.type === "series" ? `${item.episodes || ""} ep`.trim() : year(item.releaseInfo), item.durationMs ? fmtHours(item.durationMs) : null].filter(Boolean).join(" · ")}</span>
-      </button>
-    </div>
-  );
-}
 
 /** A badge: metal when earned, with the distance to the next tier underneath. */
 function Badge({ badge }) {
@@ -180,15 +161,15 @@ export default function Trophies() {
           <YearGrid items={items} />
           <p className="t-meta">{s.thisYear} finished this year{s.oldest ? ` · oldest film from ${s.oldest}` : ""}{s.decades > 1 ? ` · ${s.decades} decades` : ""}</p>
         </section>
-      ) : shelves.map(([key, list], i) => (
-        <section className="shelf" key={key} data-rise={i < 2 ? "" : undefined}>
-          <h2 className="shelf-title">{monthLabel(key)} <span className="num">{list.length}</span></h2>
-          <div className="shelf-row">
-            <div className="shelf-board" aria-hidden="true" />
-            {list.map(item => <Case key={`${item.type}:${item.id}`} item={item} onOpen={openDetails} onRemove={remove} />)}
-          </div>
-        </section>
-      ))}
+      ) : (
+        <Shelf
+          shelves={shelves}
+          label={monthLabel}
+          onDetails={openDetails}
+          onPlay={item => navigate("details", { type: item.type, id: item.id, name: item.name, autoplay: true })}
+          onRemove={remove}
+        />
+      )}
     </section>
   );
 }

@@ -689,6 +689,12 @@ function Profile() {
           <Toggle checked={appearanceGate !== false} onChange={value => setAppearance({ profileGate: value })} label="Ask who's watching" />
         </div>
       </Panel>
+      <Panel title="Trophies" description="A pop-up in the corner when you finish a film, a season or earn a badge, over the video if it's still playing.">
+        <div className="toggle-row">
+          <span>Play a sound<small>A short chime as the trophy lands.</small></span>
+          <Toggle checked={appearance.trophySound !== false} onChange={value => setAppearance({ trophySound: value })} label="Trophy sound" />
+        </div>
+      </Panel>
       <Panel title="Classic interface" description="Every older settings page (integrations, collections, layout, accounts) is still there.">
         <div className="classic-row">
           <button className="btn btn-glass btn-sm" onClick={() => call("legacy.open", { page: "settings" })}><LuKeyRound /> Open classic settings</button>

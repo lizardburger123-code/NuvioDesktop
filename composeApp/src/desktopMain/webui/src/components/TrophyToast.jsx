@@ -1,6 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LuCalendar, LuClock, LuFilm, LuFlame, LuHistory, LuHourglass, LuLayers, LuLibrary, LuMoon, LuStar, LuSun, LuTrophy, LuTv } from "react-icons/lu";
+import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
+import { useApp } from "../AppContext.jsx";
 import { reduceMotion } from "../lib/motion.js";
 import { navigate } from "../lib/router.js";
 import { level, newlyEarned } from "../lib/trophies.js";
@@ -8,17 +10,60 @@ import "./TrophyToast.css";
 
 const ICONS = { shelf: LuLibrary, film: LuFilm, tv: LuTv, flame: LuFlame, layers: LuLayers, clock: LuClock, moon: LuMoon, history: LuHistory, star: LuStar, sun: LuSun, hourglass: LuHourglass, calendar: LuCalendar };
 const TIER_NAMES = { bronze: "Bronze", silver: "Silver", gold: "Gold", platinum: "Platinum" };
-const SHOW_MS = 5200;
+const LAND_MS = 460;
+const OPEN_MS = 3800;
+const FOLD_MS = 460;
+const LEAVE_MS = 360;
+const pct = value => Math.round(Math.max(0, Math.min(1, value)) * 100);
+
+/** A short two-note chime as the medal lands (three for platinum). */
+let audio = null;
+function chime(tier) {
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === "suspended") audio.resume();
+    const notes = tier === "platinum" ? [659, 880, 1319] : tier === "level" ? [587, 880] : [784, 1175];
+    notes.forEach((frequency, i) => {
+      const osc = audio.createOscillator();
+      const gain = audio.createGain();
+      const at = audio.currentTime + i * 0.11;
+      osc.type = "sine";
+      osc.frequency.value = frequency;
+      gain.gain.setValueAtTime(0, at);
+      gain.gain.linearRampToValueAtTime(0.12, at + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, at + 0.9);
+      osc.connect(gain).connect(audio.destination);
+      osc.start(at);
+      osc.stop(at + 1);
+    });
+  } catch { /* sound is a nicety */ }
+}
 
 /**
- * The unlock moment, the console way: one card at a time in the top-right corner, never a modal.
- * First the case that just landed on the shelf, then each badge it raised, one after another.
+ * The unlock moment, the console way: the medal lands in the top-right corner, the card opens
+ * beside it to say what was earned and fills the level bar, then folds away. Finishing a film or
+ * a series, the last episode of a season, a badge and a new level each get one, in that order.
+ * While a film is still playing, the cards go to the player and show over the video instead.
  */
 export default function TrophyToast() {
+  const { appearance } = useApp();
   const items = useTopic("completed", null);
+  const seasons = useTopic("seasonsDone", null);
   const seen = useRef(null);
+  const seenSeasons = useRef(null);
   const [queue, setQueue] = useState([]);
   const [current, setCurrent] = useState(null);
+  const sound = appearance?.trophySound !== false;
+
+  const deliver = cards => {
+    if (!cards.length) return;
+    const stamped = cards.map(card => ({ ...card, sound, at: Date.now() }));
+    // Over the video when the player is open; here otherwise.
+    call("player.trophy", { cards: stamped }, { timeoutMs: 4000 }).then(
+      shown => { if (!shown) setQueue(q => [...q, ...stamped]); },
+      () => setQueue(q => [...q, ...stamped]),
+    );
+  };
 
   useEffect(() => {
     if (!Array.isArray(items)) return;
@@ -28,93 +73,102 @@ export default function TrophyToast() {
     const added = items.filter(i => !known.has(`${i.type}:${i.id}`));
     seen.current = items;
     if (!added.length) return;
-    const cards = added.map(item => ({ kind: "case", key: `case:${item.type}:${item.id}`, item }));
-    newlyEarned(before, items).forEach(badge => cards.push({ kind: "badge", key: `badge:${badge.id}:${badge.tier}`, badge }));
-    const was = level(before).level;
-    const now = level(items).level;
-    if (now > was) cards.push({ kind: "level", key: `level:${now}`, level: now, toNext: level(items).toNext });
-    setQueue(q => [...q, ...cards]);
+    const was = level(before);
+    const now = level(items);
+    const bar = { from: pct(was.progress), to: now.level > was.level ? 100 : pct(now.progress) };
+    const cards = added.map(item => ({
+      kind: "case", key: `case:${item.type}:${item.id}`, tier: "accent", image: item.poster,
+      kicker: item.type === "series" ? "Series complete" : "Film finished",
+      title: item.name,
+      sub: item.type === "series" ? `Every episode watched${item.episodes ? ` · ${item.episodes}` : ""}` : "Added to your trophy shelf",
+      ...bar,
+    }));
+    newlyEarned(before, items).forEach(badge => cards.push({
+      kind: "badge", key: `badge:${badge.id}:${badge.tier}`, tier: badge.tier, icon: badge.icon,
+      kicker: `Trophy earned · ${TIER_NAMES[badge.tier]}`, title: badge.name, sub: badge.what, ...bar,
+    }));
+    if (now.level > was.level) cards.push({
+      kind: "level", key: `level:${now.level}`, tier: "accent", level: now.level,
+      kicker: "Level up", title: `Level ${now.level}`,
+      sub: `${now.toNext} ${now.toNext === 1 ? "finish" : "finishes"} to level ${now.level + 1}`, from: 0, to: pct(now.progress),
+    });
+    deliver(cards);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items]);
+
+  useEffect(() => {
+    if (!Array.isArray(seasons)) return;
+    if (seenSeasons.current == null) { seenSeasons.current = new Set(seasons.map(s => s.key)); return; }
+    const fresh = seasons.filter(s => !seenSeasons.current.has(s.key));
+    fresh.forEach(s => seenSeasons.current.add(s.key));
+    deliver(fresh.reverse().map(s => ({
+      kind: "season", key: `season:${s.key}`, tier: "accent", image: s.poster,
+      kicker: s.final ? "Final season complete" : "Season complete",
+      title: `${s.name} · Season ${s.season}`,
+      sub: `${s.episodes} of ${s.episodes} episodes`,
+    })));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seasons]);
 
   // Next card up, once the corner is free.
   useEffect(() => {
     if (current || !queue.length) return;
     const [next, ...rest] = queue;
     setQueue(rest);
-    setCurrent(next);
+    setCurrent({ ...next, phase: "in" });
   }, [queue, current]);
 
-  // Each card stays its few seconds, then leaves. (Its own effect: sharing one with the queue
-  // cancelled this timer as soon as the card appeared, so cards never left.)
-  const showing = current && !current.leaving ? current.key : null;
+  // Each card: lands, opens, stays a few seconds, folds, goes.
+  const key = current?.key;
   useEffect(() => {
-    if (!showing) return undefined;
-    const timer = window.setTimeout(() => setCurrent(c => (c ? { ...c, leaving: true } : c)), SHOW_MS);
-    return () => window.clearTimeout(timer);
-  }, [showing]);
-
-  useEffect(() => {
-    if (!current?.leaving) return undefined;
-    const timer = window.setTimeout(() => setCurrent(null), 260);
-    return () => window.clearTimeout(timer);
-  }, [current]);
+    if (!key) return undefined;
+    const quick = reduceMotion();
+    const step = ms => (quick ? Math.min(ms, 80) : ms);
+    if (current.sound !== false) chime(current.kind === "level" ? "level" : current.tier);
+    const timers = [];
+    let at = step(LAND_MS);
+    timers.push(window.setTimeout(() => setCurrent(c => (c?.key === key ? { ...c, phase: "open" } : c)), at));
+    at += OPEN_MS;
+    timers.push(window.setTimeout(() => setCurrent(c => (c?.key === key ? { ...c, phase: "fold" } : c)), at));
+    at += step(FOLD_MS);
+    timers.push(window.setTimeout(() => setCurrent(c => (c?.key === key ? { ...c, phase: "out" } : c)), at));
+    at += step(LEAVE_MS);
+    timers.push(window.setTimeout(() => setCurrent(c => (c?.key === key ? null : c)), at));
+    return () => timers.forEach(window.clearTimeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
 
   if (!current) return null;
-  return <Card card={current} onOpen={() => { navigate("library", { tab: "completed" }); setCurrent(c => ({ ...c, leaving: true })); }} />;
+  return <Pop key={current.key} card={current} onOpen={() => navigate("library", { tab: "completed" })} />;
 }
 
-function Card({ card, onOpen }) {
-  const ref = useRef(null);
-  useLayoutEffect(() => {
-    if (!ref.current || reduceMotion()) return;
-    ref.current.animate(
-      [{ opacity: 0, transform: "translate3d(24px, 0, 0) scale(.96)" }, { opacity: 1, transform: "none" }],
-      { duration: 520, easing: "cubic-bezier(.2, .9, .25, 1)" },
-    );
-  }, []);
-  useLayoutEffect(() => {
-    if (!card.leaving || !ref.current) return;
-    ref.current.animate(
-      [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translate3d(12px, 0, 0)" }],
-      { duration: 240, easing: "cubic-bezier(.4, 0, 1, 1)", fill: "forwards" },
-    );
-  }, [card.leaving]);
-
-  if (card.kind === "case") {
-    const { item } = card;
-    return (
-      <button ref={ref} className="ttoast" onClick={onOpen} aria-label={`${item.name} added to your trophies. Open Trophies`}>
-        <span className="ttoast-case">{item.poster ? <img src={item.poster} alt="" /> : null}<i /></span>
-        <span className="ttoast-text">
-          <small>On the shelf</small>
-          <strong dir="auto">{item.name}</strong>
-          <span>{item.type === "series" ? "Series completed" : "Film completed"}</span>
-        </span>
-      </button>
-    );
-  }
-  if (card.kind === "level") {
-    return (
-      <button ref={ref} className="ttoast ttoast-level" onClick={onOpen} aria-label={`Level ${card.level} reached. Open Trophies`}>
-        <span className="ttoast-ring"><strong className="num">{card.level}</strong></span>
-        <span className="ttoast-text">
-          <small>Level up</small>
-          <strong>Level {card.level}</strong>
-          <span className="num">{card.toNext} more to level {card.level + 1}</span>
-        </span>
-      </button>
-    );
-  }
-  const { badge } = card;
-  const Icon = ICONS[badge.icon] || LuTrophy;
+function Pop({ card, onOpen }) {
+  // Mounted at "in" with the closed styles first, so the landing animates.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { const frame = requestAnimationFrame(() => setMounted(true)); return () => cancelAnimationFrame(frame); }, []);
+  const Icon = ICONS[card.icon] || LuTrophy;
+  const inView = mounted && card.phase !== "out";
+  const open = card.phase === "open";
+  const medal = card.kind === "level"
+    ? <span className="tpop-level num">{card.level}</span>
+    : (card.kind === "case" || card.kind === "season") && card.image ? <img src={card.image} alt="" /> : <Icon />;
   return (
-    <button ref={ref} className={`ttoast ttoast-badge badge-${badge.tier}`} onClick={onOpen} aria-label={`Badge earned: ${badge.name}, ${TIER_NAMES[badge.tier]}. Open Trophies`}>
-      <span className="ttoast-medal"><Icon /></span>
-      <span className="ttoast-text">
-        <small>{TIER_NAMES[badge.tier]} badge</small>
-        <strong>{badge.name}</strong>
-        <span>{badge.what}</span>
+    <button
+      className={`tpop tpop-${card.kind}${card.image ? " has-image" : ""} tier-${card.tier || "gold"}${inView ? " is-in" : ""}${open ? " is-open" : ""}`}
+      onClick={onOpen}
+      role="status"
+      aria-live="polite"
+      aria-label={`${card.kicker}: ${card.title}. Open Trophies`}
+    >
+      <span className="tpop-medal">{medal}</span>
+      <span className="tpop-text">
+        <span className="tpop-in">
+          <span className="tpop-kick">{card.kicker}</span>
+          <span className="tpop-name" dir="auto">{card.title}</span>
+          {card.sub ? <span className="tpop-sub" dir="auto">{card.sub}</span> : null}
+        </span>
       </span>
+      {card.to != null ? <span className="tpop-xp"><i style={{ "--from": `${card.from || 0}%`, "--to": `${card.to}%` }} /></span> : null}
     </button>
   );
 }

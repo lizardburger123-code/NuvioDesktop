@@ -1,43 +1,57 @@
-/* The unlock card: top-right, one at a time, a single light sweep across it, then it goes. */
-.ttoast {
-  --metal: var(--accent); --metal-ink: var(--on-accent); --metal-bar: var(--accent);
-  position: fixed; top: calc(var(--topbar-h) + 8px); right: var(--gutter); z-index: 95;
-  display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 16px;
-  width: min(372px, calc(100vw - 44px)); padding: 14px 22px 14px 14px; border-radius: var(--r-xl);
-  text-align: left; color: #fff; overflow: hidden; cursor: pointer;
-  background: rgb(22 24 29 / .92);
-  box-shadow: inset 0 0 0 1px var(--line-strong), 0 30px 70px rgb(0 0 0 / .6);
-  -webkit-backdrop-filter: blur(28px) saturate(1.4); backdrop-filter: blur(28px) saturate(1.4);
-  transition: background-color var(--t-fast) ease;
+/*
+ * The unlock pop-up: a pill in the top-right corner. The medal lands first, the card opens beside
+ * it, a light passes over the medal and the level bar fills, then it folds away. The player's
+ * overlay shows the same card over the video (resources/player-ui/trophy-pop.css).
+ */
+.tpop {
+  --tier: var(--accent);
+  position: fixed; top: calc(var(--topbar-h) + 10px); right: var(--gutter); z-index: 95; max-width: calc(100vw - 2 * var(--gutter));
+  display: flex; align-items: center; height: 76px; padding: 6px 6px 6px 8px; border-radius: 999px;
+  color: var(--ink); text-align: left; cursor: pointer;
+  background: rgb(14 16 19 / .86); -webkit-backdrop-filter: blur(22px) saturate(1.3); backdrop-filter: blur(22px) saturate(1.3);
+  box-shadow: inset 0 0 0 1px var(--line-strong), 0 2px 6px rgb(0 0 0 / .4), 0 20px 50px rgb(0 0 0 / .5);
+  opacity: 0; scale: .25; filter: blur(4px); transform-origin: 46px 50%; pointer-events: none;
+  transition: opacity .3s var(--ease-soft), scale .42s var(--ease-out), filter .3s var(--ease-soft), background-color var(--t-fast) ease;
 }
-.ttoast::after {
-  content: ""; position: absolute; inset: -40% -60%; pointer-events: none;
-  background: linear-gradient(100deg, transparent 42%, rgb(255 255 255 / .14) 50%, transparent 58%);
-  transform: translateX(-70%);
-  animation: ttoast-sweep 1.3s cubic-bezier(.2, .9, .25, 1) .35s both;
-}
-@keyframes ttoast-sweep { to { transform: translateX(70%); } }
-.ttoast:hover { background: rgb(34 37 44 / .94); }
-.ttoast.ttoast-badge { box-shadow: inset 0 0 0 1px var(--line-strong), 0 30px 70px rgb(0 0 0 / .6); }
+.tpop.is-in { opacity: 1; scale: 1; filter: blur(0); pointer-events: auto; }
+.tpop:hover { background: rgb(26 29 34 / .92); }
+.tpop:active { scale: .96; }
+.tpop:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.tpop.tier-bronze { --tier: #cf8f63; }
+.tpop.tier-silver { --tier: #cfd6e0; }
+.tpop.tier-gold { --tier: #f2c95c; }
+.tpop.tier-platinum { --tier: #a9dcff; }
+.tpop.tier-accent { --tier: var(--accent); }
 
-.ttoast-case { position: relative; width: 48px; height: 68px; border-radius: 3px 6px 6px 3px; overflow: hidden; background: #0d1118; outline: 1px solid rgb(255 255 255 / .16); outline-offset: -1px; }
-.ttoast-case img { width: 100%; height: 100%; object-fit: cover; }
-.ttoast-case i { position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: linear-gradient(90deg, rgb(0 0 0 / .7), rgb(0 0 0 / .2) 60%, rgb(255 255 255 / .1)); }
-.ttoast-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.ttoast-text small { font-size: var(--fs-12); font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--metal-bar); }
-.ttoast-text strong { font-size: 17px; font-weight: 700; letter-spacing: -.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ttoast-text span { font-size: var(--fs-14); color: var(--ink-2); }
-
-.ttoast-medal, .ttoast-ring {
-  width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center;
-  animation: ttoast-land .62s cubic-bezier(.23, 1, .32, 1) both;
+.tpop-medal {
+  position: relative; flex: none; width: 60px; height: 60px; border-radius: 50%; display: grid; place-items: center; overflow: hidden;
+  color: #0a0b0d; background: var(--tier); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .25);
 }
-.ttoast-medal { color: var(--metal-ink); background: var(--metal); }
-.ttoast-medal svg { width: 23px; height: 23px; }
-.ttoast-ring { background: var(--accent); color: var(--on-accent); }
-.ttoast-ring strong { font-size: 24px; font-weight: 800; letter-spacing: -.04em; }
-@keyframes ttoast-land { 0% { transform: scale(.4); opacity: 0; } 70% { transform: scale(1.04); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+.tpop-medal svg { width: 28px; height: 28px; }
+.tpop-medal img { width: 100%; height: 100%; object-fit: cover; }
+/* A finished film or season shows its own cover, framed in the tier's colour. */
+.tpop.has-image .tpop-medal { width: 46px; margin: 0 7px; border-radius: 10px; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .2), 0 0 0 2px var(--tier); }
+.tpop-level { font-size: 24px; font-weight: 800; letter-spacing: -.04em; }
+.tpop-medal::after {
+  content: ""; position: absolute; inset: -20%; pointer-events: none;
+  background: linear-gradient(115deg, transparent 40%, rgb(255 255 255 / .8) 50%, transparent 60%); translate: -110% 0;
+}
+.tpop.is-open .tpop-medal::after { translate: 110% 0; transition: translate .9s var(--ease-soft) .25s; }
+
+.tpop-text { display: grid; grid-template-columns: 0fr; min-width: 0; transition: grid-template-columns .5s var(--ease-out); }
+.tpop.is-open .tpop-text { grid-template-columns: 1fr; }
+.tpop-in { min-width: 0; overflow: hidden; white-space: nowrap; display: grid; gap: 3px; padding-bottom: 6px; opacity: 0; transition: opacity .25s ease; }
+.tpop.is-open .tpop-in { opacity: 1; transition-delay: .18s; }
+.tpop-in > span { max-width: 340px; padding: 0 24px 0 14px; overflow: hidden; text-overflow: ellipsis; }
+.tpop-kick { font-size: 11px; font-weight: 700; line-height: 1.2; letter-spacing: .12em; text-transform: uppercase; color: var(--tier); }
+.tpop-name { font-size: var(--fs-16); font-weight: 700; line-height: 1.25; letter-spacing: -.01em; }
+.tpop-sub { font-size: var(--fs-13); line-height: 1.2; color: var(--ink-2); }
+
+.tpop-xp { position: absolute; left: 82px; right: 28px; bottom: 8px; height: 2px; border-radius: 2px; background: rgb(255 255 255 / .12); overflow: hidden; opacity: 0; transition: opacity .3s; }
+.tpop.is-open .tpop-xp { opacity: 1; }
+.tpop-xp i { display: block; height: 100%; width: var(--from, 0%); background: var(--tier); transition: width 1.1s var(--ease-out) .6s; }
+.tpop.is-open .tpop-xp i { width: var(--to, 60%); }
 
 @media (prefers-reduced-motion: reduce) {
-  .ttoast::after, .ttoast-medal, .ttoast-ring { animation: none; }
+  .tpop, .tpop-text, .tpop-in, .tpop-xp i, .tpop.is-open .tpop-medal::after { transition-duration: .01s !important; transition-delay: 0s !important; }
 }
