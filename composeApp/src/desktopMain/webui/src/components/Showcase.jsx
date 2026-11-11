@@ -4,6 +4,9 @@ import { EASE, reduceMotion } from "../lib/motion.js";
 import { useScreenActive } from "../lib/screen.js";
 import { year } from "../lib/format.js";
 import { navigate } from "../lib/router.js";
+import { lookOf } from "../lib/look.js";
+import { useApp } from "../AppContext.jsx";
+import HazeHero from "../haze/Hero.jsx";
 import "./Showcase.css";
 
 const openDetails = item => navigate("details", { type: item.type, id: item.id, name: item.name, ...(item.season ? { season: item.season } : {}) });
@@ -12,7 +15,7 @@ const openDetails = item => navigate("details", { type: item.type, id: item.id, 
  * Backdrop that cross-fades after the next picture has decoded, with a slow drift while it shows.
  * When a picture won't load, its [fallback] takes its place (AniList's own banner, say).
  */
-function Art({ src, fallback }) {
+export function Art({ src, fallback }) {
   const [layers, setLayers] = useState(() => (src ? [{ src, fallback, id: 0 }] : []));
   const id = useRef(0);
   const last = useRef(null);
@@ -55,7 +58,7 @@ function Art({ src, fallback }) {
 }
 
 /** The title as its logo, or in type when there's no logo (or it won't load). */
-function Title({ item }) {
+export function Title({ item }) {
   const [broken, setBroken] = useState(false);
   if (item.logo && !broken) return <img className="showcase-logo" src={item.logo} alt={item.name} onError={() => setBroken(true)} />;
   return <h2 className="showcase-name" dir="auto">{item.name}</h2>;
@@ -73,7 +76,12 @@ export const nextEpisodeLabel = item => {
  * The first screen of Home: one film or series at a time, full width, with its own backdrop and
  * logo, and the thing you were watching last tucked into the corner.
  */
-export default function Showcase({ items = [], strip = false, short = false, onPlay, onToggleLater, laterIds }) {
+export default function Showcase(props) {
+  const { appearance } = useApp();
+  return lookOf(appearance) === "haze" ? <HazeHero {...props} /> : <CinemaShowcase {...props} />;
+}
+
+function CinemaShowcase({ items = [], strip = false, short = false, onPlay, onToggleLater, laterIds }) {
   const [index, setIndex] = useState(0);
   const [held, setHeld] = useState(false);
   const bodyRef = useRef(null);

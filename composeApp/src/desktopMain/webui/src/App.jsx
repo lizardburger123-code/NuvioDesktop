@@ -7,6 +7,8 @@ import { applyAppearance } from "./theme/appearance.js";
 import { BEFORE_NAV, aliveEntries, back, forward, goSection, navigate, useRouter } from "./lib/router.js";
 import { playScreenEntrance } from "./lib/motion.js";
 import { recovered, reloadApp } from "./lib/session.js";
+import { setArtProxy } from "./lib/artColor.js";
+import { lookOf, switchLook } from "./lib/look.js";
 import { ScreenActiveContext } from "./lib/screen.js";
 import Background from "./components/Background.jsx";
 import TopBar from "./components/TopBar.jsx";
@@ -141,6 +143,19 @@ function Shell() {
     };
   }, []);
 
+  // Ctrl+Shift+L: the other look, from anywhere.
+  const { setAppearance } = useApp();
+  useEffect(() => {
+    const onKey = event => {
+      if (!(event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "l")) return;
+      event.preventDefault();
+      const next = document.documentElement.dataset.layout === "haze" ? "cinema" : "haze";
+      switchLook(next, layout => setAppearance({ layout }));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [setAppearance]);
+
   const compact = top.name !== "home" || scrolled;
   const sceneArt = top.name === "details" ? art : null;
 
@@ -184,7 +199,7 @@ export default function App() {
         if (!alive) return;
         applyAppearance(data.appearance);
         setBoot(data);
-        call("net.get").then(net => { if (net?.port) imageProxy = `http://127.0.0.1:${net.port}/img?u=`; }, () => {});
+        call("net.get").then(net => { if (net?.port) { imageProxy = `http://127.0.0.1:${net.port}/img?k=${encodeURIComponent(net.key || "")}&u=`; setArtProxy(imageProxy); } }, () => {});
       },
       err => alive && setError(err),
     );

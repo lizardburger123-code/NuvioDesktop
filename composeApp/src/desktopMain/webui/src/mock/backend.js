@@ -108,6 +108,8 @@ let storeItems = [
 let searchHistory = ["the hunt", "fem", "persona", "death", "Slow Horses"];
 
 let appearance = {
+  // Preview a look with ?mock&look=haze.
+  layout: new URLSearchParams(window.location.search).get("look") || "cinema",
   colors: ["#1d2b64", "#6b3fa0", "#e0607e"],
   wallpaper: { mode: "featured", image: null },
   dim: 0.35,

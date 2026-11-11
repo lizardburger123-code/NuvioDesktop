@@ -212,6 +212,11 @@ export default function ProfileCard({ anchorRef, onClose, closeRequest = 0, init
     const seat = () => {
       const rect = anchorRef.current?.getBoundingClientRect();
       if (!rect) return;
+      // On a side rail (the Haze look) the card opens beside the picture instead of under it.
+      if (rect.left + rect.width / 2 < window.innerWidth / 2) {
+        setPlace({ top: Math.max(12, Math.round(rect.top)), left: Math.round(rect.right + 14), origin: Math.round(rect.height / 2), side: true });
+        return;
+      }
       setPlace({ top: Math.round(rect.bottom + 10), right: Math.max(12, Math.round(window.innerWidth - rect.right)), origin: Math.round(rect.height / 2) });
     };
     seat();
@@ -291,7 +296,9 @@ export default function ProfileCard({ anchorRef, onClose, closeRequest = 0, init
       data-modal-open
       role="dialog"
       aria-label="Profile"
-      style={place ? { top: place.top, right: place.right, transformOrigin: `calc(100% - ${place.origin}px) -10px` } : { visibility: "hidden" }}
+      style={!place ? { visibility: "hidden" } : place.side
+        ? { top: place.top, left: place.left, transformOrigin: `-14px ${place.origin}px`, maxHeight: "calc(100vh - 24px)" }
+        : { top: place.top, right: place.right, transformOrigin: `calc(100% - ${place.origin}px) -10px` }}
     >
       {view === "main" ? (
         <div ref={mainRef} className="pc-view">

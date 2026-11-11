@@ -76,6 +76,12 @@ internal data class ShellAppearance(
     val blurArt: Boolean = false,
     /** "Who's watching?" after the intro. */
     val profileGate: Boolean = true,
+    /** The chime with a trophy pop-up. */
+    val trophySound: Boolean = true,
+    /** The interface's look: "cinema" (words across the top) or "haze" (icon rail, hazed accent). */
+    val layout: String = "cinema",
+    /** Haze: a title's page takes its accent from that title's artwork. */
+    val hazeArt: Boolean = true,
     /** Home dashboard tiles the user hid (spotlight, resume, later, library). */
     val hiddenTiles: List<String> = emptyList(),
 )

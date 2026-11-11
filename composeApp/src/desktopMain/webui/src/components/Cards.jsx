@@ -58,8 +58,9 @@ export const WideCard = memo(function WideCard({ image, logo, title, kicker, met
   );
 });
 
-export const ContinueCard = ({ entry, onResume, onRemove }) => (
+export const ContinueCard = ({ entry, onResume, onRemove, width }) => (
   <WideCard
+    width={width}
     image={entry.thumbnail || entry.backdrop}
     logo={entry.season == null ? entry.logo : null}
     title={entry.name}

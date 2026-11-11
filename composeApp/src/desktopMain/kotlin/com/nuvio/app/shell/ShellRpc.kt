@@ -150,7 +150,7 @@ internal class ShellRpc(private val host: ShellHost) {
         }
         "app.openTrailer" -> {
             val key = (params["trailer"] as? JsonObject)?.string("key").orEmpty()
-            require(key.isNotBlank()) { "No trailer link." }
+            require(key.matches(Regex("[A-Za-z0-9_-]{5,32}"))) { "No trailer link." }
             host.openUrl("https://www.youtube.com/watch?v=$key")
             JsonPrimitive(true)
         }
@@ -836,6 +836,9 @@ internal class ShellRpc(private val host: ShellHost) {
             put("animate", value.animate)
             put("blurArt", value.blurArt)
             put("profileGate", value.profileGate)
+            put("trophySound", value.trophySound)
+            put("layout", value.layout)
+            put("hazeArt", value.hazeArt)
             put("hiddenTiles", ShellJson.strings(value.hiddenTiles))
         }
     }
@@ -848,6 +851,9 @@ internal class ShellRpc(private val host: ShellHost) {
         params.bool("animate")?.let { value = value.copy(animate = it) }
         params.bool("blurArt")?.let { value = value.copy(blurArt = it) }
         params.bool("profileGate")?.let { value = value.copy(profileGate = it) }
+        params.bool("trophySound")?.let { value = value.copy(trophySound = it) }
+        params.string("layout")?.takeIf { it in setOf("cinema", "haze") }?.let { value = value.copy(layout = it) }
+        params.bool("hazeArt")?.let { value = value.copy(hazeArt = it) }
         (params["hiddenTiles"] as? JsonArray)?.let { list ->
             value = value.copy(hiddenTiles = list.asStringList().filter { it in setOf("spotlight", "resume", "later", "library") }.distinct())
         }

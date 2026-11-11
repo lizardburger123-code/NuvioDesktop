@@ -65,6 +65,12 @@ internal object ShellNet {
     private val log = Logger.withTag("ShellNet")
     private val store by lazy { DesktopStorage.store("nuvio_shell") }
     private const val PreferredPort = 47231
+    /**
+     * A fresh secret each launch for the picture fetcher. The interface gets it through its own
+     * channel (net.get); nothing else can know it. Declared before the server starts.
+     */
+    private val imageKey: String = ByteArray(24).also { java.security.SecureRandom().nextBytes(it) }
+        .joinToString("") { "%02x".format(it.toInt() and 0xff) }
     private val loopback: InetAddress = InetAddress.getLoopbackAddress()
 
     @Volatile var mode: Mode = Mode.OFF
@@ -99,6 +105,8 @@ internal object ShellNet {
         put("mode", mode.id)
         put("proxy", customProxy)
         put("port", port)
+        // The picture fetcher answers only requests that carry this (see serveImage).
+        put("key", imageKey)
         put("restartForPictures", (mode != Mode.OFF) != interfaceProxied)
         put("warp", buildJsonObject {
             put("available", ShellWarp.available())
@@ -198,6 +206,17 @@ internal object ShellNet {
         val (method, target, version) = Triple(parts[0], parts[1], parts[2])
         val out = client.getOutputStream()
         if (method == "GET" && target.startsWith("/img?")) {
+            // Any website open in a browser can send a request to 127.0.0.1. Only the interface
+            // knows this launch's key, and a page reaching us under another name (DNS rebinding)
+            // is turned away by the Host check.
+            val hostHeader = lines.drop(1).firstOrNull { it.startsWith("Host:", ignoreCase = true) }
+                ?.substringAfter(":")?.trim().orEmpty()
+            val key = queryValue(target, "k")
+            if (!isLoopbackName(hostHeader) || key == null || !sameText(key, imageKey)) {
+                out.write("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
+                out.flush()
+                return
+            }
             serveImage(target, out)
             return
         }
@@ -242,31 +261,95 @@ internal object ShellNet {
         }
     }
 
+    private const val MaxPictureBytes = 24L * 1024 * 1024
+
+    private fun queryValue(target: String, name: String): String? =
+        target.substringAfter('?', "").split('&').firstOrNull { it.startsWith("$name=") }?.substringAfter('=')
+            ?.let { runCatching { java.net.URLDecoder.decode(it, Charsets.UTF_8) }.getOrNull() }
+
+    private fun sameText(a: String, b: String): Boolean =
+        java.security.MessageDigest.isEqual(a.toByteArray(Charsets.UTF_8), b.toByteArray(Charsets.UTF_8))
+
+    /** "127.0.0.1:47231", "localhost:47231", "[::1]:47231": the names this server answers to. */
+    private fun isLoopbackName(hostHeader: String): Boolean {
+        val host = if (hostHeader.startsWith("[")) hostHeader.substringBefore("]") + "]" else hostHeader.substringBefore(":")
+        return host.equals("127.0.0.1") || host.equals("localhost", ignoreCase = true) || host == "[::1]"
+    }
+
+    /** A host on the public internet: never this computer or the home network. */
+    private fun isPublicHost(host: String): Boolean {
+        val addresses = runCatching { InetAddress.getAllByName(host) }.getOrNull() ?: return false
+        return addresses.isNotEmpty() && addresses.all { address ->
+            val bytes = address.address
+            val v4 = bytes.size == 4
+            val a = bytes[0].toInt() and 0xff
+            val b = bytes[1].toInt() and 0xff
+            !(address.isLoopbackAddress || address.isAnyLocalAddress || address.isLinkLocalAddress ||
+                address.isSiteLocalAddress || address.isMulticastAddress ||
+                (v4 && a == 100 && b in 64..127) ||           // carrier-grade NAT
+                (v4 && a == 0) ||
+                (!v4 && (a and 0xfe) == 0xfc))                // IPv6 unique local
+        }
+    }
+
     private val imageClient by lazy {
-        OkHttpClient.Builder().connectTimeout(12, TimeUnit.SECONDS).readTimeout(25, TimeUnit.SECONDS).followRedirects(true).build()
+        // Redirects are followed by hand, so each hop gets the same checks as the first address.
+        OkHttpClient.Builder().connectTimeout(12, TimeUnit.SECONDS).readTimeout(25, TimeUnit.SECONDS)
+            .followRedirects(false).followSslRedirects(false).build()
     }
 
     /**
      * Pictures the interface couldn't load (plain http, hotlink-protected, or blocked): fetched
      * here with a browser's headers and the unblock route, then handed back from 127.0.0.1.
+     * Pictures only, from the public internet only, and of a sane size.
      */
     private fun serveImage(target: String, out: OutputStream) {
         try {
-            val url = java.net.URLDecoder.decode(target.substringAfter("u=").substringBefore("&"), Charsets.UTF_8)
-            require(url.startsWith("http://") || url.startsWith("https://"))
-            val origin = url.substringBefore("://") + "://" + url.substringAfter("://").substringBefore("/") + "/"
-            val request = Request.Builder().url(url)
-                .header("User-Agent", BrowserAgent)
-                .header("Referer", origin)
-                .header("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
-                .get().build()
-            imageClient.newCall(request).execute().use { response ->
-                val bytes = response.body?.bytes() ?: ByteArray(0)
-                val type = response.header("Content-Type") ?: "image/jpeg"
-                out.write(("HTTP/1.1 ${response.code} OK\r\nContent-Type: $type\r\nContent-Length: ${bytes.size}\r\n" +
-                    "Cache-Control: max-age=86400\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n").toByteArray())
-                out.write(bytes)
-                out.flush()
+            var url = queryValue(target, "u").orEmpty()
+            var hops = 0
+            while (true) {
+                require(url.startsWith("http://") || url.startsWith("https://"))
+                val host = URI(url).host ?: error("no host")
+                require(isPublicHost(host)) { "not a public address" }
+                val origin = url.substringBefore("://") + "://" + url.substringAfter("://").substringBefore("/") + "/"
+                val request = Request.Builder().url(url)
+                    .header("User-Agent", BrowserAgent)
+                    .header("Referer", origin)
+                    .header("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
+                    .get().build()
+                imageClient.newCall(request).execute().use { response ->
+                    if (response.code in 300..399) {
+                        hops += 1
+                        require(hops <= 5) { "too many redirects" }
+                        url = response.header("Location")?.let { response.request.url.resolve(it)?.toString() } ?: error("bad redirect")
+                        return@use
+                    }
+                    val declared = response.header("Content-Type").orEmpty().substringBefore(";").trim().lowercase()
+                    val type = when {
+                        declared.startsWith("image/") && declared != "image/svg+xml" -> declared
+                        declared.isEmpty() || declared == "application/octet-stream" || declared == "binary/octet-stream" -> "image/jpeg"
+                        else -> error("not a picture")
+                    }
+                    val body = response.body ?: error("empty")
+                    require(body.contentLength() <= MaxPictureBytes) { "too large" }
+                    val bytes = body.byteStream().use { stream ->
+                        val buffer = ByteArrayOutputStream()
+                        val chunk = ByteArray(64 * 1024)
+                        while (true) {
+                            val read = stream.read(chunk)
+                            if (read < 0) break
+                            buffer.write(chunk, 0, read)
+                            require(buffer.size() <= MaxPictureBytes) { "too large" }
+                        }
+                        buffer.toByteArray()
+                    }
+                    out.write(("HTTP/1.1 ${if (response.isSuccessful) 200 else 502} OK\r\nContent-Type: $type\r\nContent-Length: ${bytes.size}\r\n" +
+                        "X-Content-Type-Options: nosniff\r\nCache-Control: max-age=86400\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n").toByteArray())
+                    out.write(bytes)
+                    out.flush()
+                    url = ""
+                }
+                if (url.isEmpty()) return
             }
         } catch (_: Exception) {
             out.write("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())

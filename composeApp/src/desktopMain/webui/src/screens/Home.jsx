@@ -10,10 +10,13 @@ import RowActions, { openCatalog } from "../components/RowActions.jsx";
 import AddonShelf from "../components/AddonShelf.jsx";
 import { navigate } from "../lib/router.js";
 import { EASE, reduceMotion } from "../lib/motion.js";
+import { lookOf } from "../lib/look.js";
+import TopTen from "../haze/TopTen.jsx";
 import "./Home.css";
 
 export default function Home() {
-  const { watchLater, laterIds, toggleLater, openDetails, resume, removeContinue } = useApp();
+  const { watchLater, laterIds, toggleLater, openDetails, resume, removeContinue, appearance } = useApp();
+  const haze = lookOf(appearance) === "haze";
   const home = useTopic("home", { loading: true, hero: [], sections: [] });
   const continueWatching = useTopic("continue", []);
 
@@ -29,7 +32,7 @@ export default function Home() {
       // Behind "Who's watching?" the rise would go unseen: it plays when that page lifts.
       if (played || !root || reduceMotion() || document.querySelector(".gate")) return;
       played = true;
-      const parts = [root.querySelector(".showcase-body"), ...[...root.querySelectorAll(".row")].slice(0, 1)].filter(Boolean);
+      const parts = [root.querySelector(".showcase-body"), ...[...root.querySelectorAll(".row")].slice(0, haze ? 2 : 1)].filter(Boolean);
       parts.forEach((part, i) => part.animate(
         [{ opacity: 0, transform: "translate3d(0, 20px, 0)" }, { opacity: 1, transform: "none" }],
         { duration: 800, delay: 60 + i * 90, easing: EASE.out, fill: "backwards" },
@@ -48,6 +51,8 @@ export default function Home() {
   });
 
   // A new profile with no addons: no empty hero filling the screen, just what to do next.
+  // Haze: the first full catalog row is counted down as a top ten.
+  const topTen = haze ? home.sections.find(section => section.items.length >= 10) || null : null;
   const bare = !home.loading && home.sections.length === 0 && !(home.hero || []).length && !continueWatching.length;
   return (
     <main ref={rootRef} className="screen home">
@@ -60,8 +65,12 @@ export default function Home() {
 
       {continueWatching.length ? (
         <Row title="Continue watching" className="home-strip">
-          {continueWatching.map(entry => <ContinueCard key={entry.key} entry={entry} onResume={resume} onRemove={removeContinue} />)}
+          {continueWatching.map(entry => <ContinueCard key={entry.key} entry={entry} onResume={resume} onRemove={removeContinue} width={haze ? 340 : undefined} />)}
         </Row>
+      ) : null}
+
+      {topTen ? (
+        <TopTen section={topTen} onOpen={openDetails} action={<RowActions section={topTen} />} onMore={topTen.source ? () => openCatalog(topTen) : undefined} />
       ) : null}
 
       <Reach />
@@ -78,7 +87,7 @@ export default function Home() {
         <Row title="Loading your catalogs"><SkeletonPosters /></Row>
       ) : null}
 
-      {home.sections.map(section => (
+      {home.sections.filter(section => section !== topTen).map(section => (
         <Row
           key={section.key}
           title={section.title}

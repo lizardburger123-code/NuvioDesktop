@@ -1,0 +1,116 @@
+/* The Haze look (Settings > Appearance > Look). Same room, different furniture: an icon rail,
+   glass panels, and one accent that is never a flat fill. It washes in from an edge like light
+   through haze, in the user's accent for the chrome and in each title's own colour on that
+   title's hero and page (--haze-rgb, set per screen from the artwork; see lib/artColor.js). */
+:root { --rail-w: 0px; --haze-rgb: var(--accent-rgb); }
+
+[data-layout="haze"] {
+  --rail-w: 72px;
+  --topbar-h: 72px;
+  --gutter: clamp(22px, 2.7vw, 44px);
+  --glass: rgb(18 20 24 / .58);
+  --glass-ring: inset 0 0 0 1px rgb(255 255 255 / .08);
+  --panel: rgb(255 255 255 / .035);
+}
+[data-layout="haze"] .app-stage { margin-left: var(--rail-w); }
+[data-layout="haze"] .topbar { display: none; }
+[data-layout="haze"] :focus-visible { outline-color: rgb(var(--haze-rgb)); }
+[data-layout="haze"] ::selection { background: rgb(var(--haze-rgb) / .45); }
+
+/* ---- The haze itself: main actions ----------------------------------------------------------- */
+[data-layout="haze"] :is(.btn-primary, .search-go, .sp-best) {
+  color: #fff; font-weight: 700;
+  background:
+    radial-gradient(130% 240% at 0% 50%, rgb(var(--haze-rgb) / .64), rgb(var(--haze-rgb) / .27) 44%, rgb(var(--haze-rgb) / .1) 80%),
+    rgb(255 255 255 / .07);
+  box-shadow:
+    inset 0 0 0 1px rgb(var(--haze-rgb) / .52), inset 0 1px 0 rgb(255 255 255 / .16),
+    0 0 34px rgb(var(--haze-rgb) / .26), 0 8px 24px rgb(0 0 0 / .32);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4); backdrop-filter: blur(18px) saturate(1.4);
+  text-shadow: 0 1px 2px rgb(0 0 0 / .35);
+}
+[data-layout="haze"] :is(.btn-primary, .search-go, .sp-best):hover {
+  background:
+    radial-gradient(130% 240% at 0% 50%, rgb(var(--haze-rgb) / .78), rgb(var(--haze-rgb) / .36) 46%, rgb(var(--haze-rgb) / .14) 82%),
+    rgb(255 255 255 / .1);
+  box-shadow:
+    inset 0 0 0 1px rgb(var(--haze-rgb) / .7), inset 0 1px 0 rgb(255 255 255 / .2),
+    0 0 46px rgb(var(--haze-rgb) / .38), 0 8px 24px rgb(0 0 0 / .32);
+}
+[data-layout="haze"] .btn-primary:disabled { opacity: .5; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .12); }
+[data-layout="haze"] .details-play-sub { color: rgb(255 255 255 / .72); }
+
+[data-layout="haze"] .btn-glass {
+  background: rgb(255 255 255 / .09); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3); backdrop-filter: blur(18px) saturate(1.3);
+}
+[data-layout="haze"] .btn-glass:hover { background: rgb(255 255 255 / .16); }
+[data-layout="haze"] .btn-line { box-shadow: inset 0 0 0 1px rgb(255 255 255 / .2); }
+
+/* ---- What is switched on: a soft wash and a ring, never a white slab -------------------------- */
+[data-layout="haze"] :is(
+  .btn-glass.is-on, .chip[aria-pressed="true"], .chip.on, .seg button[aria-pressed="true"], .preset[aria-pressed="true"],
+  .discover-source[aria-pressed="true"], .addons-chip[aria-pressed="true"], .poster-save.is-saved, .poster-save:hover, .wide-remove:hover
+) {
+  color: #fff;
+  background:
+    radial-gradient(120% 200% at 0% 50%, rgb(var(--haze-rgb) / .42), rgb(var(--haze-rgb) / .16) 60%, rgb(var(--haze-rgb) / .08) 100%),
+    rgb(255 255 255 / .06);
+  box-shadow: inset 0 0 0 1px rgb(var(--haze-rgb) / .46);
+}
+[data-layout="haze"] .seg.has-pill button[aria-pressed="true"] { background: transparent; box-shadow: none; color: #fff; }
+[data-layout="haze"] .seg-pill {
+  background:
+    radial-gradient(120% 200% at 0% 50%, rgb(var(--haze-rgb) / .42), rgb(var(--haze-rgb) / .16) 60%, rgb(var(--haze-rgb) / .08) 100%),
+    rgb(255 255 255 / .06);
+  box-shadow: inset 0 0 0 1px rgb(var(--haze-rgb) / .46);
+}
+[data-layout="haze"] .net-mode[aria-checked="true"] .net-mode-icon { background: rgb(var(--haze-rgb) / .3); color: #fff; box-shadow: inset 0 0 0 1px rgb(var(--haze-rgb) / .5); }
+[data-layout="haze"] .row-end-more:hover .row-end-more-icon { background: rgb(var(--haze-rgb) / .3); color: #fff; box-shadow: inset 0 0 0 1px rgb(var(--haze-rgb) / .5); }
+
+/* Lines and bars: the accent, with a little glow. */
+[data-layout="haze"] :is(.tabs button, .settings-nav-item)::after,
+[data-layout="haze"] :is(.wide-progress span, .dl-progress i, .source-cache-bar i) {
+  background: rgb(var(--haze-rgb)); box-shadow: 0 0 12px rgb(var(--haze-rgb) / .7);
+}
+[data-layout="haze"] .field:focus { box-shadow: inset 0 0 0 2px rgb(var(--haze-rgb) / .75); }
+
+/* ---- Cards: the edge lights up in the accent ------------------------------------------------- */
+[data-layout="haze"] .card-face { border-radius: 10px; outline-color: rgb(255 255 255 / .08); }
+[data-layout="haze"] .wide .card-face { border-radius: 12px; }
+[data-layout="haze"] .card-face:hover, [data-layout="haze"] .card-face:focus-visible {
+  transform: translateY(-4px);
+  outline: 2px solid rgb(var(--haze-rgb) / .92); outline-offset: -2px;
+  box-shadow: 0 0 34px rgb(var(--haze-rgb) / .3), 0 18px 40px rgb(0 0 0 / .55);
+}
+[data-layout="haze"] .wide-play {
+  color: #fff; background: rgb(var(--haze-rgb) / .34); box-shadow: inset 0 0 0 1px rgb(var(--haze-rgb) / .6), 0 0 26px rgb(var(--haze-rgb) / .4);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+}
+[data-layout="haze"] .wide-progress { height: 3px; background: rgb(255 255 255 / .2); }
+[data-layout="haze"] .row { margin-top: 40px; }
+[data-layout="haze"] .row-title { font-size: 19px; font-weight: 700; color: #fff; }
+[data-layout="haze"] .poster-title { font-weight: 600; }
+
+/* Pages that start with a heading sit a little lower under the floating tabs. */
+[data-layout="haze"] .screen { padding-top: calc(var(--topbar-h) + 8px); }
+[data-layout="haze"] .screen.home, [data-layout="haze"] .screen.details { padding-top: 0; }
+
+/* ---- Launch: the wordmark comes up through the accent's haze ---------------------------------- */
+[data-layout="haze"] .intro-glow {
+  display: block; left: 50%; top: 50%; width: 120vmax; height: 70vmax; margin: -35vmax 0 0 -60vmax;
+  background:
+    radial-gradient(38% 46% at 34% 58%, rgb(var(--accent-rgb) / .34), transparent 70%),
+    radial-gradient(34% 40% at 66% 44%, rgb(var(--accent-rgb) / .2), transparent 72%),
+    radial-gradient(60% 30% at 50% 100%, rgb(var(--accent-rgb) / .16), transparent 70%);
+  filter: blur(30px);
+}
+[data-layout="haze"] .intro-line { background: rgb(var(--accent-rgb)); box-shadow: 0 0 18px rgb(var(--accent-rgb) / .8); }
+
+/* ---- Changing look: the old one dissolves into the new ---------------------------------------- */
+:root[data-nav="look"]::view-transition-old(root) { animation: vt-dissolve 460ms cubic-bezier(.4, 0, .2, 1) both; }
+:root[data-nav="look"]::view-transition-new(root) { animation: none; }
+
+/* ---- Home ------------------------------------------------------------------------------------ */
+[data-layout="haze"] .home-top + .row.home-strip { margin-top: 4px; }
+[data-layout="haze"] .home-strip .row-title { font-size: 19px; }

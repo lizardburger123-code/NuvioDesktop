@@ -1,0 +1,119 @@
+/* Haze chrome. A rail of places down the side; section tabs and a search field across the top.
+   Everything is glass over the picture; the one coloured thing is where you are. */
+.hz-rail {
+  position: fixed; left: 0; top: 0; bottom: 0; z-index: 46; width: var(--rail-w);
+  padding: 16px 0 14px; display: flex; flex-direction: column; align-items: center; gap: 14px;
+  background: rgb(7 8 10 / .66); -webkit-backdrop-filter: blur(28px) saturate(1.3); backdrop-filter: blur(28px) saturate(1.3);
+  box-shadow: inset -1px 0 0 rgb(255 255 255 / .06);
+  view-transition-name: rail;
+}
+::view-transition-group(rail), ::view-transition-new(rail) { animation: none; }
+::view-transition-old(rail) { display: none; }
+
+.hz-rail-me {
+  --level: 0;
+  position: relative; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; flex: none;
+  background: conic-gradient(rgb(var(--accent-rgb)) calc(var(--level) * 1turn), rgb(255 255 255 / .16) 0);
+  transition: transform var(--t-fast) var(--ease-soft);
+}
+.hz-rail-me:active { transform: scale(.96); }
+.hz-rail-me .avatar { width: 38px; height: 38px; box-shadow: 0 0 0 2px #0b0c0f; }
+
+.hz-rail-list { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 6px; }
+.hz-rail-gap { width: 22px; height: 1px; margin: 8px 0; background: rgb(255 255 255 / .1); }
+.hz-rail-foot { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+
+.hz-rail-item {
+  position: relative; width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; flex: none;
+  color: var(--ink-3);
+  transition: color var(--t-fast) ease, background-color var(--t-fast) ease, transform var(--t-fast) var(--ease-soft), box-shadow var(--t-med) ease;
+}
+.hz-rail-item svg { width: 20px; height: 20px; stroke-width: 1.75; }
+.hz-rail-item:hover { color: #fff; background: rgb(255 255 255 / .08); }
+.hz-rail-item:active { transform: scale(.96); }
+/* Where you are: the icon sits in its own haze, with a short bar on the rail's outer edge. */
+.hz-rail-item[aria-current="page"] {
+  color: #fff;
+  background:
+    radial-gradient(120% 120% at 0% 50%, rgb(var(--accent-rgb) / .5), rgb(var(--accent-rgb) / .14) 55%, rgb(var(--accent-rgb) / .04) 100%),
+    rgb(255 255 255 / .05);
+  box-shadow: inset 0 0 0 1px rgb(var(--accent-rgb) / .38), 0 0 22px rgb(var(--accent-rgb) / .22);
+}
+.hz-rail-item::before {
+  content: ""; position: absolute; left: -14px; top: 50%; width: 3px; height: 20px; margin-top: -10px; border-radius: 0 3px 3px 0;
+  background: rgb(var(--accent-rgb)); box-shadow: 0 0 12px rgb(var(--accent-rgb) / .9);
+  transform: scaleY(0); transition: transform 320ms var(--ease-out);
+}
+.hz-rail-item[aria-current="page"]::before { transform: scaleY(1); }
+
+.hz-rail-streak {
+  position: relative; width: 44px; height: 44px; border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  font-size: 11px; font-weight: 800; color: #fff; transition: background-color var(--t-fast) ease, transform var(--t-fast) var(--ease-soft);
+}
+.hz-rail-streak svg { width: 17px; height: 17px; color: #ffb454; }
+.hz-rail-streak:hover { background: rgb(255 255 255 / .08); }
+.hz-rail-streak:active { transform: scale(.96); }
+
+/* Names slide out beside the icons, after a moment's rest on one. */
+.hz-tip {
+  position: absolute; left: calc(100% + 16px); top: 50%; z-index: 2; height: 34px; padding: 0 12px; border-radius: 10px;
+  display: inline-flex; align-items: center; gap: 10px; white-space: nowrap; pointer-events: none;
+  font-size: var(--fs-13); font-weight: 600; letter-spacing: 0; color: #fff;
+  background: rgb(22 24 29 / .96); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1), 0 10px 30px rgb(0 0 0 / .5);
+  opacity: 0; transform: translate(-6px, -50%); transition: opacity 120ms ease, transform 200ms var(--ease-out);
+}
+.hz-tip kbd, .hz-search kbd { font: inherit; font-size: 11px; font-weight: 600; color: var(--ink-3); padding: 2px 6px; border-radius: 6px; background: rgb(255 255 255 / .08); }
+.hz-rail :is(button):hover > .hz-tip, .hz-rail :is(button):focus-visible > .hz-tip { opacity: 1; transform: translate(0, -50%); transition-delay: 380ms, 380ms; }
+.hz-rail-me.is-open > .hz-tip { opacity: 0 !important; }
+
+/* ---- Across the top ---------------------------------------------------------------------- */
+.hz-top {
+  position: fixed; top: 0; left: var(--rail-w); right: 0; z-index: 40; height: var(--topbar-h);
+  padding: 0 var(--gutter); display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  background: linear-gradient(180deg, rgb(7 8 10 / .7), rgb(7 8 10 / 0));
+  transition: background-color var(--t-med) ease;
+}
+.hz-top.is-solid { background-color: rgb(7 8 10 / .76); -webkit-backdrop-filter: blur(24px) saturate(1.4); backdrop-filter: blur(24px) saturate(1.4); }
+.hz-top-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+
+.hz-back {
+  width: 0; height: 44px; border-radius: 50%; display: grid; place-items: center; color: #fff; overflow: hidden; flex: none;
+  background: rgb(255 255 255 / .08); opacity: 0; pointer-events: none;
+  transition: width 320ms var(--ease-out), opacity var(--t-fast) ease, background-color var(--t-fast) ease, transform var(--t-fast) var(--ease-soft);
+}
+.hz-back svg { width: 19px; height: 19px; flex: none; }
+.has-back .hz-back { width: 44px; opacity: 1; pointer-events: auto; }
+.hz-back:hover { background: rgb(255 255 255 / .16); }
+.hz-back:active { transform: scale(.96); }
+
+.hz-tabs {
+  position: relative; display: flex; gap: 2px; padding: 4px; border-radius: 999px;
+  background: rgb(18 20 24 / .58); -webkit-backdrop-filter: blur(22px) saturate(1.3); backdrop-filter: blur(22px) saturate(1.3);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .08);
+}
+.hz-tab {
+  position: relative; height: 36px; padding: 0 16px; border-radius: 999px; white-space: nowrap;
+  font-size: var(--fs-14); font-weight: 600; color: var(--ink-2);
+  transition: color var(--t-fast) ease, background-color var(--t-med) ease, box-shadow var(--t-med) ease;
+}
+.hz-tab::before { content: ""; position: absolute; inset: -4px 0; }
+.hz-tab:hover { color: #fff; }
+.hz-tab[aria-current="page"] { color: #fff; }
+.hz-tab-pill {
+  position: absolute; left: 0; top: 4px; height: 36px; width: 0; border-radius: 999px; pointer-events: none;
+  background: rgb(255 255 255 / .13); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1);
+  transition: transform 460ms var(--ease-out), width 460ms var(--ease-out), opacity 200ms ease;
+}
+
+.hz-search {
+  width: clamp(200px, 24vw, 340px); height: 44px; padding: 0 8px 0 16px; border-radius: 999px; display: flex; align-items: center; gap: 10px; flex: none;
+  font-size: var(--fs-14); font-weight: 500; color: var(--ink-3); text-align: left;
+  background: rgb(18 20 24 / .58); -webkit-backdrop-filter: blur(22px) saturate(1.3); backdrop-filter: blur(22px) saturate(1.3);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .08);
+  transition: color var(--t-fast) ease, box-shadow var(--t-med) ease, background-color var(--t-fast) ease;
+}
+.hz-search svg { width: 17px; height: 17px; flex: none; color: var(--ink-2); }
+.hz-search span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hz-search:hover { color: var(--ink-2); background: rgb(30 33 39 / .66); }
+.hz-search.is-on { color: #fff; box-shadow: inset 0 0 0 1px rgb(var(--accent-rgb) / .5), 0 0 24px rgb(var(--accent-rgb) / .16); }
+@media (max-width: 1080px) { .hz-search span, .hz-search kbd { display: none; } .hz-search { width: 44px; padding: 0; justify-content: center; } }

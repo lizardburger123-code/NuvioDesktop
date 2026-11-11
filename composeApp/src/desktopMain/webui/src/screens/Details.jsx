@@ -8,6 +8,8 @@ import { EASE, reduceMotion } from "../lib/motion.js";
 import Row from "../components/Row.jsx";
 import { PosterCard, WideCard } from "../components/Cards.jsx";
 import Sources from "./Sources.jsx";
+import HazeDetails from "../haze/Details.jsx";
+import { lookOf } from "../lib/look.js";
 import { episodeCode, minutesLeft, year } from "../lib/format.js";
 import "./Details.css";
 
@@ -16,7 +18,7 @@ const EMPTY = { loading: true, meta: null };
 export default function Details({ params }) {
   const { type, id } = params;
   const key = `${type}:${id}`;
-  const { setArt, laterIds, toggleLater, openDetails, toast } = useApp();
+  const { setArt, laterIds, toggleLater, openDetails, toast, appearance } = useApp();
   const topic = useTopic("details", EMPTY);
   const state = topic.key === key ? topic : EMPTY;
   const meta = state.meta;
@@ -110,6 +112,17 @@ export default function Details({ params }) {
         </div>
         {state.error ? <p className="details-error">{state.error}</p> : null}
       </main>
+    );
+  }
+
+  if (lookOf(appearance) === "haze") {
+    return (
+      <HazeDetails
+        meta={meta} topic={topic} seasons={seasons} season={season} setSeason={setSeason} episodes={episodes}
+        target={target} play={play} openSources={setSources} saved={saved} heroRef={heroRef}
+      >
+        {sources ? <Sources meta={meta} video={sources} onClose={() => setSources(null)} /> : null}
+      </HazeDetails>
     );
   }
 

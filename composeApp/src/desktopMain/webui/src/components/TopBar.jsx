@@ -6,6 +6,8 @@ import { level, streaks } from "../lib/trophies.js";
 import { NAV_ITEMS } from "../lib/nav.js";
 import { useApp } from "../AppContext.jsx";
 import ProfileCard, { Avatar } from "./ProfileCard.jsx";
+import HazeChrome from "../haze/Chrome.jsx";
+import { lookOf } from "../lib/look.js";
 import "./TopBar.css";
 
 export { initials } from "./ProfileCard.jsx";
@@ -37,7 +39,12 @@ function SectionNav({ active }) {
   );
 }
 
-export default function TopBar({ route, stack, profile, compact }) {
+export default function TopBar(props) {
+  const { appearance } = useApp();
+  return lookOf(appearance) === "haze" ? <HazeChrome stack={props.stack} profile={props.profile} /> : <CinemaBar {...props} />;
+}
+
+function CinemaBar({ route, stack, profile, compact }) {
   const showBack = canGoBack();
   const section = activeSection(stack);
   const profileRef = useRef(null);

@@ -1,6 +1,7 @@
 // Turns the appearance settings (accent colour, backdrop picture, blur) into CSS variables.
 // Everything visual that depends on the user's colours reads these variables, so a change
 // repaints the whole app in one frame.
+import { applyLook, lookOf } from "../lib/look.js";
 
 export const DEFAULT_APPEARANCE = {
   colors: ["#1d2b64", "#6b3fa0", "#e0607e"],
@@ -102,5 +103,6 @@ export const applyAppearance = appearance => {
   root.setProperty("--wall-dim", String(Math.max(0, Math.min(0.9, Number(value.dim) || 0))));
   root.setProperty("--wall-blur", `${Math.max(0, Math.min(40, Number(value.blur) || 0))}px`);
   document.documentElement.dataset.animate = value.animate === false ? "off" : "on";
+  applyLook(lookOf(value), value.hazeArt);
   return { ...value, colors, accent };
 };

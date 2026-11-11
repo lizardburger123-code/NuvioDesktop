@@ -10,6 +10,7 @@ import { PRESETS, accentOf, applyAppearance } from "../theme/appearance.js";
 import { navigate } from "../lib/router.js";
 import { useSegmentPill } from "../lib/motion.js";
 import { reloadApp } from "../lib/session.js";
+import { LOOKS, lookOf, switchLook } from "../lib/look.js";
 import { PROFILE_CARD, initials } from "../components/TopBar.jsx";
 import "./Settings.css";
 
@@ -129,8 +130,52 @@ function Appearance() {
   };
 
   const mode = appearance.wallpaper?.mode || "featured";
+  const look = lookOf(appearance);
   return (
     <>
+      <Panel title="Look" description="Two interfaces over the same library. Switch whenever you like (Ctrl+Shift+L does it from anywhere); nothing else changes." aside={<Saved show={saved} />}>
+        <div className="look-row" role="radiogroup" aria-label="Look">
+          {LOOKS.map(item => (
+            <button
+              key={item.id}
+              className="look-card"
+              role="radio"
+              aria-checked={look === item.id}
+              onClick={() => { if (look !== item.id) { switchLook(item.id, layout => setAppearance({ layout })); stamp(); } }}
+            >
+              <span className={`look-mini look-mini-${item.id}`} aria-hidden="true">
+                {item.id === "haze" ? (
+                  <>
+                    <span className="lm-rail"><i /><i className="on" /><i /><i /><i /></span>
+                    <span className="lm-tabs"><i className="on" /><i /><i /></span>
+                    <span className="lm-search" />
+                    <span className="lm-title" /><span className="lm-line" /><span className="lm-cta" />
+                    <span className="lm-ranks"><b>1</b><b>2</b><b>3</b><b>4</b></span>
+                  </>
+                ) : (
+                  <>
+                    <span className="lm-words"><i className="on" /><i /><i /><i /></span>
+                    <span className="lm-title" /><span className="lm-line" /><span className="lm-cta" />
+                    <span className="lm-cards"><i /><i /><i /><i /><i /></span>
+                  </>
+                )}
+              </span>
+              <span className="look-name">{item.name}{look === item.id ? <LuCheck aria-hidden="true" /> : null}</span>
+              <span className="look-blurb">{item.blurb}</span>
+            </button>
+          ))}
+        </div>
+        {look === "haze" ? (
+          <div className="classic-row look-art">
+            <div>
+              <strong>Colour from the artwork</strong>
+              <p>Each title's page and the featured title on Home take their accent from the picture. Off, everything uses your accent below.</p>
+            </div>
+            <Toggle checked={appearance.hazeArt !== false} onChange={value => update({ hazeArt: value })} label="Colour from the artwork" />
+          </div>
+        ) : null}
+      </Panel>
+
       <Panel title="Accent" description="The room is black and the type is white. One colour marks what is switched on, focused or selected.">
         <div className="preset-row">
           {PRESETS.map(preset => (

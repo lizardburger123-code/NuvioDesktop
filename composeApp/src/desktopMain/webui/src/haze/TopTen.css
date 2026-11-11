@@ -1,0 +1,24 @@
+/* Top 10: each poster stands in front of its number. The numeral is hollow, drawn in the accent
+   and filled with a little of it from the top, like a sign seen through haze. */
+.hz-rank { position: relative; display: flex; align-items: flex-end; height: 234px; padding-left: 86px; }
+.hz-rank.is-wide { padding-left: 150px; }
+.hz-rank .card-face { width: 156px; height: 234px; flex: none; z-index: 1; }
+/* The outline is a stroke painted under a ground-coloured fill (so the font's overlapping
+   contours never show); the haze inside is a second copy of the digit, clipped to a gradient. */
+.hz-rank-n {
+  position: absolute; left: 0; bottom: -18px; z-index: 0;
+  font-size: 232px; font-weight: 800; line-height: .82; letter-spacing: -.08em;
+  color: #090a0d; -webkit-text-stroke: 5px rgb(var(--haze-rgb) / .8); paint-order: stroke fill;
+  filter: drop-shadow(0 0 20px rgb(var(--haze-rgb) / .26));
+  transition: filter 300ms ease;
+  user-select: none;
+}
+.hz-rank-n::after {
+  content: attr(data-n); position: absolute; left: 0; top: 0; -webkit-text-stroke: 0;
+  color: transparent; background: linear-gradient(180deg, rgb(var(--haze-rgb) / .46), rgb(var(--haze-rgb) / .03) 74%);
+  -webkit-background-clip: text; background-clip: text;
+}
+.hz-rank:hover .hz-rank-n, .hz-rank:focus-within .hz-rank-n { filter: drop-shadow(0 0 30px rgb(var(--haze-rgb) / .55)); }
+.hz-top10 .row-track { gap: 18px; padding-bottom: 30px; margin-bottom: -30px; }
+.hz-top10 .row-placeholder { height: 234px; }
+.hz-top10 .row-end-more { height: 234px; margin-left: 16px; }

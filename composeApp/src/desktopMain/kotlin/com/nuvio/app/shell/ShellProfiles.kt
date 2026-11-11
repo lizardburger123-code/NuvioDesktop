@@ -42,12 +42,14 @@ internal object ShellProfiles {
 
     private fun dataUrl(file: File): String? = runCatching {
         if (!file.isFile || file.length() > 3L * 1024 * 1024) return null
+        // Pictures only: a path from profile data must never pull some other file into the page.
         val mime = when (file.extension.lowercase()) {
             "png" -> "image/png"
             "webp" -> "image/webp"
             "gif" -> "image/gif"
             "svg" -> "image/svg+xml"
-            else -> "image/jpeg"
+            "jpg", "jpeg" -> "image/jpeg"
+            else -> return null
         }
         "data:$mime;base64," + Base64.getEncoder().encodeToString(file.readBytes())
     }.getOrNull()
