@@ -153,6 +153,39 @@ jobs:
           fi
           exit $status
 
+      # Not a gate (a virtual display has no real graphics card for the video): this plays a test
+      # clip in the player's own smoke mode so its page, with this fork's additions, is seen
+      # running on WebKitGTK, and any script error it logs is surfaced.
+      - name: Player on a virtual display (informational)
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -uo pipefail
+          sudo apt-get install --yes --no-install-recommends ffmpeg >/dev/null
+          ffmpeg -loglevel error -f lavfi -i "testsrc2=duration=90:size=1280x720:rate=30" \
+            -f lavfi -i "sine=frequency=440:duration=90" -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a aac -shortest /tmp/clip.mp4
+          mkdir -p artifacts/screens/player
+          cat > run-player.sh <<'EOF'
+          set -uo pipefail
+          out="$1"
+          export HOME="$(mktemp -d)"
+          (openbox >/dev/null 2>&1 &)
+          sleep 1
+          NUVIO_DESKTOP_SMOKE_PLAYER_URL="file:///tmp/clip.mp4" NUVIO_BRIDGE_DEBUG=1 /opt/nuvio/bin/Nuvio > "$out/player.log" 2>&1 &
+          pid=$!
+          sleep 30
+          import -window root "$out/player-1.png" || true
+          xdotool mousemove 700 450; sleep 0.3; xdotool mousemove 720 470; sleep 0.3; xdotool mousemove 740 500
+          sleep 2
+          import -window root "$out/player-2-controls.png" || true
+          kill -0 "$pid" 2>/dev/null && echo "player alive" || echo "player exited"
+          kill "$pid" 2>/dev/null; sleep 2; kill -9 "$pid" 2>/dev/null
+          EOF
+          xvfb-run -a -s "-screen 0 1440x900x24" bash run-player.sh "$PWD/artifacts/screens/player" || true
+          echo "---- script errors from the player page"
+          grep -iE 'SyntaxError|ReferenceError|TypeError|CONSOLE.*ERROR|not defined|load failed' artifacts/screens/player/player.log | head -n 30 || echo "none logged"
+          echo "---- player log (end)"; tail -n 30 artifacts/screens/player/player.log || true
+
       - name: Build and verify the Arch Linux package
         shell: bash
         run: |
