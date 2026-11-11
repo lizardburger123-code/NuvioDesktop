@@ -114,3 +114,9 @@
 /* ---- Home ------------------------------------------------------------------------------------ */
 [data-layout="haze"] .home-top + .row.home-strip { margin-top: 4px; }
 [data-layout="haze"] .home-strip .row-title { font-size: 19px; }
+
+/* Rings that were white in Cinema: fields in focus, the chosen card. */
+[data-layout="haze"] :is(.pc-link, .sp-search, .discover-search, .store-search):focus-within,
+[data-layout="haze"] :is(.font-card[aria-checked="true"], .profile-card[aria-pressed="true"], .net-mode[aria-checked="true"], .discover-filter.is-set) {
+  box-shadow: inset 0 0 0 2px rgb(var(--haze-rgb) / .8);
+}

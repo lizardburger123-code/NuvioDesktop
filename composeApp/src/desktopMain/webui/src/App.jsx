@@ -8,7 +8,7 @@ import { BEFORE_NAV, aliveEntries, back, forward, goSection, navigate, useRouter
 import { playScreenEntrance } from "./lib/motion.js";
 import { recovered, reloadApp } from "./lib/session.js";
 import { setArtProxy } from "./lib/artColor.js";
-import { lookOf, switchLook } from "./lib/look.js";
+import { switchLook } from "./lib/look.js";
 import { ScreenActiveContext } from "./lib/screen.js";
 import Background from "./components/Background.jsx";
 import TopBar from "./components/TopBar.jsx";
@@ -144,7 +144,23 @@ function Shell() {
   }, []);
 
   // Ctrl+Shift+L: the other look, from anywhere.
-  const { setAppearance } = useApp();
+  const { setAppearance, toast } = useApp();
+  // Said once, to someone still on Cinema: there is a second look now.
+  useEffect(() => {
+    if (gate) return undefined;
+    let told = true;
+    try { told = window.localStorage.getItem("nuvio.haze.told") === "1"; } catch { /* stay quiet */ }
+    if (told || document.documentElement.dataset.layout === "haze") return undefined;
+    const timer = window.setTimeout(() => {
+      try { window.localStorage.setItem("nuvio.haze.told", "1"); } catch { /* a nicety */ }
+      if (document.documentElement.dataset.layout === "haze") return;
+      toast("New look: Haze. Switch back any time in Settings › Appearance.", {
+        duration: 12000,
+        action: { label: "Try it", run: () => switchLook("haze", layout => setAppearance({ layout })) },
+      });
+    }, 6000);
+    return () => window.clearTimeout(timer);
+  }, [gate, toast, setAppearance]);
   useEffect(() => {
     const onKey = event => {
       if (!(event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "l")) return;
