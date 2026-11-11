@@ -124,15 +124,20 @@ jobs:
           sleep 1
           /opt/nuvio/bin/Nuvio > "$out/app.log" 2>&1 &
           pid=$!
-          for t in 20 40 60; do
-            sleep 20
-            import -window root "$out/app-${t}s.png" || true
-          done
+          sleep 25
+          import -window root "$out/app-1-first-run.png" || true
+          # First run: "Continue Without Account" (the classic sign-in screen), which leads to
+          # the new interface's profile screen.
+          xdotool mousemove 1160 734 click 1
+          sleep 25
+          import -window root "$out/app-2-after-continue.png" || true
+          sleep 15
+          import -window root "$out/app-3-later.png" || true
           xwininfo -root -tree > "$out/windows.txt" 2>&1 || true
           ps -ef | grep -E 'nuvio-shell-host|WebKit|Nuvio' | grep -v grep > "$out/processes.txt" || true
           alive=0; kill -0 "$pid" 2>/dev/null && alive=1
           kill "$pid" 2>/dev/null; sleep 2; kill -9 "$pid" 2>/dev/null
-          echo "app alive after 60s: $alive"
+          echo "app alive at the end: $alive"
           [ "$alive" = 1 ]
           EOF
           status=0
@@ -143,7 +148,8 @@ jobs:
           echo "---- app log (end)"; tail -n 40 artifacts/screens/app/app.log || true
           echo "---- windows"; grep -iE 'nuvio|com-nuvio' artifacts/screens/app/windows.txt | head -n 12 || true
           if ! grep -q 'nuvio-shell-host' artifacts/screens/app/processes.txt; then
-            echo "::warning::The app started without the new interface (helper not running)."
+            echo "::error::The app ran without the new interface (helper not running)."
+            status=1
           fi
           exit $status
 

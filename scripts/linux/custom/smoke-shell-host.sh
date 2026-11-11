@@ -57,8 +57,9 @@ wait_for() { # <log> <pattern> <seconds>
     local n=0
     until grep -q "$2" "$1" 2>/dev/null; do
         sleep 0.5; n=$((n + 1))
-        [[ $n -ge $(($3 * 2)) ]] && { echo "timeout waiting for $2"; return 1; }
+        if [[ $n -ge $(($3 * 2)) ]]; then echo "timeout waiting for $2"; return 1; fi
     done
+    return 0
 }
 wait_for "$out/out1.log" '"event":"loaded"' 40
 echo "E$driver" >&3

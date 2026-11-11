@@ -101,7 +101,9 @@ set +e
 docker run --rm -v "$work:/work" archlinux:base-devel bash /work/in-arch.sh
 status=$?
 set -e
-cp "$work"/*.pkg.tar.zst "$out/" 2>/dev/null || true
+# The container's build user owns the work folder now.
+sudo chown -R "$(id -u):$(id -g)" "$work"
+cp "$work"/*.pkg.tar.zst "$out/"
 mkdir -p "$out/smoke-arch"
 cp -r "$work/smoke-arch/." "$out/smoke-arch/" 2>/dev/null || true
 ls -la "$out"
