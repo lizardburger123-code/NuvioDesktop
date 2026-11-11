@@ -176,8 +176,10 @@ jobs:
 
           IF SOMETHING IS WRONG
 
-            The window is blank or flickers (some graphics drivers):
-                NUVIO_SHELL_SOFTWARE=1 nuvio
+            The window is black, blank or flickers:
+                NUVIO_SHELL_RENDER=software nuvio
+            (The app already does this by itself on NVIDIA's driver. On AMD and
+            Intel it draws with the graphics card.)
             Go back to the old interface:
                 NUVIO_CLASSIC_UI=1 nuvio
             (On Ubuntu write /opt/nuvio/bin/Nuvio instead of nuvio.)
@@ -214,8 +216,10 @@ jobs:
             echo "### If something is wrong"
             echo "| Problem | Start it like this |"
             echo "|---|---|"
-            echo "| Window is blank or flickers | \`NUVIO_SHELL_SOFTWARE=1 nuvio\` |"
+            echo "| Window is black, blank or flickers | \`NUVIO_SHELL_RENDER=software nuvio\` |"
             echo "| Want the old interface back | \`NUVIO_CLASSIC_UI=1 nuvio\` |"
+            echo
+            echo "The app picks how to draw by graphics driver: on NVIDIA's driver it paints without the graphics card (their driver shows a black window otherwise), on AMD and Intel it uses the card."
             echo
             echo "On Ubuntu write \`/opt/nuvio/bin/Nuvio\` instead of \`nuvio\`. The same instructions are in \`INSTALL-LINUX.txt\` inside each download."
           } >> "$GITHUB_STEP_SUMMARY"

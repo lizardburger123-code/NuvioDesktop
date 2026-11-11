@@ -9,6 +9,7 @@ import { useApp } from "../AppContext.jsx";
 import { PRESETS, accentOf, applyAppearance } from "../theme/appearance.js";
 import { navigate } from "../lib/router.js";
 import { useSegmentPill } from "../lib/motion.js";
+import { reloadApp } from "../lib/session.js";
 import { PROFILE_CARD, initials } from "../components/TopBar.jsx";
 import "./Settings.css";
 
@@ -674,7 +675,7 @@ function Profile() {
       >
         <div className="profiles">
           {profiles.map(profile => (
-            <button key={profile.id} className="profile-card" aria-pressed={profile.id === boot.profile?.id} onClick={() => profile.id !== boot.profile?.id && call("profiles.switch", { id: profile.id }).then(() => window.location.reload(), error => toast(error.message, { tone: "error" }))}>
+            <button key={profile.id} className="profile-card" aria-pressed={profile.id === boot.profile?.id} onClick={() => profile.id !== boot.profile?.id && call("profiles.switch", { id: profile.id }).then(reloadApp, error => toast(error.message, { tone: "error" }))}>
               {profile.avatar
                 ? <img className="avatar avatar-lg avatar-img" src={profile.avatar} alt="" />
                 : <span className="avatar avatar-lg" style={profile.color ? { background: profile.color } : undefined}>{initials(profile.name)}</span>}

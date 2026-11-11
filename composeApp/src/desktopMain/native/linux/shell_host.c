@@ -21,6 +21,13 @@
 //           E<js>     (only with NUVIO_SHELL_TEST set) run script in the page, for smoke tests
 //   out     M<json>   a message from the page, or a native event {"event":"created"|"loaded"|
 //                     "failed"|"toggleFullscreen"}
+//
+// Drawing mode (NUVIO_SHELL_RENDER, chosen by the app per graphics driver):
+//   gpu       WebKit's own choice: GPU compositing, frames handed over as GPU buffers
+//   shm       GPU compositing, frames handed over through shared memory (no buffer sharing
+//             between processes, which is the part that breaks on some drivers)
+//   software  no GPU at all: the page is painted on the CPU (NVIDIA's driver shows a black
+//             window otherwise). The page is told, and leaves out what needs the compositor.
 // "out" is the original stdout; fd 1 itself is pointed at stderr so nothing WebKit or a library
 // prints can corrupt the protocol.
 
@@ -46,6 +53,8 @@ typedef struct {
     gboolean visible;
     gboolean loaded;
     gboolean quitting;
+    gboolean software;    // drawing mode "software"
+    int loads;
     GPtrArray *pending;   // messages posted before the page finished loading
     char *page_base;      // page URL without query/fragment: the only place navigation may go
     char *page_url;
@@ -265,6 +274,8 @@ static void on_load_changed(WebKitWebView *view, WebKitLoadEvent event, gpointer
     (void)view; (void)data;
     if (event == WEBKIT_LOAD_STARTED) {
         S.loaded = FALSE;
+        S.loads++;
+        if (S.loads > 1) LOG("page load %d started", S.loads);
     } else if (event == WEBKIT_LOAD_FINISHED) {
         S.loaded = TRUE;
         for (guint i = 0; i < S.pending->len; i++) deliver(g_ptr_array_index(S.pending, i));
@@ -283,11 +294,22 @@ static gboolean on_load_failed(WebKitWebView *view, WebKitLoadEvent event, const
     return FALSE;
 }
 
+// The page's process died. Load the page again (it comes back where the user was, see the page's
+// lib/session.js); a process that keeps dying is reported, and the app starts over in a safer
+// drawing mode or with the classic interface.
 static void on_web_process_terminated(WebKitWebView *view, WebKitWebProcessTerminationReason reason, gpointer data) {
     (void)data;
     static int reloads = 0;
-    LOG("web process ended (reason %d)", (int)reason);
+    static gint64 since = 0;
+    const char *why = reason == WEBKIT_WEB_PROCESS_CRASHED ? "crashed"
+                    : reason == WEBKIT_WEB_PROCESS_EXCEEDED_MEMORY_LIMIT ? "used too much memory" : "was stopped";
+    LOG("web process ended: %s (reason %d)", why, (int)reason);
     S.loaded = FALSE;
+    const gint64 now = g_get_monotonic_time();
+    if (now - since > 60 * G_USEC_PER_SEC) {
+        since = now;
+        reloads = 0;
+    }
     if (++reloads > 3) {
         emit("{\"event\":\"failed\",\"reason\":\"process\"}");
         return;
@@ -355,6 +377,16 @@ static WebKitWebView *create_view(const char *data_dir) {
         kShim, WEBKIT_USER_CONTENT_INJECT_TOP_FRAME, WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START, NULL, NULL);
     webkit_user_content_manager_add_script(content, shim);
     webkit_user_script_unref(shim);
+    // Painted on the CPU: the page skips what only the compositor can do (animated screen changes).
+    // NUVIO_SHELL_TEST_KEEP_TRANSITIONS leaves the page unaware, for the smoke test's comparison.
+    if (S.software && !g_getenv("NUVIO_SHELL_TEST_KEEP_TRANSITIONS")) {
+        WebKitUserScript *mark = webkit_user_script_new(
+            "window.__nuvioRender='software';"
+            "if(document.documentElement)document.documentElement.setAttribute('data-render','software');",
+            WEBKIT_USER_CONTENT_INJECT_TOP_FRAME, WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START, NULL, NULL);
+        webkit_user_content_manager_add_script(content, mark);
+        webkit_user_script_unref(mark);
+    }
 
     WebKitWebContext *context;
     if (data_dir && *data_dir) {
@@ -385,7 +417,7 @@ static WebKitWebView *create_view(const char *data_dir) {
     webkit_settings_set_enable_smooth_scrolling(settings, TRUE);
     webkit_settings_set_enable_back_forward_navigation_gestures(settings, FALSE);
     webkit_settings_set_media_playback_requires_user_gesture(settings, FALSE);
-    if (g_getenv("NUVIO_SHELL_SOFTWARE")) {
+    if (S.software) {
         webkit_settings_set_hardware_acceleration_policy(settings, WEBKIT_HARDWARE_ACCELERATION_POLICY_NEVER);
     } else {
         // 3D transforms and backdrop blur need the compositor; don't wait for WebKit to decide.
@@ -402,6 +434,24 @@ static WebKitWebView *create_view(const char *data_dir) {
     // No dropping files or links onto the page.
     gtk_drag_dest_unset(GTK_WIDGET(view));
     return view;
+}
+
+// Settle the drawing mode before WebKit starts: it reads these once, and its processes inherit them.
+static void apply_render_mode(void) {
+    const char *mode = g_getenv("NUVIO_SHELL_RENDER");
+    if (!mode || !*mode) mode = g_getenv("NUVIO_SHELL_SOFTWARE") ? "software" : "gpu";
+    // The player bridge sets these for its own web view, in the app's process.
+    g_unsetenv("WEBKIT_DISABLE_DMABUF_RENDERER");
+    g_unsetenv("WEBKIT_DISABLE_COMPOSITING_MODE");
+    if (strcmp(mode, "software") == 0) {
+        S.software = TRUE;
+        g_setenv("WEBKIT_DISABLE_COMPOSITING_MODE", "1", TRUE);
+    } else if (strcmp(mode, "shm") == 0) {
+        g_setenv("WEBKIT_DMABUF_RENDERER_FORCE_SHM", "1", TRUE);
+    } else {
+        mode = "gpu";
+    }
+    LOG("drawing mode: %s", mode);
 }
 
 static gboolean embed(void) {
@@ -471,6 +521,7 @@ int main(int argc, char **argv) {
     char *cut = strpbrk(S.page_base, "?#");
     if (cut) *cut = '\0';
     S.pending = g_ptr_array_new_with_free_func(g_free);
+    apply_render_mode();
 
     // The app window is an X11 window (XWayland on Wayland sessions), so this one must be too.
     gdk_set_allowed_backends("x11");

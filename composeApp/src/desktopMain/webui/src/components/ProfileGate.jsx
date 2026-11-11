@@ -3,6 +3,7 @@ import { LuLoaderCircle, LuLock } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useApp } from "../AppContext.jsx";
 import { EASE, reduceMotion } from "../lib/motion.js";
+import { reloadApp } from "../lib/session.js";
 import { Avatar } from "./ProfileCard.jsx";
 import "./ProfileGate.css";
 
@@ -75,7 +76,7 @@ export default function ProfileGate({ onDone }) {
     try {
       await call("profiles.switch", { id: target.id });
       markPassed();
-      window.location.reload();
+      reloadApp();
     } catch (error) {
       toast(error.message, { tone: "error" });
       setLeaving(null);

@@ -11,6 +11,7 @@
 import { useSyncExternalStore } from "react";
 import { flushSync } from "react-dom";
 import { reduceMotion } from "./motion.js";
+import { rememberSection, savedSection, softwareRender } from "./session.js";
 
 /** Order of the sections in the top bar; screen motion follows it left/right. */
 export const NAV_ORDER = ["home", "browse:movie", "browse:series", "browse:anime", "library", "settings"];
@@ -105,8 +106,10 @@ const beforeNav = () => window.dispatchEvent(new Event(BEFORE_NAV));
 
 const commit = next => {
   const root = document.documentElement;
+  // View Transitions need the web view's compositor: painted on the CPU, the screens just change.
   const animate = next.nav.kind !== "replace"
     && typeof document.startViewTransition === "function"
+    && !softwareRender()
     && !reduceMotion()
     && document.visibilityState === "visible";
   if (!animate) {
@@ -255,3 +258,18 @@ export const forward = () => {
   });
   return true;
 };
+
+// ---- Coming back after the page was lost (see session.js) --------------------------------------
+
+const sectionEntry = stack => {
+  for (let i = stack.length - 1; i >= 0; i -= 1) if (isSection(stack[i])) return stack[i];
+  return stack[0];
+};
+
+const saved = savedSection();
+if (saved && isSection(saved) && sectionId(saved) !== "home") {
+  seq += 1;
+  const entry = { name: saved.name, params: saved.params || {}, key: seq, scroll: 0 };
+  state = { ...state, stack: [...state.stack, entry], sections: [...state.sections, entry] };
+}
+listeners.add(() => rememberSection(sectionEntry(state.stack)));

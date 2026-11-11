@@ -6,6 +6,7 @@ import { AppProvider, useApp } from "./AppContext.jsx";
 import { applyAppearance } from "./theme/appearance.js";
 import { BEFORE_NAV, aliveEntries, back, forward, goSection, navigate, useRouter } from "./lib/router.js";
 import { playScreenEntrance } from "./lib/motion.js";
+import { recovered, reloadApp } from "./lib/session.js";
 import { ScreenActiveContext } from "./lib/screen.js";
 import Background from "./components/Background.jsx";
 import TopBar from "./components/TopBar.jsx";
@@ -196,7 +197,7 @@ export default function App() {
       <div className="boot-error">
         <h1 className="t-page">Nuvio couldn't start its interface</h1>
         <p className="t-meta">{String(error.message || error)}</p>
-        <button className="btn btn-primary" onClick={() => window.location.reload()}>Try again</button>
+        <button className="btn btn-primary" onClick={reloadApp}>Try again</button>
       </div>
     );
   }
@@ -215,7 +216,8 @@ export default function App() {
 /** Launch intro: the wordmark draws in over the gradient, then lifts away once data is ready. */
 function Intro({ ready }) {
   const ref = useRef(null);
-  const [done, setDone] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  // No intro over a page that only replaces one lost to a crash.
+  const [done, setDone] = useState(() => recovered || window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const shown = useRef(performance.now());
   const timeline = useRef(null);
 

@@ -8,6 +8,7 @@ import { level, streaks } from "../lib/trophies.js";
 import { BEFORE_NAV, goSection } from "../lib/router.js";
 import { EASE, reduceMotion } from "../lib/motion.js";
 import { holdAmbient } from "../lib/hold.js";
+import { reloadApp } from "../lib/session.js";
 import "./ProfileCard.css";
 
 export const initials = name => String(name || "?").trim().split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase();
@@ -274,7 +275,7 @@ export default function ProfileCard({ anchorRef, onClose, closeRequest = 0, init
   const go = (name, params) => { close(); goSection(name, params); };
   const switchTo = target => {
     if (target.pin) return;
-    call("profiles.switch", { id: target.id }).then(() => window.location.reload(), () => {});
+    call("profiles.switch", { id: target.id }).then(reloadApp, () => {});
   };
 
   const onPicked = result => {

@@ -65,6 +65,8 @@ internal class DesktopAppShell(private val window: Window) : AppShellOverride, S
     /** Classic screens opened from the shell for something it doesn't have yet. */
     private var classicVisit by mutableStateOf(false)
     private var failure by mutableStateOf<String?>(null)
+    /** Counts fresh starts of the interface helper (Linux, after it was lost in a GPU drawing mode). */
+    private var restarts by mutableStateOf(0)
 
     private val sink = object : NativeAppShellSink {
         override fun onShellMessage(message: String) {
@@ -113,7 +115,7 @@ internal class DesktopAppShell(private val window: Window) : AppShellOverride, S
         }
 
         Box(Modifier.fillMaxSize().background(ShellGround))
-        LaunchedEffect(active) {
+        LaunchedEffect(active, restarts) {
             if (active) {
                 ensureCreated()
                 setVisible(true)
@@ -161,12 +163,23 @@ internal class DesktopAppShell(private val window: Window) : AppShellOverride, S
         }
     }
 
-    /** Linux: the interface's helper process ended on its own. The classic interface takes over. */
+    /**
+     * Linux: the interface's helper process ended on its own, or its page kept crashing. From a
+     * GPU drawing mode it is started once more painting on the CPU; otherwise the classic
+     * interface takes over.
+     */
     private fun onShellGone(reason: String) {
         SwingUtilities.invokeLater {
-            if (shell == null) return@invokeLater
-            log.e { "new interface lost, using the classic one: $reason" }
+            val lost = shell ?: return@invokeLater
             shell = null
+            val mode = (lost as? LinuxAppShellWindow)?.mode
+            runCatching { lost.dispose() }
+            if (mode != null && LinuxShellRender.stepDown(mode)) {
+                log.w { "new interface lost in drawing mode $mode ($reason); starting it again in software mode" }
+                restarts++
+                return@invokeLater
+            }
+            log.e { "new interface lost, using the classic one: $reason" }
             failure = reason
         }
     }
