@@ -486,7 +486,12 @@ internal object ShellAddonStore {
     private const val Fresh = 30 * 60_000L
     private val adultWords = Regex("""(?i)\b(porn\w*|xxx|adult|hentai|nsfw|18\+|jav|erotic\w*|sex\w*|onlyfans|camgirl|milf|hanime)\b""")
 
-    fun showAdult(): Boolean = store.getBoolean("store_show_adult") ?: true
+    /**
+     * The person's own choice once they have made one. Until then adult addons stay out of the
+     * store, unless one is already installed (an install from before this default keeps its view).
+     */
+    fun showAdult(): Boolean = store.getBoolean("store_show_adult")
+        ?: AddonRepository.uiState.value.addons.any { isAdult(it.manifestUrl, it.manifest) }
 
     private fun hostOf(url: String) = url.substringAfter("://").substringBefore("/").lowercase(Locale.ROOT)
 

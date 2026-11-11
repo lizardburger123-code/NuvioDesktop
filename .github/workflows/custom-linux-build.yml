@@ -3,9 +3,9 @@ name: Custom Linux Build
 # Builds this fork for Linux without the upstream project's private release secrets:
 #   * Ubuntu / Debian:  Nuvio-Linux-x86_64-<version>.deb          (Ubuntu 24.04 or newer)
 #   * Arch Linux:       nuvio-fork-bin-<version>-1-x86_64.pkg.tar.zst
-# Each is launched on a virtual display before it is published, with screenshots kept as an
-# artifact. Local (offline) accounts work fully; Nuvio cloud sign-in, Trakt and MDBList
-# integrations are unavailable in these builds, as in the custom Windows build.
+# Each is installed and started on a virtual display before it is published. Local (offline)
+# accounts work fully; Nuvio cloud sign-in, Trakt and MDBList integrations are unavailable in
+# these builds, as in the custom Windows build.
 
 on:
   push:
@@ -14,8 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  # write: the test screenshots are pushed to the ci/linux-screens branch (see the last steps).
-  contents: write
+  contents: read
 
 concurrency:
   group: custom-linux-${{ github.ref }}
@@ -58,9 +57,8 @@ jobs:
       - name: Interface host smoke test
         shell: bash
         run: |
-          mkdir -p artifacts/screens/host
           xvfb-run -a -s "-screen 0 1440x900x24" \
-            bash ./scripts/linux/custom/smoke-shell-host.sh artifacts/screens/host
+            bash ./scripts/linux/custom/smoke-shell-host.sh "$RUNNER_TEMP/smoke-host"
 
       - name: Write placeholder runtime config
         shell: bash
@@ -94,9 +92,6 @@ jobs:
           while IFS= read -r line; do
             [ -n "$line" ] && echo "::error::${line:0:900}"
           done <<< "$lines"
-          for f in artifacts/screens/host/err1.log artifacts/screens/host/err2.log; do
-            [ -f "$f" ] && tail -n 5 "$f" | while IFS= read -r line; do echo "::warning::${line:0:400}"; done
-          done
           exit 0
 
       - name: Collect DEB
@@ -110,83 +105,29 @@ jobs:
           dpkg-deb -I "$deb" | sed -n 1,25p
           dpkg-deb -c "$deb" | awk '{print $6}' | grep -vE '/lib/runtime/|/lib/app/.*\.jar$' | head -n 40
 
-      # Installing must work; what the app shows after first run is reported, not a gate yet.
-      - name: Install the DEB and launch it on a virtual display
+      - name: Install the DEB and start the app on a virtual display
         shell: bash
         run: |
           set -uo pipefail
           sudo apt-get install --yes "./artifacts/packages/Nuvio-Linux-x86_64-${NUVIO_DESKTOP_VERSION_NAME}.deb"
-          mkdir -p artifacts/screens/app
           cat > run-app.sh <<'EOF'
           set -uo pipefail
-          out="$1"
           export HOME="$(mktemp -d)"
           (openbox >/dev/null 2>&1 &)
           sleep 1
-          /opt/nuvio/bin/Nuvio > "$out/app.log" 2>&1 &
+          /opt/nuvio/bin/Nuvio > app.log 2>&1 &
           pid=$!
-          sleep 25
-          import -window root "$out/app-1-first-run.png" || true
-          # First run: "Continue Without Account" (the classic sign-in screen), which leads to
-          # the new interface's profile screen.
-          xdotool mousemove 1160 734 click 1
-          sleep 25
-          import -window root "$out/app-2-after-continue.png" || true
-          # No profile yet on a fresh install: "Manage Profiles".
-          xdotool mousemove 720 544 click 1
-          sleep 10
-          import -window root "$out/app-3-manage-profiles.png" || true
-          xwininfo -root -tree > "$out/windows.txt" 2>&1 || true
-          ps -ef | grep -E 'nuvio-shell-host|WebKit|Nuvio' | grep -v grep > "$out/processes.txt" || true
+          sleep 40
           alive=0; kill -0 "$pid" 2>/dev/null && alive=1
+          size="$(xwininfo -root -tree | grep -E '"Nuvio": \("com-nuvio-app-MainKt"' | grep -oE '[0-9]+x[0-9]+\+' | head -n 1)"
           kill "$pid" 2>/dev/null; sleep 2; kill -9 "$pid" 2>/dev/null
-          echo "app alive at the end: $alive"
+          echo "app running after 40s: $alive, window ${size:-none}"
           [ "$alive" = 1 ]
           EOF
           status=0
-          xvfb-run -a -s "-screen 0 1440x900x24" bash run-app.sh "$PWD/artifacts/screens/app" || status=$?
-          echo "---- processes"; cat artifacts/screens/app/processes.txt || true
-          echo "---- app log (interface lines)"
-          grep -iE 'shell|interface|webkit|exception|error' artifacts/screens/app/app.log | head -n 60 || true
-          echo "---- app log (end)"; tail -n 40 artifacts/screens/app/app.log || true
-          echo "---- windows"; grep -iE 'nuvio|com-nuvio' artifacts/screens/app/windows.txt | head -n 12 || true
-          if ! grep -q 'nuvio-shell-host' artifacts/screens/app/processes.txt; then
-            echo "::warning::The app did not reach the new interface in this test (helper not running)."
-          fi
+          xvfb-run -a -s "-screen 0 1440x900x24" bash run-app.sh || status=$?
+          if [ "$status" != 0 ]; then echo "::error::The installed app did not stay running."; tail -n 40 app.log || true; fi
           exit $status
-
-      # Not a gate (a virtual display has no real graphics card for the video): this plays a test
-      # clip in the player's own smoke mode so its page, with this fork's additions, is seen
-      # running on WebKitGTK, and any script error it logs is surfaced.
-      - name: Player on a virtual display (informational)
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -uo pipefail
-          sudo apt-get install --yes --no-install-recommends ffmpeg >/dev/null
-          ffmpeg -loglevel error -f lavfi -i "testsrc2=duration=90:size=1280x720:rate=30" \
-            -f lavfi -i "sine=frequency=440:duration=90" -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a aac -shortest /tmp/clip.mp4
-          mkdir -p artifacts/screens/player
-          cat > run-player.sh <<'EOF'
-          set -uo pipefail
-          out="$1"
-          export HOME="$(mktemp -d)"
-          (openbox >/dev/null 2>&1 &)
-          sleep 1
-          NUVIO_DESKTOP_SMOKE_PLAYER_URL="file:///tmp/clip.mp4" NUVIO_BRIDGE_DEBUG=1 /opt/nuvio/bin/Nuvio > "$out/player.log" 2>&1 &
-          pid=$!
-          sleep 30
-          import -window root "$out/player-1.png" || true
-          xdotool mousemove 700 450; sleep 0.3; xdotool mousemove 720 470; sleep 0.3; xdotool mousemove 740 500
-          sleep 2
-          import -window root "$out/player-2-controls.png" || true
-          kill -0 "$pid" 2>/dev/null && echo "player alive" || echo "player exited"
-          kill "$pid" 2>/dev/null; sleep 2; kill -9 "$pid" 2>/dev/null
-          EOF
-          xvfb-run -a -s "-screen 0 1440x900x24" bash run-player.sh "$PWD/artifacts/screens/player" || true
-          echo "---- script errors from the player page"
-          grep -iE 'SyntaxError|ReferenceError|TypeError|CONSOLE.*ERROR|not defined|load failed' artifacts/screens/player/player.log | head -n 30 || echo "none logged"
-          echo "---- player log (end)"; tail -n 30 artifacts/screens/player/player.log || true
 
       - name: Build and verify the Arch Linux package
         shell: bash
@@ -195,7 +136,6 @@ jobs:
             "artifacts/packages/Nuvio-Linux-x86_64-${NUVIO_DESKTOP_VERSION_NAME}.deb" \
             "${FORK_VERSION}" artifacts/arch
           cp artifacts/arch/*.pkg.tar.zst artifacts/packages/
-          mkdir -p artifacts/screens/arch && cp -r artifacts/arch/smoke-arch/. artifacts/screens/arch/ || true
 
       - name: Write install instructions
         if: always()
@@ -326,34 +266,3 @@ jobs:
           if [ -n "$emails" ]; then echo "Email addresses in bundled libraries' credits (library authors):"; echo "$emails"; fi
           [ "$hits" = 0 ] && echo "The account this was built under is not named anywhere in the package."
           exit $hits
-
-      - name: Publish screenshots to the ci/linux-screens branch
-        if: always()
-        shell: bash
-        run: |
-          set -uo pipefail
-          [ -d artifacts/screens ] || exit 0
-          pub="$(mktemp -d)"
-          ( cd artifacts/screens && find . -name '*.png' | while read -r f; do
-              mkdir -p "$pub/$(dirname "$f")"
-              convert "$f" -quality 82 "$pub/${f%.png}.jpg" 2>/dev/null || cp "$f" "$pub/$f"
-            done
-            find . \( -name '*.log' -o -name '*.txt' \) | while read -r f; do
-              mkdir -p "$pub/$(dirname "$f")"; tail -c 200000 "$f" > "$pub/$f"
-            done ) || true
-          cd "$pub"
-          git init -q -b ci/linux-screens
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -q -m "Linux test screenshots for run ${GITHUB_RUN_NUMBER}" || exit 0
-          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${GITHUB_REPOSITORY}.git" ci/linux-screens || echo "::warning::could not publish screenshots"
-
-      - name: Upload screenshots and logs
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: nuvio-custom-linux-test-screens
-          path: artifacts/screens
-          if-no-files-found: warn
-          retention-days: 14

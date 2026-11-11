@@ -50,7 +50,7 @@ export default function AddonStore({ onChanged }) {
   useSegmentPill(tabRef);
 
   const load = force => call("store.list", { force: Boolean(force) }, { timeoutMs: 40000 })
-    .then(setData, error => { toast(error.message, { tone: "error" }); setData(d => d || { items: [], showAdult: true }); });
+    .then(setData, error => { toast(error.message, { tone: "error" }); setData(d => d || { items: [], showAdult: false }); });
   useEffect(() => { load(false); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const showAdult = data?.showAdult !== false;

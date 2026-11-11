@@ -47,12 +47,16 @@ export default function Home() {
     saved: laterIds.has(`${item.type}:${item.id}`),
   });
 
+  // A new profile with no addons: no empty hero filling the screen, just what to do next.
+  const bare = !home.loading && home.sections.length === 0 && !(home.hero || []).length && !continueWatching.length;
   return (
     <main ref={rootRef} className="screen home">
       <h1 className="sr-only">Home</h1>
-      <div className="home-top">
-        <Showcase items={home.hero} strip={continueWatching.length > 0} onPlay={playFromSpotlight} onToggleLater={toggleLater} laterIds={laterIds} />
-      </div>
+      {bare ? null : (
+        <div className="home-top">
+          <Showcase items={home.hero} strip={continueWatching.length > 0} onPlay={playFromSpotlight} onToggleLater={toggleLater} laterIds={laterIds} />
+        </div>
+      )}
 
       {continueWatching.length ? (
         <Row title="Continue watching" className="home-strip">
@@ -87,10 +91,10 @@ export default function Home() {
       ))}
 
       {!home.loading && home.sections.length === 0 ? (
-        <section className="home-empty">
-          <h2 className="t-title">No catalogs yet</h2>
-          <p className="t-meta">Install an addon with catalogs (Cinemeta, Anime Kitsu) in Settings, then come back.</p>
-          <button className="btn btn-primary" onClick={() => navigate("settings", { section: "addons" })}>Open addons</button>
+        <section className={`home-empty${bare ? " is-first" : ""}`}>
+          <h2 className="t-title">Nothing to show yet</h2>
+          <p className="t-meta">Nuvio shows what your addons bring: catalogs to browse and sources to play. Add a catalog addon (Cinemeta is the usual first one) and this page fills up.</p>
+          <button className="btn btn-primary" onClick={() => navigate("settings", { section: "addons" })}>Add addons</button>
         </section>
       ) : null}
       <div className="screen-end" />

@@ -7,6 +7,7 @@
 .home-top + .row.home-strip { position: relative; z-index: 3; margin-top: calc(-1 * clamp(240px, 30vh, 268px)); }
 .home-strip .row-title { font-size: var(--fs-15); }
 
+.home-empty.is-first { margin-top: calc(var(--topbar-h) + 48px); }
 .home-empty {
   margin: 56px var(--gutter);
   padding: 28px;
