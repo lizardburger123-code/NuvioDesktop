@@ -92,6 +92,21 @@ export NUVIO_SHELL_HOST=/tmp/native/native/linux/nuvio-shell-host
 # WebKit's sandbox needs user namespaces a container may not give.
 export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
 xvfb-run -a -s "-screen 0 1440x900x24" bash /work/repo/scripts/linux/custom/smoke-shell-host.sh /work/smoke-arch || status=1
+echo "== the app itself starts on Arch (reported, not a gate: a container is not a desktop)"
+cat > /tmp/run-app.sh <<'APP'
+export HOME="$(mktemp -d)"
+(openbox >/dev/null 2>&1 &)
+sleep 1
+/opt/nuvio/bin/Nuvio > /work/smoke-arch/app.log 2>&1 &
+pid=$!
+sleep 45
+alive=0; kill -0 "$pid" 2>/dev/null && alive=1
+size="$(xwininfo -root -tree | grep -E '"Nuvio": \("com-nuvio-app-MainKt"' | grep -oE '[0-9]+x[0-9]+' | head -n 1)"
+kill "$pid" 2>/dev/null; sleep 2; kill -9 "$pid" 2>/dev/null
+echo "ARCH APP: running after 45s: $alive, window ${size:-none}"
+APP
+xvfb-run -a -s "-screen 0 1440x900x24" dbus-run-session -- bash /tmp/run-app.sh || true
+grep -iE "exception|error|UnsatisfiedLink" /work/smoke-arch/app.log | head -n 8 || true
 chmod -R a+rwX /work/smoke-arch 2>/dev/null || true
 exit $status
 ARCH
