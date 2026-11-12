@@ -1380,3 +1380,67 @@ button.action:focus-visible,
   box-shadow: inset 0 0 0 1px rgba(143, 227, 168, .3);
 }
 .subtitle-option-row.is-disc .subtitle-source-chip { background: #8fe3a8; color: #0b1f12; }
+
+/* ---- Sources in the player: the Sources sheet's colours and picks -------------------------- */
+/* Each kind of release has its colour; the best file of each kind is lifted to the top with it. */
+.track-row.source-row { --kind: 210 216 226; --kind-ink: 10 11 13; align-items: flex-start; }
+.track-row.source-row[data-kind="imax"] { --kind: 92 170 255; }
+.track-row.source-row[data-kind="openmatte"] { --kind: 94 225 214; }
+.track-row.source-row[data-kind="dv"] { --kind: 186 150 255; }
+.track-row.source-row[data-kind="remux"] { --kind: 242 196 109; }
+.track-row.source-row[data-kind="hdr"] { --kind: 255 159 90; }
+
+.source-plate {
+  flex: 0 0 auto; width: 50px; height: 44px; margin-top: 1px; border-radius: 10px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  background: rgba(255, 255, 255, .09); color: #fff;
+}
+.source-plate strong { font-size: 13px; line-height: 15px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.source-plate small { font-size: 10px; line-height: 11px; font-weight: 700; letter-spacing: .06em; color: rgba(255, 255, 255, .66); }
+.source-plate.q-4k { background: #fff; color: #0a0b0d; }
+.source-plate.q-4k small { color: rgba(10, 11, 13, .7); }
+.source-row[data-kind]:not([data-kind="web"]) .source-plate {
+  background: rgb(var(--kind) / .14); box-shadow: inset 0 0 0 1px rgb(var(--kind) / .42); color: #fff;
+}
+.source-row[data-kind]:not([data-kind="web"]) .source-plate small { color: rgb(var(--kind)); }
+.source-row[data-kind]:not([data-kind="web"]) .source-plate.q-4k { background: rgb(var(--kind) / .26); }
+
+.track-row.source-row.is-pick {
+  background:
+    radial-gradient(90% 180% at 0% 50%, rgb(var(--kind) / .3), rgb(var(--kind) / .1) 42%, transparent 72%),
+    radial-gradient(60% 120% at 12% 0%, rgb(var(--kind) / .14), transparent 70%),
+    rgba(255, 255, 255, .03);
+  box-shadow: inset 0 0 0 1px rgb(var(--kind) / .34);
+}
+.track-row.source-row.is-pick:hover:not(:disabled),
+.track-row.source-row.is-pick:focus-visible {
+  background:
+    radial-gradient(90% 180% at 0% 50%, rgb(var(--kind) / .38), rgb(var(--kind) / .14) 42%, transparent 72%),
+    radial-gradient(60% 120% at 12% 0%, rgb(var(--kind) / .18), transparent 70%),
+    rgba(255, 255, 255, .06);
+}
+.source-row.is-pick[data-kind] .source-plate,
+.source-row.is-pick[data-kind] .source-plate.q-4k {
+  background: rgb(var(--kind)); color: rgb(var(--kind-ink)); box-shadow: 0 0 24px rgb(var(--kind) / .5);
+}
+.source-row.is-pick[data-kind] .source-plate small { color: rgb(var(--kind-ink) / .7); }
+.source-pick { font-size: 10.5px; line-height: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: rgb(var(--kind)); }
+.source-pick em { font-style: normal; font-weight: 600; letter-spacing: .04em; text-transform: none; color: rgba(255, 255, 255, .62); }
+.source-row.is-pick[data-kind="web"] .source-pick { color: #fff; }
+
+/* The file that carries on from the one playing: the accent's wash, as the playing row has. */
+.track-row.source-row.is-match {
+  background:
+    radial-gradient(90% 180% at 0% 50%, rgb(var(--theme-accent-rgb, 255 255 255) / .24), rgb(var(--theme-accent-rgb, 255 255 255) / .08) 42%, transparent 72%),
+    rgba(255, 255, 255, .06);
+  box-shadow: inset 0 0 0 1.5px rgb(var(--theme-accent-rgb, 255 255 255) / .7);
+}
+.status-chip.match-chip { background: #fff; color: #0a0b0d; }
+.status-chip.ready-chip { background: rgba(255, 255, 255, .12); color: rgba(255, 255, 255, .78); }
+.track-row.source-row.selected { box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .55); }
+
+.source-section-head {
+  padding: 12px 6px 6px; font-size: 10.5px; line-height: 13px; font-weight: 700;
+  letter-spacing: .12em; text-transform: uppercase; color: rgba(255, 255, 255, .56);
+}
+.source-virtual-row:first-child .source-section-head, .track-list > .source-section-head:first-child { padding-top: 2px; }

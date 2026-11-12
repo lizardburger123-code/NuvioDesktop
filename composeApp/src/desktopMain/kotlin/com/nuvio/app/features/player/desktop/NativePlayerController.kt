@@ -2,6 +2,7 @@ package com.nuvio.app.features.player.desktop
 
 import androidx.compose.ui.graphics.Color
 import co.touchlab.kermit.Logger
+import com.nuvio.app.features.player.PlayerChapter
 import com.nuvio.app.features.player.PlayerControlAddonSubtitleItem
 import com.nuvio.app.features.player.PlayerControlEpisodeItem
 import com.nuvio.app.features.player.PlayerControlFilterItem
@@ -46,6 +47,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.async
@@ -1085,6 +1087,23 @@ internal class NativePlayerController(
     override suspend fun getMediaInfo(): PlayerMediaInfo {
         val current = handle.takeIf { it != 0L } ?: return PlayerMediaInfo()
         return mpvMediaInfo { name -> NativePlayerBridge.stringProperty(current, name).takeIf { it.isNotBlank() } }
+    }
+
+    override suspend fun getChapters(): List<PlayerChapter> {
+        val current = handle.takeIf { it != 0L } ?: return emptyList()
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val count = NativePlayerBridge.stringProperty(current, "chapter-list/count").trim().toIntOrNull() ?: 0
+                (0 until count.coerceIn(0, 64)).mapNotNull { index ->
+                    val start = NativePlayerBridge.stringProperty(current, "chapter-list/$index/time").trim().toDoubleOrNull()
+                        ?: return@mapNotNull null
+                    PlayerChapter(
+                        title = NativePlayerBridge.stringProperty(current, "chapter-list/$index/title").trim(),
+                        startSec = start,
+                    )
+                }
+            }.getOrDefault(emptyList())
+        }
     }
 
     override fun getSubtitleTracks(): List<SubtitleTrack> =
@@ -2385,6 +2404,10 @@ private fun StringBuilder.appendSourceItemJson(item: PlayerControlSourceItem) {
         appendJsonField("borderColor", badge.borderColor)
         append('}')
     }
+    append(',')
+    appendJsonField("filename", item.filename)
+    append(',')
+    appendJsonField("match", item.match)
     append('}')
 }
 

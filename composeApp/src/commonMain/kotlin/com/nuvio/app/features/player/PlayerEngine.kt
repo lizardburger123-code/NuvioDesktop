@@ -48,7 +48,15 @@ interface PlayerEngineController {
     }
 
     suspend fun getMediaInfo(): PlayerMediaInfo = PlayerMediaInfo()
+
+    /** The chapters written into the playing file, in order. Empty when it has none. */
+    suspend fun getChapters(): List<PlayerChapter> = emptyList()
 }
+
+data class PlayerChapter(
+    val title: String,
+    val startSec: Double,
+)
 
 enum class PlayerControlsAction {
     ToggleChrome,
@@ -313,6 +321,10 @@ data class PlayerControlSourceItem(
     val badges: List<PlayerControlSourceBadgeItem> = emptyList(),
     val formattedSize: String = "",
     val badgePlacement: String = "BOTTOM",
+    /** The file's name when the addon gives one; the panel reads the release's traits from it. */
+    val filename: String = "",
+    /** "same" or "close": how this file compares with the one playing now (another episode's list). */
+    val match: String = "",
 )
 
 data class PlayerControlEpisodeItem(

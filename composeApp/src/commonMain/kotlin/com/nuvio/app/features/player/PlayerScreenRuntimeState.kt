@@ -226,6 +226,10 @@ internal class PlayerScreenRuntime(
     var playerMetaVideos by mutableStateOf<List<MetaVideo>>(emptyList())
     var playerMeta by mutableStateOf<MetaDetails?>(null)
     var skipIntervals by mutableStateOf<List<SkipInterval>>(emptyList())
+    /** What the skip databases say about this episode, before the file's chapters are applied. */
+    var onlineSkipIntervals by mutableStateOf<List<SkipInterval>>(emptyList())
+    /** Opening, ending and recap as the playing file's own chapters mark them. */
+    var fileChapterIntervals by mutableStateOf<List<SkipInterval>>(emptyList())
     val autoSkippedIntervals = mutableSetOf<SkipInterval>()
     var lastManualSkipSeekPositions by mutableStateOf<Pair<Long, Long>?>(null)
     var activeSkipInterval by mutableStateOf<SkipInterval?>(null)

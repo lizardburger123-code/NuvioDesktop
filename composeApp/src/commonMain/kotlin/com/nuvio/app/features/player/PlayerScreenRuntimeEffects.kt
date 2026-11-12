@@ -29,7 +29,9 @@ import com.nuvio.app.features.player.skip.autoSkipKey
 import com.nuvio.app.features.player.skip.autoSkipKeysCompletedBy
 import com.nuvio.app.features.player.skip.resolveSkipIntervalLookup
 import com.nuvio.app.features.player.skip.shouldAutoSkip
+import com.nuvio.app.features.player.skip.chapterSkipIntervals
 import com.nuvio.app.features.player.skip.internalSkipAction
+import com.nuvio.app.features.player.skip.mergeChapterSkipIntervals
 import com.nuvio.app.features.player.skip.intervalsAtSeekPositions
 import com.nuvio.app.features.servers.ServerPlayback
 import com.nuvio.app.features.servers.ServerStreams
@@ -529,6 +531,7 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
         playerSettingsUiState.skipIntroEnabled,
     ) {
         skipIntervals = emptyList()
+        onlineSkipIntervals = emptyList()
         autoSkippedIntervals.clear()
         lastManualSkipSeekPositions = null
         activeSkipInterval = null
@@ -542,7 +545,7 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
         if (!playerSettingsUiState.skipIntroEnabled) return@LaunchedEffect
 
         if ((contentType ?: parentMetaType).equals("movie", ignoreCase = true)) {
-            skipIntervals = SkipIntroRepository.getMovieSkipIntervals(parentMetaId, activeVideoId)
+            onlineSkipIntervals = SkipIntroRepository.getMovieSkipIntervals(parentMetaId, activeVideoId)
             return@LaunchedEffect
         }
 
@@ -579,8 +582,33 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
                     imdbEpisode = activeEpisodeNumber ?: lookup.episode,
                 )
             }
-            skipIntervals = intervals
+            onlineSkipIntervals = intervals
         }
+    }
+
+    // The playing file's own chapters: read once it is loaded, again for every new file.
+    val chaptersReady = playbackSnapshot.durationMs > 0L && initialLoadCompleted
+    LaunchedEffect(
+        playerController,
+        playerControllerSourceUrl,
+        activeSourceUrl,
+        chaptersReady,
+        contentType,
+        parentMetaType,
+        playerSettingsUiState.skipIntroEnabled,
+    ) {
+        fileChapterIntervals = emptyList()
+        val controller = playerController ?: return@LaunchedEffect
+        if (!chaptersReady || !playerSettingsUiState.skipIntroEnabled) return@LaunchedEffect
+        if (playerControllerSourceUrl != activeSourceUrl) return@LaunchedEffect
+        // Films use chapters for scenes, not for theme songs.
+        if ((contentType ?: parentMetaType).equals("movie", ignoreCase = true)) return@LaunchedEffect
+        val chapters = runCatching { controller.getChapters() }.getOrDefault(emptyList())
+        fileChapterIntervals = chapterSkipIntervals(chapters, playbackSnapshot.durationMs / 1000.0)
+    }
+
+    LaunchedEffect(onlineSkipIntervals, fileChapterIntervals) {
+        skipIntervals = mergeChapterSkipIntervals(fileChapterIntervals, onlineSkipIntervals)
     }
 
     LaunchedEffect(

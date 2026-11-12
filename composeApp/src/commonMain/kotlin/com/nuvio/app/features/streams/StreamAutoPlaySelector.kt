@@ -203,6 +203,10 @@ object StreamAutoPlaySelector {
         )
     }
 
+    /** Whether [stream] can start right now without the viewer doing anything. */
+    fun canAutoPlay(stream: StreamItem, debridEnabled: Boolean, activeResolverProviderId: String?): Boolean =
+        stream.isAutoPlayable(debridEnabled, activeResolverProviderId)
+
     private fun StreamItem.isAutoPlayable(
         debridEnabled: Boolean,
         activeResolverProviderId: String?,

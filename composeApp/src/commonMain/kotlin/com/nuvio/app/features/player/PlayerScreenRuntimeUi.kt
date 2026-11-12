@@ -38,6 +38,8 @@ import com.nuvio.app.features.party.PartyRepository
 import com.nuvio.app.features.p2p.formatP2pMegabytes
 import com.nuvio.app.features.p2p.formatP2pSpeed
 import com.nuvio.app.features.player.skip.SkipIntroRepository
+import com.nuvio.app.features.streams.SourceMatch
+import com.nuvio.app.features.streams.sourceMatching
 import com.nuvio.app.features.streams.AddonStreamGroup
 import com.nuvio.app.features.streams.StreamBadgeSettingsRepository
 import com.nuvio.app.features.streams.StreamItem
@@ -1402,6 +1404,7 @@ private fun PlayerScreenRuntime.buildPlayerControlSourceItems(): List<PlayerCont
             addonLogo = stream.addonLogo.orEmpty(),
             showAddonLogo = showAddonLogo,
             isCurrent = isCurrentPlayerControlStream(stream),
+            filename = stream.behaviorHints.filename.orEmpty(),
             isEnabled = stream.isSelectableForPlayback(canResolveDebrid),
             badges = stream.badges.map {
                 PlayerControlSourceBadgeItem(
@@ -1425,7 +1428,15 @@ private fun PlayerScreenRuntime.buildPlayerControlEpisodeStreamItems(): List<Pla
     val showFileSizeBadges = streamBadgeState.showFileSizeBadges
     val showAddonLogo = streamBadgeState.showAddonLogo
     val badgePlacement = streamBadgeState.badgePlacement.name
-    return episodeStreamsRepoState.groups.flatMap { group ->
+    // The file that carries on from the one playing now, marked so the panel can lift it out.
+    val groups = episodeStreamsRepoState.groups
+    val playing = activeStream
+    val bingeGroup = currentStreamBingeGroup
+    val continuation = remember(groups, playing, bingeGroup, activeSourceFilename, activeStreamTitle, canResolveDebrid) {
+        groups.flatMap { it.streams }
+            .sourceMatching(currentSourceFingerprint(), bingeGroup) { it.isSelectableForPlayback(canResolveDebrid) }
+    }
+    return groups.flatMap { group ->
         group.streams.map { stream -> group.addonId to stream }
     }.mapIndexed { index, (filterId, stream) ->
         PlayerControlSourceItem(
@@ -1437,6 +1448,12 @@ private fun PlayerScreenRuntime.buildPlayerControlEpisodeStreamItems(): List<Pla
             addonLogo = stream.addonLogo.orEmpty(),
             showAddonLogo = showAddonLogo,
             isCurrent = false,
+            filename = stream.behaviorHints.filename.orEmpty(),
+            match = when {
+                continuation == null || continuation.first !== stream -> ""
+                continuation.second == SourceMatch.SAME -> "same"
+                else -> "close"
+            },
             isEnabled = stream.isSelectableForPlayback(canResolveDebrid),
             badges = stream.badges.map {
                 PlayerControlSourceBadgeItem(

@@ -12,10 +12,13 @@ import com.nuvio.app.features.downloads.DownloadItem
 import com.nuvio.app.features.downloads.DownloadsRepository
 import com.nuvio.app.features.player.skip.NextEpisodeInfo
 import com.nuvio.app.features.player.skip.PlayerNextEpisodeRules
+import com.nuvio.app.features.streams.SourceFingerprint
+import com.nuvio.app.features.streams.SourceMatch
 import com.nuvio.app.features.streams.StreamAutoPlayMode
 import com.nuvio.app.features.streams.StreamAutoPlaySelector
 import com.nuvio.app.features.streams.StreamAutoPlaySource
 import com.nuvio.app.features.streams.StreamItem
+import com.nuvio.app.features.streams.sourceMatching
 import com.nuvio.app.features.watching.domain.isShortPlaceholderDuration
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -76,6 +79,7 @@ internal fun CoroutineScope.launchPlayerNextEpisodeAutoPlay(
     contentType: String?,
     settings: PlayerSettingsUiState,
     currentStreamBingeGroup: String?,
+    currentSource: SourceFingerprint? = null,
     onDownloadedEpisodeSelected: (DownloadItem, MetaVideo) -> Unit,
     onEpisodeStreamSelected: (StreamItem, MetaVideo) -> Unit,
     onManualSelectionRequired: (MetaVideo) -> Unit,
@@ -192,22 +196,6 @@ internal fun CoroutineScope.launchPlayerNextEpisodeAutoPlay(
             settleAutoSelect()
         }
 
-        fun trySelectStream(streams: List<StreamItem>): StreamItem? =
-            StreamAutoPlaySelector.selectAutoPlayStream(
-                streams = streams,
-                mode = effectiveMode,
-                regexPattern = effectiveRegex,
-                source = effectiveSource,
-                installedAddonNames = installedAddonNames,
-                selectedAddons = effectiveSelectedAddons,
-                selectedPlugins = effectiveSelectedPlugins,
-                preferredBingeGroup = preferredBingeGroup,
-                preferBingeGroupInSelection = settings.streamAutoPlayPreferBingeGroup,
-                bingeGroupOnly = bingeGroupOnlyManualMode,
-                debridEnabled = debridSettings.canResolvePlayableLinks,
-                activeResolverProviderId = debridSettings.activeResolverProviderId,
-            )
-
         fun tryBingeGroupOnly(streams: List<StreamItem>): StreamItem? {
             if (preferredBingeGroup == null || !settings.streamAutoPlayPreferBingeGroup) return null
             return StreamAutoPlaySelector.selectAutoPlayStream(
@@ -226,9 +214,42 @@ internal fun CoroutineScope.launchPlayerNextEpisodeAutoPlay(
             )
         }
 
+        // The same release as the episode that just played (same group, quality and dynamic
+        // range), for addons that don't declare a binge group.
+        fun trySameSource(streams: List<StreamItem>): StreamItem? {
+            if (!settings.streamAutoPlayPreferBingeGroup || currentSource == null) return null
+            val match = streams.sourceMatching(currentSource, bingeGroup = null) { stream ->
+                StreamAutoPlaySelector.canAutoPlay(
+                    stream,
+                    debridSettings.canResolvePlayableLinks,
+                    debridSettings.activeResolverProviderId,
+                )
+            } ?: return null
+            return match.first.takeIf { match.second == SourceMatch.SAME }
+        }
+
+        fun tryContinueSource(streams: List<StreamItem>): StreamItem? =
+            tryBingeGroupOnly(streams) ?: trySameSource(streams)
+
+        fun trySelectStream(streams: List<StreamItem>): StreamItem? =
+            tryContinueSource(streams) ?: StreamAutoPlaySelector.selectAutoPlayStream(
+                streams = streams,
+                mode = effectiveMode,
+                regexPattern = effectiveRegex,
+                source = effectiveSource,
+                installedAddonNames = installedAddonNames,
+                selectedAddons = effectiveSelectedAddons,
+                selectedPlugins = effectiveSelectedPlugins,
+                preferredBingeGroup = preferredBingeGroup,
+                preferBingeGroupInSelection = settings.streamAutoPlayPreferBingeGroup,
+                bingeGroupOnly = bingeGroupOnlyManualMode,
+                debridEnabled = debridSettings.canResolvePlayableLinks,
+                activeResolverProviderId = debridSettings.activeResolverProviderId,
+            )
+
         val selectionCoordinator = NextEpisodeStreamSelectionCoordinator(
             selectAfterDelay = ::trySelectStream,
-            selectPreferred = ::tryBingeGroupOnly,
+            selectPreferred = ::tryContinueSource,
         )
 
         fun applySelectionDecision(decision: NextEpisodeStreamSelectionDecision) {

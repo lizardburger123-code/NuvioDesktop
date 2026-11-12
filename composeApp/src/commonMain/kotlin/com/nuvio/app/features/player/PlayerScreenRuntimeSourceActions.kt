@@ -13,6 +13,8 @@ import com.nuvio.app.features.p2p.P2pSettingsRepository
 import com.nuvio.app.features.p2p.P2pStreamingEngine
 import com.nuvio.app.features.servers.ServerPlayback
 import com.nuvio.app.features.servers.serverPlaybackMessage
+import com.nuvio.app.features.streams.SourceFingerprint
+import com.nuvio.app.features.streams.sourceFingerprint
 import com.nuvio.app.features.streams.StreamItem
 import com.nuvio.app.features.streams.StreamLinkCacheRepository
 import com.nuvio.app.features.streams.YouTubeStreamResolver
@@ -448,6 +450,14 @@ internal fun PlayerScreenRuntime.switchToDownloadedEpisode(downloadItem: Downloa
     controlsVisible = true
 }
 
+/** What is playing now, as traits another episode's files can be compared with. */
+internal fun PlayerScreenRuntime.currentSourceFingerprint(): SourceFingerprint? =
+    activeStream?.sourceFingerprint() ?: sourceFingerprint(
+        addon = activeProviderName,
+        filename = activeSourceFilename,
+        texts = listOf(activeStreamTitle, activeStreamSubtitle),
+    ).takeIf { it.quality.isNotEmpty() }
+
 internal fun PlayerScreenRuntime.playNextEpisode(automatic: Boolean = false) {
     if (nextEpisodeAutoPlaySearching || nextEpisodeAutoPlayCountdown != null) return
     nextEpisodePreloadTriggered = false
@@ -471,6 +481,7 @@ internal fun PlayerScreenRuntime.playNextEpisode(automatic: Boolean = false) {
         contentType = contentType,
         settings = playerSettingsUiState,
         currentStreamBingeGroup = currentStreamBingeGroup,
+        currentSource = currentSourceFingerprint(),
         onDownloadedEpisodeSelected = { item, episode ->
             if (isCurrentRequest()) switchToDownloadedEpisode(item, episode)
         },

@@ -1757,11 +1757,124 @@ const sourceIndexForOffset = offset => {
   return result;
 };
 
-const buildSourceRow = (item, onSelect) => {
+// ---- What kind of release a source is: the same reading as the Sources sheet -------------------
+// Addons only describe a file in its name, so its quality and traits are read out of the text.
+const SOURCE_KINDS = [
+  { id: "imax", label: "IMAX", test: info => info.tags.includes("IMAX") },
+  { id: "openmatte", label: "Open Matte", test: info => info.tags.includes("Open Matte") },
+  { id: "dv", label: "Dolby Vision", test: info => info.tags.includes("DV") },
+  { id: "remux", label: "Remux", test: info => info.tags.includes("Remux") },
+  { id: "hdr", label: "HDR", test: info => info.tags.includes("HDR") || info.tags.includes("HDR10+") },
+  { id: "web", label: "Web", test: info => info.tags.includes("WEB") },
+];
+const SOURCE_QUALITY_RANK = { "4K": 4, "1080p": 3, "720p": 2, SD: 1 };
+const sourceInfoCache = new Map();
+
+const sourceInfo = item => {
+  const key = [item.label, item.subtitle, item.filename, item.formattedSize].join("\u0001");
+  const known = sourceInfoCache.get(key);
+  if (known) return known;
+  const text = [item.label, item.subtitle, item.filename, item.formattedSize].filter(Boolean).join(" \n ");
+  const has = re => re.test(text);
+  const quality = has(/2160p|\b4k\b|uhd/i) ? "4K" : has(/1080p/i) ? "1080p" : has(/720p/i) ? "720p" : has(/480p|\bsd\b/i) ? "SD" : "";
+  const tags = [];
+  if (has(/\bimax\b|imax[ ._-]?enhanced|\bexpanded[ ._-]?(aspect|ratio)?\b/i)) tags.push("IMAX");
+  else if (has(/open[ ._-]?matte|full[ ._-]?frame/i)) tags.push("Open Matte");
+  if (has(/\bdv\b|dolby.?vision|\bdovi\b/i)) tags.push("DV");
+  if (has(/hdr10\+/i)) tags.push("HDR10+");
+  else if (has(/\bhdr(10)?\b/i)) tags.push("HDR");
+  if (has(/remux/i)) tags.push("Remux");
+  else if (has(/blu-?ray|bdrip|brrip/i)) tags.push("Blu-ray");
+  else if (has(/web-?dl|webrip|\bweb\b/i)) tags.push("WEB");
+  if (has(/atmos/i)) tags.push("Atmos");
+  else if (has(/truehd|dts-?hd|dts:?x/i)) tags.push("Lossless");
+  const sizeMatch = text.match(/(\d+(?:\.\d+)?)\s?(GB|MB|GiB|MiB)/i);
+  const sizeGb = sizeMatch ? parseFloat(sizeMatch[1]) / (/g/i.test(sizeMatch[2]) ? 1 : 1024) : 0;
+  const cached = has(/\u26a1|\[\+\]|cached|\[(TB|RD|AD|PM)\+\]/i) && !has(/uncached|not cached/i);
+  const removed = has(/removal reason|removed:|\bexcluded\b/i);
+  const info = { quality, tags, cached, removed, sizeGb };
+  info.kind = (SOURCE_KINDS.find(kind => kind.test(info)) || {}).id || "";
+  // How good the file is to watch: picture first, then whether it plays now, then its extras.
+  info.score = (SOURCE_QUALITY_RANK[quality] || 0) * 100
+    + (cached ? 40 : 0)
+    + (tags.includes("DV") ? 8 : 0)
+    + (tags.includes("HDR10+") ? 6 : tags.includes("HDR") ? 5 : 0)
+    + (tags.includes("Remux") ? 6 : 0)
+    + (tags.includes("Atmos") ? 4 : tags.includes("Lossless") ? 3 : 0)
+    + Math.min(12, Math.log2(1 + sizeGb) * 3);
+  if (sourceInfoCache.size > 4000) sourceInfoCache.clear();
+  sourceInfoCache.set(key, info);
+  return info;
+};
+
+// The best file of each kind. Every pick is a different file: one that tops several kinds says
+// so once, and those kinds then offer their next best.
+const sourcePicks = items => {
+  const rows = items.filter(item => item.isEnabled !== false && !sourceInfo(item).removed);
+  if (rows.length < 3) return [];
+  const picks = [];
+  const taken = new Set();
+  SOURCE_KINDS.forEach(kind => {
+    const ranked = rows.filter(item => kind.test(sourceInfo(item)))
+      .sort((a, b) => sourceInfo(b).score - sourceInfo(a).score);
+    if (!ranked.length || picks.length >= 4) return;
+    const holder = picks.find(pick => pick.item.index === ranked[0].index);
+    if (holder) holder.also.push(kind.label);
+    const item = holder ? ranked.find(candidate => !taken.has(candidate.index)) : ranked[0];
+    if (!item) return;
+    taken.add(item.index);
+    picks.push({ kind: kind.id, label: kind.label, best: !holder, also: [], item });
+  });
+  return picks;
+};
+
+// The list as shown: what carries on from the playing file, then the best of each kind, then all.
+const sourceDisplayRows = items => {
+  const rows = [];
+  const lead = items.find(item => item.match) || items.find(item => item.isCurrent);
+  if (lead && items.length > 1) {
+    rows.push({ header: lead.isCurrent ? "Playing now" : lead.match === "same" ? "Same source as this episode" : "Closest to this episode's source" });
+    rows.push({ item: lead, lead: true });
+  }
+  const picks = sourcePicks(items);
+  if (picks.length) {
+    rows.push({ header: "Best of each" });
+    picks.forEach(pick => rows.push({ item: pick.item, pick }));
+  }
+  if (rows.length) rows.push({ header: "All sources" });
+  items.forEach(item => rows.push({ item }));
+  return rows;
+};
+
+const buildSourceHeader = text => {
+  const head = document.createElement("div");
+  head.className = "source-section-head";
+  head.textContent = text;
+  return head;
+};
+
+const buildSourceRow = (item, onSelect, pick = null) => {
+  const info = sourceInfo(item);
+  const kind = (pick && pick.kind) || info.kind;
   const row = document.createElement("button");
   row.type = "button";
-  row.className = `track-row stream-row source-row${item.isCurrent ? " selected" : ""}${item.isEnabled === false ? " disabled" : ""}`;
+  row.className = `track-row stream-row source-row${item.isCurrent ? " selected" : ""}${item.isEnabled === false ? " disabled" : ""}${pick ? " is-pick" : ""}${item.match ? " is-match" : ""}`;
+  if (kind) row.dataset.kind = kind;
   row.disabled = item.isEnabled === false;
+  if (info.quality) {
+    const plate = document.createElement("span");
+    plate.className = `source-plate q-${info.quality.toLowerCase()}`;
+    const quality = document.createElement("strong");
+    quality.textContent = info.quality;
+    plate.appendChild(quality);
+    const range = info.tags.includes("DV") ? "DV" : info.tags.find(tag => tag.startsWith("HDR")) ? "HDR" : "";
+    if (range) {
+      const small = document.createElement("small");
+      small.textContent = range;
+      plate.appendChild(small);
+    }
+    row.appendChild(plate);
+  }
   row.addEventListener("click", event => {
     event.stopPropagation();
     onSelect(item);
@@ -1769,6 +1882,18 @@ const buildSourceRow = (item, onSelect) => {
 
   const copy = document.createElement("span");
   copy.className = "track-copy";
+
+  if (pick) {
+    const line = document.createElement("span");
+    line.className = "source-pick";
+    line.textContent = pick.best ? `Best ${pick.label}` : `${pick.label}, next best`;
+    if (pick.also.length) {
+      const also = document.createElement("em");
+      also.textContent = ` \u00b7 also the best ${pick.also.slice(0, 2).join(", ")}${pick.also.length > 2 ? ` +${pick.also.length - 2}` : ""}`;
+      line.appendChild(also);
+    }
+    copy.appendChild(line);
+  }
 
   const top = document.createElement("span");
   top.className = "track-row-top";
@@ -1781,6 +1906,17 @@ const buildSourceRow = (item, onSelect) => {
     chip.className = "status-chip";
     chip.textContent = state.playingLabel || "Playing";
     top.appendChild(chip);
+  } else if (item.match) {
+    const chip = document.createElement("span");
+    chip.className = "status-chip match-chip";
+    chip.textContent = item.match === "same" ? "Same source" : "Closest match";
+    top.appendChild(chip);
+  }
+  if (info.cached && !item.isCurrent) {
+    const ready = document.createElement("span");
+    ready.className = "status-chip ready-chip";
+    ready.textContent = "Cached";
+    top.appendChild(ready);
   }
 
   let subtitle = null;
@@ -1907,14 +2043,14 @@ const renderSourceVirtualRows = () => {
   const fragment = document.createDocumentFragment();
   const rendered = [];
   for (let index = start; index < end; index += 1) {
-    const item = sourceVirtualItems[index];
+    const entry = sourceVirtualItems[index];
     const wrapper = document.createElement("div");
     wrapper.className = "source-virtual-row";
     wrapper.style.transform = `translateY(${sourceVirtualOffsets[index]}px)`;
-    const row = buildSourceRow(item, selected => {
+    const row = entry.header ? buildSourceHeader(entry.header) : buildSourceRow(entry.item, selected => {
       send("selectSource", Number(selected.index) || 0);
       window.setTimeout(closePlayerModal, 120);
-    });
+    }, entry.pick || null);
     wrapper.appendChild(row);
     fragment.appendChild(wrapper);
     rendered.push({ index, wrapper });
@@ -1983,12 +2119,13 @@ const renderSourceModal = (modalOpened = false) => {
     );
     return;
   }
-  const nextKey = sourceKeyForItems(items);
+  const rows = sourceDisplayRows(items);
+  const nextKey = `${sourceKeyForItems(items)}\u0001${rows.map(row => row.header ? "h" : row.pick ? `p${row.item.index}` : row.lead ? `l${row.item.index}` : "").join("")}`;
   if (nextKey !== sourceVirtualKey) {
-    resetSourceVirtualState(items, nextKey);
+    resetSourceVirtualState(rows, nextKey);
     sourceList.scrollTop = 0;
   } else {
-    sourceVirtualItems = items;
+    sourceVirtualItems = rows;
   }
   sourceList.classList.add("virtualized");
   sourceVirtualSpacer = document.createElement("div");
@@ -2168,11 +2305,11 @@ const renderEpisodeStreams = (modalOpened = false) => {
   }
   if (!compareArrays(currentEpisodeStreamItems, items)) {
     episodeStreamList.textContent = "";
-    items.forEach(item => {
-      episodeStreamList.appendChild(buildSourceRow(item, selected => {
+    sourceDisplayRows(items).forEach(entry => {
+      episodeStreamList.appendChild(entry.header ? buildSourceHeader(entry.header) : buildSourceRow(entry.item, selected => {
         send("selectEpisodeStream", Number(selected.index) || 0);
         window.setTimeout(closePlayerModal, 120);
-      }));
+      }, entry.pick || null));
     });
     currentEpisodeStreamItems = items;
   };
