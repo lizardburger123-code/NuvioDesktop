@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: custom-windows-${{ github.ref }}
@@ -30,16 +31,124 @@ jobs:
         with:
           lfs: false
 
-      - name: Fetch Windows runtime (Git LFS)
+      - name: Read the Windows runtime pointer
+        id: runtime
         shell: bash
         run: |
+          pointer="composeApp/src/desktopMain/native/windows/runtime/libmpv-2.dll"
+          echo "oid=$(sed -n 's/^oid sha256://p' "${pointer}" | tr -d '\r')" >> "$GITHUB_OUTPUT"
+          echo "size=$(sed -n 's/^size //p' "${pointer}" | tr -d '\r')" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the Windows runtime from the cache
+        id: runtime-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: composeApp/src/desktopMain/native/windows/runtime/libmpv-2.dll
+          key: windows-libmpv-${{ steps.runtime.outputs.oid }}
+
+      - name: Fetch Windows runtime
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUNTIME_OID: ${{ steps.runtime.outputs.oid }}
+          RUNTIME_SIZE: ${{ steps.runtime.outputs.size }}
+        run: |
+          # libmpv-2.dll is a Git LFS file, and LFS downloads are metered. It is taken, in
+          # order, from the cache, from LFS, then out of an earlier build of this workflow.
+          # Whatever the source, only the exact file the repository names (by SHA-256) is used.
+          $ErrorActionPreference = 'Continue'
+          $target = 'composeApp/src/desktopMain/native/windows/runtime/libmpv-2.dll'
+          $oid = $env:RUNTIME_OID
+          $size = [int64]$env:RUNTIME_SIZE
+          if (-not $oid -or $size -le 0) { Write-Error 'The runtime pointer could not be read.'; exit 1 }
+
+          function Test-Runtime([string]$path) {
+            if (-not (Test-Path -LiteralPath $path)) { return $false }
+            if ((Get-Item -LiteralPath $path).Length -ne $size) { return $false }
+            return ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLower() -eq $oid)
+          }
+
+          if (Test-Runtime $target) { Write-Host 'Runtime: from the cache.'; exit 0 }
+
           git lfs pull --include="composeApp/src/desktopMain/native/windows/runtime/**" --exclude=""
-          runtime_path="composeApp/src/desktopMain/native/windows/runtime/libmpv-2.dll"
-          runtime_size="$(wc -c < "${runtime_path}" 2>/dev/null || echo 0)"
-          if (( runtime_size < 1000000 )); then
-            echo "libmpv-2.dll was not materialized from Git LFS (size ${runtime_size})." >&2
+          if (Test-Runtime $target) { Write-Host 'Runtime: from Git LFS.'; exit 0 }
+          Write-Host 'Git LFS did not deliver the runtime; looking in earlier builds.'
+
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $work = Join-Path $env:RUNNER_TEMP 'runtime-fallback'
+          $picked = Join-Path $env:RUNNER_TEMP 'runtime-picked'
+          New-Item -ItemType Directory -Force $work, $picked | Out-Null
+
+          function Expand-Msi([string]$msi, [string]$dest) {
+            New-Item -ItemType Directory -Force $dest | Out-Null
+            $p = Start-Process msiexec.exe -ArgumentList '/a', "`"$msi`"", '/qn', "TARGETDIR=`"$dest`"" -Wait -PassThru
+            if ($p.ExitCode -eq 0) { return }
+            Write-Host "msiexec gave $($p.ExitCode); unpacking with 7-Zip instead."
+            & 7z x $msi "-o$dest" -y | Out-Null
+            foreach ($cab in @(Get-ChildItem $dest -Recurse -File -Filter *.cab)) {
+              & 7z x $cab.FullName "-o$($cab.FullName).files" -y | Out-Null
+            }
+          }
+
+          # The file itself, or the same file packed inside the app's jar.
+          function Find-Runtime([string]$root) {
+            foreach ($file in @(Get-ChildItem $root -Recurse -File -ErrorAction SilentlyContinue)) {
+              if ($file.Length -eq $size -and (Test-Runtime $file.FullName)) { return $file.FullName }
+              if ($file.Length -lt 5MB) { continue }
+              $zip = $null
+              try {
+                $zip = [System.IO.Compression.ZipFile]::OpenRead($file.FullName)
+                $entry = $zip.Entries | Where-Object { $_.FullName -eq 'native/windows/libmpv-2.dll' } | Select-Object -First 1
+                if ($entry) {
+                  $out = Join-Path $picked 'libmpv-2.dll'
+                  [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $out, $true)
+                  if (Test-Runtime $out) { return $out }
+                }
+              } catch {
+              } finally {
+                if ($zip) { $zip.Dispose() }
+              }
+            }
+            return $null
+          }
+
+          function Search-Installers([string]$dir) {
+            $n = 0
+            foreach ($msi in @(Get-ChildItem $dir -Recurse -File -Filter *.msi -ErrorAction SilentlyContinue)) {
+              $n++
+              $out = Join-Path $dir "unpacked-$n"
+              Expand-Msi $msi.FullName $out
+              $hit = Find-Runtime $out
+              if ($hit) { return $hit }
+            }
+            return $null
+          }
+
+          $found = $null
+          $runs = @(gh run list --repo $env:GITHUB_REPOSITORY --workflow custom-windows-build.yml --status success --limit 6 --json databaseId --jq '.[].databaseId')
+          foreach ($run in $runs) {
+            if (-not $run) { continue }
+            $dir = Join-Path $work "run-$run"
+            gh run download $run --repo $env:GITHUB_REPOSITORY --name nuvio-custom-windows-x64 --dir $dir
+            if ($LASTEXITCODE -ne 0) { continue }
+            $found = Search-Installers $dir
+            if ($found) { Write-Host "Runtime: from the installer built by run $run."; break }
+          }
+
+          if (-not $found) {
+            Write-Error 'libmpv-2.dll could not be fetched: Git LFS is over its budget and no earlier build holds the same file.'
             exit 1
-          fi
+          }
+          Copy-Item -LiteralPath $found -Destination $target -Force
+          if (-not (Test-Runtime $target)) { Write-Error 'The recovered runtime does not match the repository.'; exit 1 }
+          exit 0
+
+      - name: Keep the Windows runtime in the cache
+        if: steps.runtime-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: composeApp/src/desktopMain/native/windows/runtime/libmpv-2.dll
+          key: ${{ steps.runtime-cache.outputs.cache-primary-key }}
 
       - name: Set up Java
         uses: actions/setup-java@v5
