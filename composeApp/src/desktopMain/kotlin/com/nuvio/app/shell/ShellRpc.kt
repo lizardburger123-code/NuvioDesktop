@@ -23,6 +23,7 @@ import com.nuvio.app.features.streams.StreamAutoPlayMode
 import com.nuvio.app.features.streams.StreamItem
 import com.nuvio.app.features.streams.StreamLinkCacheRepository
 import com.nuvio.app.features.streams.StreamsRepository
+import com.nuvio.app.features.mdblist.MdbListSettingsRepository
 import com.nuvio.app.features.watched.WatchedItem
 import com.nuvio.app.features.watched.WatchedRepository
 import com.nuvio.app.features.watchprogress.WatchProgressUiState
@@ -194,6 +195,8 @@ internal class ShellRpc(private val host: ShellHost) {
         "torbox.clear" -> ShellTorbox.clear()
         "torbox.cache" -> ShellTorbox.cache(params.string("hash") ?: error("That source has no torrent to send."), params.string("name"))
         "torbox.cacheStatus" -> ShellTorbox.status(params["hashes"].asStringList())
+        "ratings.get" -> ratingsJson()
+        "ratings.set" -> setRatings(params)
         "net.get" -> ShellNet.settings()
         "net.set" -> ShellNet.apply(ShellNet.Mode.of(params.string("mode")), params.string("proxy"))
         "net.test" -> withContext(Dispatchers.IO) { ShellNet.test(params.string("url").orEmpty()) }
@@ -440,13 +443,14 @@ internal class ShellRpc(private val host: ShellHost) {
         }
         watch("watchLater", WatchLaterStore.items) { items -> watchLaterJson(items) }
         WatchedRepository.ensureLoaded()
-        watch("completed", combine(WatchedRepository.uiState, WatchedRepository.fullyWatchedSeriesKeys, ShellTrophyStore.hidden, WatchProgressRepository.uiState) { state, series, hidden, progress -> listOf(state, series, hidden, progress) }) { parts ->
+        watch("completed", combine(WatchedRepository.uiState, WatchedRepository.fullyWatchedSeriesKeys, ShellTrophyStore.hidden, WatchProgressRepository.uiState, ShellAiring.state) { state, series, hidden, progress, airing -> listOf(state, series, hidden, progress, airing) }) { parts ->
             @Suppress("UNCHECKED_CAST")
             completedJson(
                 (parts[0] as WatchedUiState).items,
                 parts[1] as Set<String>,
                 parts[2] as Set<String>,
                 (parts[3] as WatchProgressUiState).entries,
+                parts[4] as ShellAiring.State,
             )
         }
         // Season finishes, for the trophy pop-up.
@@ -462,12 +466,21 @@ internal class ShellRpc(private val host: ShellHost) {
         fullSeries: Set<String>,
         hidden: Set<String>,
         progress: List<WatchProgressEntry>,
+        airing: ShellAiring.State,
     ): JsonArray {
         val items = watched.filter { "${it.type}:${it.id}" !in hidden }
         val films = items.filter { !it.isEpisode && it.type != "series" }
         val seriesEpisodes = items.filter { it.type == "series" }.groupBy { it.id }
-        val series = seriesEpisodes
+        val caughtUp = seriesEpisodes
             .filter { (id, _) -> fullSeries.any { key -> key == "series:$id" || key.startsWith("series:$id:") } }
+        // Caught up is not finished: a series that is still airing is not a trophy yet. One that
+        // was completed just now waits for that verdict instead of flashing onto the shelf.
+        ShellAiring.review(caughtUp.keys)
+        val now = System.currentTimeMillis()
+        val series = caughtUp
+            .filter { (id, entries) ->
+                id !in airing.ongoing && (id in airing.known || now - entries.maxOf { it.markedAtEpochMs } > 15 * 60_000L)
+            }
             .map { (_, entries) -> entries.maxBy { it.markedAtEpochMs } }
         // Time watched: the player's own duration where it played the title; episodes add up.
         val durationByTitle = progress.groupBy { it.parentMetaId }
@@ -941,6 +954,39 @@ internal class ShellRpc(private val host: ShellHost) {
             next
         }
         return JsonPrimitive(true)
+    }
+
+    // ---- Ratings from other sites (MDBList, with the user's own key) --------------------------
+
+    private fun ratingsJson(): JsonObject {
+        MdbListSettingsRepository.ensureLoaded()
+        val settings = MdbListSettingsRepository.snapshot()
+        return buildJsonObject {
+            put("enabled", settings.enabled)
+            put("hasKey", settings.hasApiKey)
+            // Enough of the key to recognise it; never the key itself.
+            put("keyHint", settings.apiKey.takeLast(4))
+        }
+    }
+
+    private suspend fun setRatings(params: JsonObject): JsonElement {
+        MdbListSettingsRepository.ensureLoaded()
+        params.string("apiKey")?.trim()?.let { key ->
+            if (key.isNotEmpty()) {
+                require(key.matches(Regex("[A-Za-z0-9_-]{8,128}"))) { "That doesn't look like an MDBList key." }
+                val accepted = withContext(Dispatchers.IO) {
+                    runCatching { com.nuvio.app.features.addons.httpGetText("https://api.mdblist.com/user/?apikey=$key") }
+                        .map { body -> "error" !in body.take(200).lowercase() || "user_id" in body }
+                        .getOrDefault(false)
+                }
+                require(accepted) { "MDBList didn't accept that key. Copy it again from mdblist.com > Preferences > API Access." }
+            }
+            MdbListSettingsRepository.setApiKey(key)
+            MdbListSettingsRepository.setEnabled(key.isNotEmpty())
+        }
+        params.bool("enabled")?.let { MdbListSettingsRepository.setEnabled(it) }
+        runCatching { com.nuvio.app.features.mdblist.MdbListMetadataService.clearCache() }
+        return ratingsJson()
     }
 
     private fun playbackJson(): JsonArray {

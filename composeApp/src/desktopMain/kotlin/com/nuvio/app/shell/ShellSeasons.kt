@@ -27,6 +27,10 @@ import java.time.LocalDate
  * Season finishes, for the trophy pop-up: when the last unwatched episode of a season is watched
  * (in the player, or marked by hand), the season is announced once. Episodes that arrive in bulk
  * from a sync, or that were watched long ago, never announce anything.
+ *
+ * A season is only finished once it has finished coming out: being caught up with a season that
+ * is still airing announces nothing (see ShellAiring). Such a season waits, and is announced when
+ * it turns out to be over.
  */
 internal object ShellSeasons {
     private val log = Logger.withTag("ShellSeasons")
@@ -45,9 +49,33 @@ internal object ShellSeasons {
     /** "seriesId:season" pairs already announced (kept across restarts). */
     private val announced: MutableSet<String> by lazy { store.getStringSet("seasons_announced").orEmpty().toMutableSet() }
 
+    /** "type|seriesId|season": all aired episodes seen, but the season is still coming out. */
+    private val waiting: MutableSet<String> by lazy { store.getStringSet("seasons_waiting").orEmpty().toMutableSet() }
+
+    /** A season announced while it was still airing (an earlier version did that) is taken back. */
+    private fun takeBack(id: String, season: Int) {
+        synchronized(this) {
+            if (!announced.remove("$id:$season")) return
+            store.putStringSet("seasons_announced", announced.toSet())
+        }
+        log.i { "Season $season of $id is still airing: its trophy is taken back" }
+        _events.value = _events.value.filterNot { it["key"]?.toString()?.trim('"') == "$id:$season" }
+    }
+
     @Synchronized fun start() {
         if (started) return
         started = true
+        ShellAiring.onStillAiring = ::takeBack
+        // Seasons that were waiting for their run to end: look again a little after launch.
+        scope.launch {
+            delay(20_000)
+            val pending = synchronized(this@ShellSeasons) { waiting.toList() }
+            pending.forEach { line ->
+                val parts = line.split('|')
+                val season = parts.getOrNull(2)?.toIntOrNull()
+                if (parts.size == 3 && season != null) check(parts[1], parts[0], season)
+            }
+        }
         WatchedRepository.ensureLoaded()
         WatchProgressRepository.ensureLoaded()
         scope.launch {
@@ -78,15 +106,22 @@ internal object ShellSeasons {
 
     private suspend fun check(id: String, type: String, season: Int) {
         val key = "$id:$season"
-        if (key in announced) return
         // Let the watched record settle (the player marks the episode and saves progress separately).
         delay(1500)
         val meta = meta(type, id) ?: return
         val today = LocalDate.now().toString()
-        val episodes = meta.videos.filter { it.season == season && it.episode != null }
-            .filter { video -> video.released?.take(10)?.let { it <= today } ?: true }
-            .distinctBy { it.episode }
+        val listed = meta.videos.filter { it.season == season && it.episode != null }.distinctBy { it.episode }
+        val episodes = listed.filter { video -> video.available != false && (video.released?.take(10)?.let { it <= today } ?: true) }
         if (episodes.size < 2) return
+        // More of this season is still to come: an episode is listed that hasn't aired, or this is
+        // the latest season of a series that is still airing.
+        val lastSeason = meta.videos.mapNotNull { it.season }.filter { it > 0 }.maxOrNull()
+        val stillComing = episodes.size < listed.size || (season == lastSeason && ShellAiring.note(meta, id))
+        val waitKey = "$type|$id|$season"
+        // Announced while it was still airing (an earlier version did that): taken back, so the
+        // season can be earned for real when it ends.
+        if (stillComing) takeBack(id, season)
+        if (key in announced) return
         val progress = WatchProgressRepository.uiState.value.entries
             .filter { it.parentMetaId == id && it.isEffectivelyCompleted }
             .map { it.videoId }.toSet()
@@ -95,12 +130,19 @@ internal object ShellSeasons {
                 runCatching { meta.episodePlaybackId(video) in progress }.getOrDefault(false) ||
                 video.id in progress
         }
-        if (!allSeen) return
+        if (!allSeen || stillComing) {
+            // Caught up with a season that isn't over: remember it, and look again later.
+            synchronized(this) {
+                val changed = if (allSeen && stillComing) waiting.add(waitKey) else waiting.remove(waitKey)
+                if (changed) store.putStringSet("seasons_waiting", waiting.toSet())
+            }
+            return
+        }
         synchronized(this) {
+            if (waiting.remove(waitKey)) store.putStringSet("seasons_waiting", waiting.toSet())
             if (!announced.add(key)) return
             store.putStringSet("seasons_announced", announced.toSet())
         }
-        val lastSeason = meta.videos.mapNotNull { it.season }.filter { it > 0 }.maxOrNull()
         val event = buildJsonObject {
             put("key", key)
             put("id", meta.id)

@@ -199,22 +199,32 @@ export const goSection = (name, params = {}) => {
   const target = { name, params };
   // A section is the same section whatever its view state (Discover filters, settings page).
   const sameSection = e => (name === "settings" || name === "search" ? same(e, target) : sectionId(e) === sectionId(target));
+  // Asked for a particular view of the section (Library's Trophies tab, say): what was asked for
+  // wins over the view the section was left in; anything not mentioned stays as it was.
+  const wanted = entry => ({ ...(entry.params || {}), ...params });
+  const differs = entry => Object.keys(params).length > 0 && !same(entry, { name, params: wanted(entry) });
   if (sameSection(top())) {
-    window.scrollTo({ top: 0, behavior: reduceMotion() ? "auto" : "smooth" });
+    if (differs(top())) navigate(name, wanted(top()), { replace: true });
+    else window.scrollTo({ top: 0, behavior: reduceMotion() ? "auto" : "smooth" });
     return;
   }
   saveScroll();
   const home = state.sections[0];
-  let entry = name === "home" ? home : state.sections.find(sameSection);
+  const kept = name === "home" ? home : state.sections.find(sameSection);
+  let entry = kept;
   if (!entry) {
     seq += 1;
     entry = { name, params, key: seq, scroll: 0 };
+  } else if (entry !== home && differs(entry)) {
+    entry = { ...entry, params: wanted(entry), scroll: 0 };
   }
-  const others = state.sections.slice(1).filter(e => e !== entry);
+  // The same screen with new params replaces its old self everywhere it is remembered.
+  const swap = list => (kept && entry !== kept ? list.map(e => (e === kept ? entry : e)) : list);
+  const others = swap(state.sections).slice(1).filter(e => e !== entry);
   const sections = [home, ...[...others, ...(entry === home ? [] : [entry])].slice(-KEEP_SECTIONS)];
   navId += 1;
   commit({
-    stack: [...state.stack, entry].slice(-MAX_HISTORY),
+    stack: [...swap(state.stack), entry].slice(-MAX_HISTORY),
     future: [],
     sections,
     nav: { id: navId, kind: "section", dir: directionBetween(state.stack, entry) },

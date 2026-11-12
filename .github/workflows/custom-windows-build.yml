@@ -58,6 +58,7 @@ jobs:
           cat > local.properties <<'EOF'
           NUVIO_SUPABASE_URL=https://offline.invalid
           NUVIO_SUPABASE_ANON_KEY=offline-build
+          INTRODB_API_URL=https://api.introdb.app
           EOF
           sed -i 's/^[[:space:]]*//' local.properties
 

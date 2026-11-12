@@ -87,9 +87,11 @@ data class PlayerSettingsUiState(
     val streamAutoPlayNextEpisodeFallbackEnabled: Boolean = true,
     val streamAutoPlayPreferBingeGroup: Boolean = true,
     val streamAutoPlayReuseBingeGroup: Boolean = false,
-    val nextEpisodeThresholdMode: NextEpisodeThresholdMode = NextEpisodeThresholdMode.PERCENTAGE,
+    // Fork default: the "Next episode" card comes up 90 seconds before the end (where the
+    // credits usually are) instead of in the last 1%. Known credits (IntroDB) still win.
+    val nextEpisodeThresholdMode: NextEpisodeThresholdMode = NextEpisodeThresholdMode.MINUTES_BEFORE_END,
     val nextEpisodeThresholdPercent: Float = 99f,
-    val nextEpisodeThresholdMinutesBeforeEnd: Float = 2f,
+    val nextEpisodeThresholdMinutesBeforeEnd: Float = 1.5f,
     val preloadNextEpisodeSources: Boolean = false,
     val useLibass: Boolean = true,
     val libassRenderType: String = "CUES",
@@ -171,9 +173,9 @@ object PlayerSettingsRepository {
     private var streamAutoPlayNextEpisodeFallbackEnabled = true
     private var streamAutoPlayPreferBingeGroup = true
     private var streamAutoPlayReuseBingeGroup = false
-    private var nextEpisodeThresholdMode = NextEpisodeThresholdMode.PERCENTAGE
+    private var nextEpisodeThresholdMode = NextEpisodeThresholdMode.MINUTES_BEFORE_END
     private var nextEpisodeThresholdPercent = 99f
-    private var nextEpisodeThresholdMinutesBeforeEnd = 2f
+    private var nextEpisodeThresholdMinutesBeforeEnd = 1.5f
     private var preloadNextEpisodeSources = false
     private var useLibass = true
     private var libassRenderType = "OVERLAY_OPEN_GL"
@@ -261,9 +263,9 @@ object PlayerSettingsRepository {
         streamAutoPlayNextEpisodeFallbackEnabled = true
         streamAutoPlayPreferBingeGroup = true
         streamAutoPlayReuseBingeGroup = false
-        nextEpisodeThresholdMode = NextEpisodeThresholdMode.PERCENTAGE
+        nextEpisodeThresholdMode = NextEpisodeThresholdMode.MINUTES_BEFORE_END
         nextEpisodeThresholdPercent = 99f
-        nextEpisodeThresholdMinutesBeforeEnd = 2f
+        nextEpisodeThresholdMinutesBeforeEnd = 1.5f
         preloadNextEpisodeSources = false
         useLibass = true
         libassRenderType = "OVERLAY_OPEN_GL"
@@ -425,9 +427,9 @@ object PlayerSettingsRepository {
         streamAutoPlayReuseBingeGroup = PlayerSettingsStorage.loadStreamAutoPlayReuseBingeGroup() ?: false
         nextEpisodeThresholdMode = PlayerSettingsStorage.loadNextEpisodeThresholdMode()
             ?.let { runCatching { NextEpisodeThresholdMode.valueOf(it) }.getOrNull() }
-            ?: NextEpisodeThresholdMode.PERCENTAGE
+            ?: NextEpisodeThresholdMode.MINUTES_BEFORE_END
         nextEpisodeThresholdPercent = PlayerSettingsStorage.loadNextEpisodeThresholdPercent() ?: 99f
-        nextEpisodeThresholdMinutesBeforeEnd = PlayerSettingsStorage.loadNextEpisodeThresholdMinutesBeforeEnd() ?: 2f
+        nextEpisodeThresholdMinutesBeforeEnd = PlayerSettingsStorage.loadNextEpisodeThresholdMinutesBeforeEnd() ?: 1.5f
         preloadNextEpisodeSources = PlayerSettingsStorage.loadPreloadNextEpisodeSources() ?: false
         useLibass = PlayerSettingsStorage.loadUseLibass() ?: true
         libassRenderType = PlayerSettingsStorage.loadLibassRenderType() ?: "CUES"

@@ -61,7 +61,14 @@ export function AppProvider({ boot, children }) {
         type: entry.type, id: entry.id, videoId: entry.videoId, season: entry.season, episode: entry.episode,
         nextEpisode: Boolean(entry.nextEpisode),
       });
-      if (result?.handled) return;
+      if (result?.handled) {
+        // The player is up. Behind it, open the series' own page: when the episode ends (or is
+        // closed) the next one is right there, instead of Home.
+        if (entry.type === "series" || entry.season != null) {
+          navigate("details", { type: entry.type, id: entry.id, name: entry.name, ...(result.season ?? entry.season) != null ? { season: result.season ?? entry.season } : {} });
+        }
+        return;
+      }
       if (result?.videoId) target = { videoId: result.videoId, season: result.season, episode: result.episode };
     } catch (error) {
       toast(error.message, { tone: "error" });

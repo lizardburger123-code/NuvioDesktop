@@ -67,7 +67,8 @@ jobs:
           # these endpoints.
           printf '%s\n' \
             'NUVIO_SUPABASE_URL=https://offline.invalid' \
-            'NUVIO_SUPABASE_ANON_KEY=offline-build' > local.properties
+            'NUVIO_SUPABASE_ANON_KEY=offline-build' \
+            'INTRODB_API_URL=https://api.introdb.app' > local.properties
 
       - name: Build DEB
         shell: bash

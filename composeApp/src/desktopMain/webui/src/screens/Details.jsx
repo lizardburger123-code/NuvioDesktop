@@ -9,6 +9,7 @@ import Row from "../components/Row.jsx";
 import { PosterCard, WideCard } from "../components/Cards.jsx";
 import Sources from "./Sources.jsx";
 import TitleMark from "../components/TitleMark.jsx";
+import Ratings from "../components/Ratings.jsx";
 import HazeDetails from "../haze/Details.jsx";
 import { lookOf } from "../lib/look.js";
 import { episodeCode, minutesLeft, year } from "../lib/format.js";
@@ -140,8 +141,9 @@ export default function Details({ params }) {
         <span className="details-kicker" data-rise>{[meta.type === "series" ? "Series" : "Film", ...(meta.genres?.slice(0, 3) || [])].join(" · ")}</span>
         <TitleMark meta={meta} />
         <div className="details-meta num" data-rise>
-          {metaLine.map(item => <span key={item}>{item}</span>)}
-          {meta.imdbRating ? <span>IMDb {meta.imdbRating}</span> : null}
+          {metaLine.slice(0, 1).map(item => <span key={item}>{item}</span>)}
+          <Ratings meta={meta} />
+          {metaLine.slice(1).map(item => <span key={item}>{item}</span>)}
         </div>
         {meta.description ? <p className="details-desc" data-rise dir="auto">{meta.description}</p> : null}
         <div className="details-actions">
@@ -194,7 +196,7 @@ export default function Details({ params }) {
                 fallbackImage={meta.background}
                 title={video.title || `Episode ${video.episode}`}
                 kicker={`E${video.episode}${video.runtime ? ` · ${video.runtime}m` : ""}`}
-                meta={video.released ? new Date(video.released).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" }) : ""}
+                meta={[video.released ? new Date(video.released).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" }) : null, Number(video.rating) > 0 ? `★ ${Number(video.rating).toFixed(1)}` : null].filter(Boolean).join(" · ")}
                 progress={video.progress}
                 watched={video.watched}
                 badge={video.available === false ? "Upcoming" : null}

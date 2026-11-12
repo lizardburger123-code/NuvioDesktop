@@ -145,6 +145,18 @@ internal object ShellJson {
         putIfNotNull("releaseInfo", meta.releaseInfo)
         putIfNotNull("status", meta.status)
         putIfNotNull("imdbRating", meta.imdbRating)
+        // Scores from other sites (MDBList, when the user has given a key): source, value, certified.
+        if (meta.externalRatings.isNotEmpty()) {
+            put("ratings", buildJsonArray {
+                meta.externalRatings.forEach { rating ->
+                    add(buildJsonObject {
+                        put("source", rating.source)
+                        put("value", rating.value)
+                        put("certified", rating.isCertified)
+                    })
+                }
+            })
+        }
         putIfNotNull("ageRating", meta.ageRating)
         putIfNotNull("runtime", meta.runtime)
         putIfNotNull("country", meta.country)

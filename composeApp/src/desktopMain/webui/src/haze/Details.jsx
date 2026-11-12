@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  LuCheck, LuClapperboard, LuLayoutGrid, LuList, LuListVideo, LuPlay, LuPlus, LuSearch, LuStar, LuTrophy,
+  LuCheck, LuClapperboard, LuLayoutGrid, LuList, LuListVideo, LuPlay, LuPlus, LuSearch, LuTrophy,
 } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useApp } from "../AppContext.jsx";
@@ -8,6 +8,7 @@ import { useArtColor } from "../lib/artColor.js";
 import Row from "../components/Row.jsx";
 import { PosterCard, WideCard } from "../components/Cards.jsx";
 import TitleMark from "../components/TitleMark.jsx";
+import Ratings, { EpisodeScore } from "../components/Ratings.jsx";
 import { year } from "../lib/format.js";
 import "./Details.css";
 
@@ -37,9 +38,12 @@ function Episode({ video, meta, next, nextLabel, onPlay }) {
           {video.available === false ? <span className="hz-tag">Upcoming</span> : null}
         </span>
         {video.overview ? <span className="hz-ep-desc" dir="auto">{video.overview}</span> : null}
-        <span className="hz-ep-meta num">{[video.runtime ? `${video.runtime} min` : null, airDate(video.released)].filter(Boolean).join(" · ")}</span>
+        <span className="hz-ep-meta num">
+          {airDate(video.released) ? <span>{airDate(video.released)}</span> : null}
+          <EpisodeScore value={video.rating} />
+          {video.runtime ? <span>{video.runtime} min</span> : null}
+        </span>
       </span>
-      {video.rating ? <span className="hz-ep-score num" data-tone={scoreTone(video.rating)}><LuStar aria-hidden="true" />{Number(video.rating).toFixed(1)}</span> : null}
     </button>
   );
 }
@@ -54,13 +58,17 @@ function EpisodeTile({ video, meta, next, onPlay }) {
         {video.progress > 0 ? <span className="wide-progress"><span style={{ width: `${Math.min(100, Math.round(video.progress * 100))}%` }} /></span> : null}
       </span>
       <span className="hz-tile-title" dir="auto"><b className="num">{video.episode}</b>{video.title || `Episode ${video.episode}`}</span>
-      <span className="hz-ep-meta num">{[video.runtime ? `${video.runtime} min` : null, video.rating ? `★ ${Number(video.rating).toFixed(1)}` : null, airDate(video.released)].filter(Boolean).join(" · ")}</span>
+      <span className="hz-ep-meta num">
+        {airDate(video.released) ? <span>{airDate(video.released)}</span> : null}
+        <EpisodeScore value={video.rating} />
+        {video.runtime ? <span>{video.runtime} min</span> : null}
+      </span>
     </button>
   );
 }
 
 /** Every episode's score on one sheet: seasons across, episodes down. Click a square to play it. */
-function Ratings({ meta, seasons, onPlay }) {
+function RatingsSheet({ meta, seasons, onPlay }) {
   const real = seasons.filter(s => s > 0);
   const bySeason = useMemo(() => {
     const map = new Map();
@@ -178,8 +186,8 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
         </div>
         <TitleMark meta={meta} />
         <div className="hz-hero-meta num" data-rise>
-          {meta.imdbRating ? <span className="hz-rating"><LuStar aria-hidden="true" /><b>{meta.imdbRating}</b>IMDb</span> : null}
           {year(meta.releaseInfo) ? <span>{year(meta.releaseInfo)}</span> : null}
+          <Ratings meta={meta} />
           {series && realSeasons ? <span>{realSeasons} {realSeasons === 1 ? "season" : "seasons"}</span> : null}
           {series && episodeCount ? <span>{episodeCount} episodes</span> : null}
           {meta.runtime ? <span>{meta.runtime}</span> : null}
@@ -248,7 +256,7 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
         </section>
       ) : null}
 
-      {tab === "ratings" ? <section className="hz-d-panel"><Ratings meta={meta} seasons={seasons} onPlay={play} /></section> : null}
+      {tab === "ratings" ? <section className="hz-d-panel"><RatingsSheet meta={meta} seasons={seasons} onPlay={play} /></section> : null}
 
       {tab === "cast" ? (
         <section className="hz-d-panel"><div className="hz-cast">{meta.cast.slice(0, 40).map(person => <Person key={`${person.name}:${person.role || ""}`} person={person} />)}</div></section>

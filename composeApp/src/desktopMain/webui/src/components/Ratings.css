@@ -1,0 +1,8 @@
+/* Scores beside the release date: a small plate per site. */
+.ratings { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.rating { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 9px 0 7px; border-radius: 8px; background: rgb(255 255 255 / .1); font-size: var(--fs-12); font-weight: 700; color: var(--ink-2); white-space: nowrap; }
+.rating svg { width: 15px; height: 15px; flex: none; }
+.rating b { font-size: var(--fs-14); font-weight: 800; color: #fff; }
+.rating small { font-size: var(--fs-12); font-weight: 700; }
+.ep-score { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; color: #e8ebf0; }
+.ep-score svg { width: 12px; height: 12px; }

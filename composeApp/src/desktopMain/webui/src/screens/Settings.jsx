@@ -220,8 +220,53 @@ function Appearance() {
       </Panel>
 
 
+      <SiteRatings />
       <HomeRows />
     </>
+  );
+}
+
+/** Rotten Tomatoes, Metacritic and the rest beside each title's release date, through MDBList. */
+function SiteRatings() {
+  const { toast } = useApp();
+  const [state, setState] = useState(null);
+  const [key, setKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { call("ratings.get").then(setState, () => setState({ enabled: false, hasKey: false })); }, []);
+
+  const send = async (params, done) => {
+    setBusy(true);
+    try {
+      setState(await call("ratings.set", params));
+      setKey("");
+      toast(done);
+    } catch (error) {
+      toast(error.message, { tone: "error" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Panel
+      title="Ratings"
+      description="IMDb comes with your catalogs. Rotten Tomatoes (critics and audience), Metacritic and Letterboxd scores come from MDBList and need your own free key."
+    >
+      {state?.hasKey ? (
+        <div className="toggle-row">
+          <span>Show scores from other sites<small>Using your MDBList key ending in {state.keyHint}. They appear beside the release date on every title's page.</small></span>
+          <Toggle checked={state.enabled} onChange={value => send({ enabled: value }, value ? "Scores from other sites are on" : "Scores from other sites are off")} label="Show scores from other sites" />
+        </div>
+      ) : null}
+      <form className="install-row" onSubmit={event => { event.preventDefault(); if (key.trim()) send({ apiKey: key.trim() }, "MDBList key saved. Open any title to see its scores."); }}>
+        <input className="field" type="password" value={key} onChange={event => setKey(event.target.value)} placeholder={state?.hasKey ? "Paste a different key" : "Paste your MDBList key"} autoComplete="off" spellCheck={false} aria-label="MDBList API key" />
+        <button className="btn btn-primary btn-sm" type="submit" disabled={busy || !key.trim()}>{busy ? <LuLoaderCircle className="spin" /> : null} Save</button>
+      </form>
+      <div className="classic-row" style={{ marginTop: 12 }}>
+        <button className="btn btn-ghost btn-sm" onClick={() => call("app.openUrl", { url: "https://mdblist.com/preferences/" })}><LuExternalLink /> Get a key (mdblist.com › Preferences › API Access)</button>
+        {state?.hasKey ? <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => send({ apiKey: "" }, "MDBList key removed")}>Remove key</button> : null}
+      </div>
+    </Panel>
   );
 }
 

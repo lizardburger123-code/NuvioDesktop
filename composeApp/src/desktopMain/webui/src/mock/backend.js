@@ -107,6 +107,7 @@ let storeItems = [
 ];
 let searchHistory = ["the hunt", "fem", "persona", "death", "Slow Horses"];
 
+let siteRatings = { enabled: true, hasKey: true, keyHint: "9f2c" };
 let appearance = {
   // Preview a look with ?mock&look=haze.
   layout: new URLSearchParams(window.location.search).get("look") || "cinema",
@@ -161,6 +162,10 @@ const detailsFor = (type, id) => {
   return {
     ...base,
     background: base.banner,
+    ratings: siteRatings.enabled ? [
+      { source: "imdb", value: Number(base.imdbRating) || 7.1 }, { source: "tomatoes", value: isSeries ? 93 : 54, certified: isSeries },
+      { source: "audience", value: 88 }, { source: "metacritic", value: 81 },
+    ] : [],
     status: isSeries ? "Ongoing" : "Released",
     ageRating: "TV-MA",
     director: isSeries ? [] : ["Thomas Vinterberg"],
@@ -350,6 +355,12 @@ export const createMockBackend = deliver => {
     "downloads.play": () => true,
     "downloads.folder": () => ({ path: "C:\\Users\\you\\Downloads\\Nuvio" }),
     "downloads.setFolder": ({ path }) => ({ path: path || "C:\\Users\\you\\Downloads\\Nuvio" }),
+    "ratings.get": () => ({ ...siteRatings }),
+    "ratings.set": patch => {
+      if (patch.apiKey != null) siteRatings = { enabled: Boolean(patch.apiKey), hasKey: Boolean(patch.apiKey), keyHint: String(patch.apiKey).slice(-4) };
+      if (patch.enabled != null) siteRatings = { ...siteRatings, enabled: patch.enabled };
+      return { ...siteRatings };
+    },
     "net.get": () => ({ ...net }),
     "net.set": ({ mode, proxy }) => { net = { ...net, mode, proxy: proxy || net.proxy, restartForPictures: mode !== "off", warp: { ...net.warp, state: mode === "warp" ? "on" : "off" } }; return { ...net }; },
     "net.test": ({ url }) => new Promise(resolve => setTimeout(() => resolve(net.mode === "off" ? { ok: false, ms: 5012, error: "Connection reset" } : { ok: true, status: 200, ms: 412, bytes: 2048, url }), 600)),

@@ -42,7 +42,7 @@
 .hz-hero .showcase-name { font-size: clamp(44px, 6.4cqw, 88px); margin: 2px 0; }
 
 .hz-hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: var(--fs-14); font-weight: 600; color: #d3d8e0; }
-.hz-hero-meta > span:not(.hz-rating):not(.hz-genre) + span:not(.hz-genre)::before { content: "·"; margin-right: 12px; color: var(--ink-3); }
+.hz-hero-meta > span:not(.hz-rating):not(.hz-genre):not(.ratings) + span:not(.hz-genre):not(.ratings)::before { content: "·"; margin-right: 12px; color: var(--ink-3); }
 .hz-rating { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 8px; border-radius: 8px; color: var(--ink-2); font-size: var(--fs-12); font-weight: 700; background: rgb(255 255 255 / .1); }
 .hz-rating svg { width: 14px; height: 14px; color: #ffd166; fill: #ffd166; }
 .hz-rating b { font-size: var(--fs-14); font-weight: 800; color: #fff; }
