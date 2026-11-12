@@ -581,8 +581,9 @@ internal class ShellRpc(private val host: ShellHost) {
             "details",
             combine(MetaDetailsRepository.uiState, WatchProgressRepository.uiState, WatchLaterStore.items, detailsAlt, WatchedRepository.uiState) { meta, progress, later, alt, _ ->
                 DetailsInputs(meta, progress, later, alt)
-            },
-        ) { (state, progress, later, alt) ->
+            }.combine(ShellRatings.version) { inputs, scores -> inputs to scores },
+        ) { (inputs, _) ->
+            val (state, progress, later, alt) = inputs
             val (wantedType, wantedId) = detailsKey ?: ("" to "")
             val altId = alt.id?.takeIf { alt.key == "$wantedType:$wantedId" }
             val altRunning = alt.running && alt.key == "$wantedType:$wantedId"
@@ -604,7 +605,8 @@ internal class ShellRpc(private val host: ShellHost) {
                         .filter { !it.isCompleted && it.lastPositionMs > 0 }
                         .maxByOrNull { it.lastUpdatedEpochMs }
                     put("meta", ShellJson.details(
-                        meta = meta,
+                        // Scores the catalog didn't bring are filled in as they arrive.
+                        meta = ShellRatings.fill(meta),
                         progressFor = { video -> forContent[video.id] },
                         watchedFor = { video -> runCatching { WatchedRepository.isWatched(meta.id, meta.type, video.season, video.episode) }.getOrDefault(false) },
                         resume = resume,
