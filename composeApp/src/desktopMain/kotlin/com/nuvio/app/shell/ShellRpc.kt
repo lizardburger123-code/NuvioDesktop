@@ -195,6 +195,14 @@ internal class ShellRpc(private val host: ShellHost) {
         "torbox.clear" -> ShellTorbox.clear()
         "torbox.cache" -> ShellTorbox.cache(params.string("hash") ?: error("That source has no torrent to send."), params.string("name"))
         "torbox.cacheStatus" -> ShellTorbox.status(params["hashes"].asStringList())
+        "details.similar" -> ShellSimilar.forTitle(
+            type = params.string("type") ?: "movie",
+            id = params.string("id").orEmpty(),
+            name = params.string("name").orEmpty(),
+            genres = params["genres"].asStringList(),
+            releaseInfo = params.string("releaseInfo"),
+        )
+        "people.works" -> ShellPeople.works(params.string("name").orEmpty())
         "ratings.get" -> ratingsJson()
         "ratings.set" -> setRatings(params)
         "net.get" -> ShellNet.settings()

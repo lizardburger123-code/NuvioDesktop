@@ -9,6 +9,8 @@ import Row from "../components/Row.jsx";
 import { PosterCard, WideCard } from "../components/Cards.jsx";
 import TitleMark from "../components/TitleMark.jsx";
 import Ratings, { EpisodeScore } from "../components/Ratings.jsx";
+import EpisodePicker from "../components/EpisodePicker.jsx";
+import Person from "../components/Person.jsx";
 import { year } from "../lib/format.js";
 import "./Details.css";
 
@@ -134,16 +136,8 @@ function RatingsSheet({ meta, seasons, onPlay }) {
   );
 }
 
-const Person = ({ person }) => (
-  <div className="person">
-    {person.photo ? <img src={person.photo} alt="" loading="lazy" /> : <span className="person-mono">{person.name.split(/\s+/).map(w => w[0]).join("").slice(0, 2)}</span>}
-    <span className="person-name" dir="auto">{person.name}</span>
-    {person.role ? <span className="person-role" dir="auto">{person.role}</span> : null}
-  </div>
-);
-
 /** A title's page in the Haze look. The data and the play logic come from Details; this is the furniture. */
-export default function HazeDetails({ meta, topic, seasons, season, setSeason, episodes, target, play, openSources, saved, heroRef, children }) {
+export default function HazeDetails({ meta, topic, seasons, season, setSeason, episodes, target, chosen, onPickEpisode, similar, play, openSources, saved, heroRef, children }) {
   const { appearance, laterIds, toggleLater, openDetails, toast } = useApp();
   const color = useArtColor([meta.background, meta.banner, meta.poster], appearance?.hazeArt !== false);
   const series = seasons.length > 0;
@@ -195,15 +189,16 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
         </div>
         {meta.description ? <p className="details-desc" data-rise dir="auto">{meta.description}</p> : null}
         <div className="details-actions">
-          <button data-rise className="btn btn-primary details-play" onClick={() => target && play(target)}>
+          <button data-rise className="btn btn-primary details-play" onClick={() => chosen && play(chosen)}>
             <LuPlay className="fill" />
-            <span>{target?.label}</span>
-            {target?.sub ? <span className="details-play-sub num">{target.sub}</span> : null}
+            <span>{chosen?.label}</span>
+            {chosen?.sub ? <span className="details-play-sub num">{chosen.sub}</span> : null}
           </button>
+          {series ? <EpisodePicker meta={meta} seasons={seasons} value={chosen?.videoId} onPick={onPickEpisode} /> : null}
           <button data-rise className={`btn btn-glass${saved ? " is-on" : ""}`} onClick={() => toggleLater(meta)} aria-pressed={saved}>
             {saved ? <LuCheck /> : <LuPlus />} {saved ? "In my list" : "My list"}
           </button>
-          <button data-rise className="btn btn-glass btn-icon" onClick={() => target && openSources(target)} aria-label="Sources" title="Choose a source"><LuListVideo /></button>
+          <button data-rise className="btn btn-glass btn-icon" onClick={() => chosen && openSources(chosen)} aria-label="Sources" title="Choose a source"><LuListVideo /></button>
           {meta.type !== "series" ? (
             <button
               data-rise
@@ -290,9 +285,9 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
         </Row>
       ) : null}
 
-      {meta.moreLikeThis?.length ? (
-        <Row title="You may also like">
-          {meta.moreLikeThis.map(item => (
+      {similar.items.length ? (
+        <Row title="You may also like" subtitle={similar.byGenre ? "By genre" : undefined}>
+          {similar.items.map(item => (
             <PosterCard key={`${item.type}:${item.id}`} item={item} onOpen={openDetails} onToggleLater={toggleLater} saved={laterIds.has(`${item.type}:${item.id}`)} />
           ))}
         </Row>

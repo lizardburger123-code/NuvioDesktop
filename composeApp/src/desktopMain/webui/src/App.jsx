@@ -19,11 +19,12 @@ import Home from "./screens/Home.jsx";
 import Browse from "./screens/Browse.jsx";
 import Search from "./screens/Search.jsx";
 import Details from "./screens/Details.jsx";
+import Person from "./screens/Person.jsx";
 import Library from "./screens/Library.jsx";
 import Settings from "./screens/Settings.jsx";
 import Addons from "./screens/Addons.jsx";
 
-const SCREENS = { home: Home, browse: Browse, search: Search, details: Details, library: Library, settings: Settings, addons: Addons };
+const SCREENS = { home: Home, browse: Browse, search: Search, details: Details, person: Person, library: Library, settings: Settings, addons: Addons };
 
 /**
  * One kept-alive screen. Parked screens stay mounted (state, scroll, decoded images) but are

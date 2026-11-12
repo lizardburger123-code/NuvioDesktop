@@ -171,7 +171,7 @@ const detailsFor = (type, id) => {
     director: isSeries ? [] : ["Thomas Vinterberg"],
     cast: cast.map((name, i) => ({ name, role: ["Jackson Lamb", "River Cartwright", "Diana Taverner", "Catherine Standish", "David Cartwright", "Louisa Guy", "Roddy Ho", "Shirley Dander"][i], photo: person(name) })),
     trailers: [{ key: "trailer1", name: "Official Trailer", site: "YouTube" }],
-    moreLikeThis: trendingSeries.filter(item => item.id !== base.id).slice(0, 8),
+    moreLikeThis: isSeries ? trendingSeries.filter(item => item.id !== base.id).slice(0, 8) : [],
     videos,
     seasons,
     resume: isSeries ? { videoId: `${base.id}:1:1`, season: 1, episode: 1, positionMs: 600000, durationMs: 2760000 } : null,
@@ -355,6 +355,8 @@ export const createMockBackend = deliver => {
     "downloads.play": () => true,
     "downloads.folder": () => ({ path: "C:\\Users\\you\\Downloads\\Nuvio" }),
     "downloads.setFolder": ({ path }) => ({ path: path || "C:\\Users\\you\\Downloads\\Nuvio" }),
+    "details.similar": ({ id }) => [...trendingSeries, ...trendingMovies].filter(item => item.id !== id).slice(0, 12),
+    "people.works": ({ name }) => ({ name, items: [...trendingMovies, ...trendingSeries].slice(0, 14).map((item, i) => ({ id: item.id, type: item.type, name: item.name, poster: item.poster, releaseInfo: String(2026 - i) })) }),
     "ratings.get": () => ({ ...siteRatings }),
     "ratings.set": patch => {
       if (patch.apiKey != null) siteRatings = { enabled: Boolean(patch.apiKey), hasKey: Boolean(patch.apiKey), keyHint: String(patch.apiKey).slice(-4) };
