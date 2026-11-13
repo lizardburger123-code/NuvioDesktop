@@ -4213,7 +4213,12 @@ timeLabel.addEventListener("click", () => {
   renderChrome();
 });
 
+// When the native player last reported the clock (playerUpdate). Its times are fresher than the
+// ones the host's state carries, which can lag a seek by a moment.
+let nativeClockAt = -Infinity;
+
 window.playerUpdate = update => {
+  nativeClockAt = window.performance.now();
   const durationMs = Math.round((Number(update.duration) || 0) * 1000);
   const positionMs = Math.round((Number(update.position) || 0) * 1000);
   const bufferedPositionMs = Math.round((Number(update.bufferedPosition) || 0) * 1000);
@@ -4298,9 +4303,16 @@ window.playerControls = nextState => {
     ? state.isPlaying
     : pendingIsPlaying;
   const currentVolumeLevel = hasReceivedPlayerControls ? state.volumeLevel : undefined;
+  // While the native clock is live, the host's (older) times would pull the bar back for a moment,
+  // most visibly just after a seek.
+  const clockIsLive = window.performance.now() - nativeClockAt < 2000;
+  const clock = clockIsLive
+    ? { durationMs: state.durationMs, positionMs: state.positionMs, bufferedPositionMs: state.bufferedPositionMs }
+    : {};
   state = {
     ...state,
     ...nextState,
+    ...clock,
     isPlaying: currentPlaybackState,
     volumeLevel: currentVolumeLevel ?? nextState.volumeLevel,
   };
