@@ -93,6 +93,9 @@
     <symbol id="icon-open" viewBox="0 0 24 24">
       <path d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3ZM5 5h6v2H7v10h10v-4h2v6H5V5Z"/>
     </symbol>
+    <symbol id="icon-chapters" viewBox="0 0 24 24">
+      <path d="M4 6h.01M8 6h12M4 12h.01M8 12h12M4 18h.01M8 18h12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+    </symbol>
     <symbol id="icon-check" viewBox="0 0 24 24">
       <path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z"/>
     </symbol>
@@ -278,8 +281,8 @@
         <div class="scrub-row">
           <span class="time-elapsed" id="timeElapsed">0:00</span>
           <div class="scrub-wrap" id="scrubWrap">
-            <input id="seek" class="scrub" type="range" min="0" max="1000" value="0" aria-label="Seek">
-            <span class="scrub-bubble" id="scrubBubble" aria-hidden="true">0:00</span>
+            <input id="seek" class="scrub" type="range" min="0" max="100000" value="0" aria-label="Seek">
+            <span class="scrub-bubble" id="scrubBubble" aria-hidden="true"><span class="scrub-bubble-chapter" id="scrubBubbleChapter" hidden></span><span class="scrub-bubble-time" id="scrubBubbleTime">0:00</span></span>
           </div>
           <span class="time-remaining" id="timeRemaining">-0:00</span>
         </div>
@@ -305,6 +308,7 @@
             <button class="action" data-command="speed" title="Playback speed"><svg><use href="#icon-speed"></use></svg><span id="speedLabel">1x</span></button>
             <button class="action" data-command="subtitles" title="Subtitles"><svg><use href="#icon-subs"></use></svg><span id="subtitlesLabel">Subs</span></button>
             <button class="action" data-command="audio" title="Audio"><svg><use href="#icon-audio"></use></svg><span id="audioLabel">Audio</span></button>
+            <button class="action optional" id="chaptersButton" data-command="chapters" aria-label="Chapters (C)" title="Chapters (C)" hidden><svg><use href="#icon-chapters"></use></svg><span>Chapters</span></button>
             <button class="action optional" id="sourcesButton" data-command="sources" title="Sources"><svg><use href="#icon-source"></use></svg><span id="sourcesLabel">Sources</span></button>
             <button class="action optional" id="episodesButton" data-command="episodes" title="Episodes"><svg><use href="#icon-episodes"></use></svg><span id="episodesLabel">Episodes</span></button>
           </div>
@@ -328,6 +332,12 @@
         <div class="track-panel audio-rail-panel">
           <div class="track-header" id="speedPanelTitle">Playback Speed</div>
           <div class="track-list" id="speedOptionList"></div>
+        </div>
+      </section>
+      <section class="modal-layer player-rail-modal" id="chaptersModal" aria-label="Chapters" hidden>
+        <div class="track-panel audio-rail-panel chapters-panel">
+          <div class="track-header">Chapters</div>
+          <div class="track-list" id="chapterList"></div>
         </div>
       </section>
       <section class="modal-layer player-rail-modal" id="audioModal" aria-label="Audio tracks" hidden>
@@ -567,6 +577,17 @@
               <button class="party-button danger" id="partyConfirmAccept" type="button"></button>
             </div>
           </div>
+        </div>
+      </section>
+      <section class="modal-layer shortcuts-modal" id="shortcutsModal" aria-label="Keyboard shortcuts" hidden>
+        <div class="track-panel shortcuts-panel" role="dialog" aria-labelledby="shortcutsTitle">
+          <div class="track-header-row">
+            <h2 class="track-title" id="shortcutsTitle">Keyboard shortcuts</h2>
+            <div class="panel-actions">
+              <button class="panel-button" id="shortcutsCloseButton" type="button">Close</button>
+            </div>
+          </div>
+          <div class="shortcuts-grid" id="shortcutsGrid"></div>
         </div>
       </section>
       <section class="modal-layer" id="p2pConsentModal" aria-label="P2P streaming consent" hidden>

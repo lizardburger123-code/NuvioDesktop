@@ -438,13 +438,13 @@ const pipUnlockLabel = () => String(state.unlockLabel || "Unlock player controls
 const syncPipLockLabels = () => {
   const lockLabel = isPipLocked ? pipUnlockLabel() : pipLockLabel();
   if (pipLockButton) {
-    pipLockButton.setAttribute("aria-label", lockLabel);
-    pipLockButton.setAttribute("title", lockLabel);
+    setAttributeIfChanged(pipLockButton, "aria-label", lockLabel);
+    setAttributeIfChanged(pipLockButton, "title", lockLabel);
   }
   if (pipLockBadge) {
     const unlockLabel = pipUnlockLabel();
-    pipLockBadge.setAttribute("aria-label", unlockLabel);
-    pipLockBadge.setAttribute("title", unlockLabel);
+    setAttributeIfChanged(pipLockBadge, "aria-label", unlockLabel);
+    setAttributeIfChanged(pipLockBadge, "title", unlockLabel);
   }
 };
 const setPipLocked = locked => {
@@ -502,10 +502,10 @@ const syncFullscreenButtons = () => {
   const isFullscreen = Boolean(state.isFullscreen);
   const icon = isFullscreen ? "#icon-fullscreen-exit" : "#icon-fullscreen";
   const label = isFullscreen ? "Exit fullscreen" : "Enter fullscreen";
-  if (fullscreenIcon) fullscreenIcon.setAttribute("href", icon);
-  if (openingFullscreenIcon) openingFullscreenIcon.setAttribute("href", icon);
-  if (fullscreenButton) fullscreenButton.setAttribute("aria-label", label);
-  if (openingFullscreenButton) openingFullscreenButton.setAttribute("aria-label", label);
+  setAttributeIfChanged(fullscreenIcon, "href", icon);
+  setAttributeIfChanged(openingFullscreenIcon, "href", icon);
+  setAttributeIfChanged(fullscreenButton, "aria-label", label);
+  setAttributeIfChanged(openingFullscreenButton, "aria-label", label);
 };
 
 const togglePlayerFullscreen = (fromEscape = false) => {
@@ -641,8 +641,9 @@ const parentalWarningKey = warnings =>
   warnings.map(warning => `${warning.label}\u0000${warning.severity}`).join("\u0001");
 
 const hideParentalGuide = () => {
-  root.classList.remove("parental-visible", "parental-line-visible");
-  parentalGuide.setAttribute("aria-hidden", "true");
+  root.classList.toggle("parental-visible", false);
+  root.classList.toggle("parental-line-visible", false);
+  setAttributeIfChanged(parentalGuide, "aria-hidden", "true");
   parentalGuideList.querySelectorAll(".parental-guide-row").forEach(row => {
     row.classList.remove("visible");
   });
@@ -805,25 +806,299 @@ const formatTime = milliseconds => {
     : `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 };
 
+let shownProgress = "";
+let shownBufferProgress = "";
+
 const setProgress = (positionMs, durationMs, bufferedPositionMs) => {
   const percent = durationMs > 0 ? Math.max(0, Math.min(100, positionMs / durationMs * 100)) : 0;
-  const bufferPercent = bufferedPositionMs > 0 ?
+  // With no duration yet there is nothing to measure the buffer against (it used to fill the bar).
+  const bufferPercent = durationMs > 0 && bufferedPositionMs > 0 ?
     Math.max(0, Math.min(100, bufferedPositionMs / durationMs * 100)) : 0;
-  seek.value = Math.round(percent * 10);
-  seek.style.setProperty("--progress", `${percent}%`);
-  seek.style.setProperty("--bufferProgress", `${bufferPercent}%`);
-  positionLabel.textContent = formatTime(positionMs);
-  durationLabel.textContent = formatTime(durationMs);
+  // The bar has 100000 steps: with 1000, a click on a two-hour film landed up to 7 s from the time
+  // the bubble showed.
+  const value = String(Math.round(percent / 100 * (Number(seek.max) || 1)));
+  if (seek.value !== value) seek.value = value;
+  const progress = `${percent}%`;
+  if (progress !== shownProgress) {
+    shownProgress = progress;
+    seek.style.setProperty("--progress", progress);
+  }
+  const bufferProgress = `${bufferPercent}%`;
+  if (bufferProgress !== shownBufferProgress) {
+    shownBufferProgress = bufferProgress;
+    seek.style.setProperty("--bufferProgress", bufferProgress);
+  }
+  setTextIfChanged(positionLabel, formatTime(positionMs));
+  setTextIfChanged(durationLabel, formatTime(durationMs));
   if (timeLabel) {
     durationMs = durationMs - (durationMs % 1000);
     if (timeLabelShowRemaining) {
       let remainingTimeMs = durationMs - positionMs + (positionMs % 1000 == 0 ? 0 : 1000);
-      timeLabel.textContent = `-${formatTime(remainingTimeMs)}`;
+      setTextIfChanged(timeLabel, `-${formatTime(remainingTimeMs)}`);
     } else {
-      timeLabel.textContent = `${formatTime(positionMs)} / ${formatTime(durationMs)}`;
+      setTextIfChanged(timeLabel, `${formatTime(positionMs)} / ${formatTime(durationMs)}`);
     }
   }
 };
+
+// ---- Chapters ----------------------------------------------------------------------------------
+// The file's chapters (state.chapters: titles and start times in seconds) cut small gaps into the
+// seek bar, name the part under the pointer, and can be jumped between with Page Up / Page Down.
+// With two or more named chapters there is also a list (the Chapters button, or C). With none,
+// nothing of this shows.
+const chaptersModal = document.getElementById("chaptersModal");
+const chapterList = document.getElementById("chapterList");
+const chaptersButton = document.getElementById("chaptersButton");
+let chapterSource = null;
+let chapterCache = [];
+let chapterMarksKey = "";
+let chapterListKey = "";
+let shownChapterIndex = -2;
+
+const playerChapters = () => {
+  if (state.chapters === chapterSource) return chapterCache;
+  chapterSource = state.chapters;
+  chapterCache = (Array.isArray(state.chapters) ? state.chapters : [])
+    .map(chapter => ({ title: String(chapter && chapter.title || "").trim(), time: Number(chapter && chapter.time) }))
+    .filter(chapter => Number.isFinite(chapter.time) && chapter.time >= 0)
+    .sort((a, b) => a.time - b.time);
+  return chapterCache;
+};
+
+const chapterIndexAt = seconds => {
+  const chapters = playerChapters();
+  let found = -1;
+  for (let index = 0; index < chapters.length && chapters[index].time <= seconds + 0.001; index += 1) found = index;
+  return found;
+};
+
+const chapterLabel = index => playerChapters()[index].title || `Chapter ${index + 1}`;
+const hasChapterList = () => playerChapters().filter(chapter => chapter.title).length >= 2;
+const currentPositionSeconds = () => (isScrubbing ? scrubPositionMs : Math.max(0, Number(state.positionMs) || 0)) / 1000;
+
+// For the time bubble in vision.js: the named chapter at a time, or "".
+window.playerChapterTitleAt = seconds => {
+  const index = chapterIndexAt(seconds);
+  return index >= 0 ? playerChapters()[index].title : "";
+};
+
+const syncChapterMarks = () => {
+  const durationSec = Math.max(0, Number(state.durationMs) || 0) / 1000;
+  const points = durationSec > 0
+    ? playerChapters().map(chapter => chapter.time / durationSec * 100).filter(point => point > 0.2 && point < 99.8)
+    : [];
+  const key = points.map(point => point.toFixed(3)).join(",");
+  if (key === chapterMarksKey) return;
+  chapterMarksKey = key;
+  if (!points.length) {
+    seek.style.removeProperty("--chapter-mask");
+    return;
+  }
+  // Each chapter start is a 3px gap through the bar (a mask, so it follows the bar's thickness).
+  const stops = [];
+  let from = "0px";
+  points.forEach(point => {
+    stops.push(`#000 ${from} calc(${point.toFixed(3)}% - 1.5px)`, `transparent calc(${point.toFixed(3)}% - 1.5px) calc(${point.toFixed(3)}% + 1.5px)`);
+    from = `calc(${point.toFixed(3)}% + 1.5px)`;
+  });
+  stops.push(`#000 ${from} 100%`);
+  seek.style.setProperty("--chapter-mask", `linear-gradient(90deg, ${stops.join(", ")})`);
+};
+
+const seekToMs = positionMs => {
+  const durationMs = Math.max(0, Number(state.durationMs) || 0);
+  const target = Math.max(0, durationMs > 0 ? Math.min(durationMs, positionMs) : positionMs);
+  state.positionMs = target;
+  setProgress(target, durationMs, Math.max(0, Number(state.bufferedPositionMs) || 0));
+  // The same pair of messages a click on the seek bar sends.
+  send("scrubChange", target);
+  send("scrubFinish", target);
+};
+
+const jumpChapter = direction => {
+  const chapters = playerChapters();
+  if (!chapters.length) return;
+  const position = currentPositionSeconds();
+  const current = chapterIndexAt(position);
+  let target;
+  if (direction > 0) {
+    target = chapters.findIndex(chapter => chapter.time > position + 0.5);
+    if (target < 0) {
+      showPlayerToast("No next chapter");
+      return;
+    }
+  } else {
+    // Like mpv: more than five seconds into a chapter, back goes to its start first.
+    target = current >= 0 && position - chapters[current].time > 5 ? current : current - 1;
+  }
+  seekToMs(target >= 0 ? Math.round(chapters[target].time * 1000) : 0);
+  showPlayerToast(target >= 0 ? chapterLabel(target) : "Back to the start");
+  syncCurrentChapterRow();
+};
+
+const syncCurrentChapterRow = () => {
+  if (activeModal !== "chapters") return;
+  const index = chapterIndexAt(currentPositionSeconds());
+  if (index === shownChapterIndex) return;
+  shownChapterIndex = index;
+  Array.from(chapterList.children).forEach(row => {
+    const current = Number(row.dataset.index) === index;
+    row.classList.toggle("selected", current);
+    if (current) row.setAttribute("aria-current", "true");
+    else row.removeAttribute("aria-current");
+  });
+};
+
+const renderChaptersModal = () => {
+  const chapters = playerChapters();
+  const key = JSON.stringify(chapters);
+  if (key !== chapterListKey) {
+    chapterListKey = key;
+    shownChapterIndex = -2;
+    chapterList.textContent = "";
+    chapters.forEach((chapter, index) => {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "track-row chapter-row";
+      row.dataset.index = String(index);
+      const label = document.createElement("span");
+      label.className = "track-label";
+      label.textContent = chapterLabel(index);
+      const time = document.createElement("span");
+      time.className = "chapter-time";
+      time.textContent = formatTime(chapter.time * 1000);
+      row.append(label, time, buildCheckIcon());
+      chapterList.appendChild(row);
+    });
+    if (!chapters.length) appendEmptyTrackState(chapterList, "This video has no chapters");
+  }
+  syncCurrentChapterRow();
+};
+
+chapterList.addEventListener("click", event => {
+  const row = event.target.closest(".chapter-row");
+  if (!row) return;
+  event.stopPropagation();
+  const chapter = playerChapters()[Number(row.dataset.index)];
+  if (!chapter) return;
+  seekToMs(Math.round(chapter.time * 1000));
+  syncCurrentChapterRow();
+  window.setTimeout(closePlayerModal, 120);
+});
+
+// ---- Keyboard shortcuts sheet (?) -------------------------------------------------------------
+// Lists what the keydown handler below really does, and only what works for this video (no
+// Episodes line for a film, no chapter keys for a file without chapters). Keep the two in step.
+const shortcutsModal = document.getElementById("shortcutsModal");
+const shortcutsGrid = document.getElementById("shortcutsGrid");
+let shortcutsKey = "";
+
+// Each row: alternatives (each a list of keys pressed together), then what they do.
+const shortcutGroups = () => {
+  const boost = state.holdToSpeedEnabled ? `${formatSpeedBoostString(normalizedSpeedBoost())}x` : "";
+  return [
+    { title: "Playback", rows: [
+      [[["Space"], ["K"]], "Play or pause"],
+      boost && [[["Hold", "Space"]], `Play at ${boost} while held`],
+      [[["Enter"]], "Skip the intro or credits when offered"],
+      state.showEpisodes && [[["Shift", "N"]], "Next episode"],
+      [[["<"], [">"]], "Slower or faster"],
+      [[["/"]], "Normal speed"],
+      [[["`"]], "Speed menu"],
+    ] },
+    { title: "Seeking", rows: [
+      [[["←"], ["J"]], "Back 10 seconds"],
+      [[["→"], ["L"]], "Forward 10 seconds"],
+      [[["Shift", "←"], ["Shift", "→"]], "Back or forward 1 second"],
+      playerChapters().length && [[["PgUp"], ["PgDn"]], "Previous or next chapter"],
+    ] },
+    { title: "Volume", rows: [
+      [[["↑"], ["↓"]], "Louder or quieter"],
+      [[["M"]], "Mute or unmute"],
+    ] },
+    { title: "Subtitles and audio", rows: [
+      [[["S"]], "Subtitles menu"],
+      [[["V"]], "Subtitles on or off"],
+      [[["G"], ["H"]], "Subtitles 0.1 s earlier or later"],
+      [[["Shift", "G"], ["Shift", "H"]], "Subtitles 1 s earlier or later"],
+      [[["O"]], "Dim the subtitles, or undim"],
+      [[["I"]], "Subtitles more see-through"],
+      [[["A"]], "Audio menu"],
+      [[["B"]], "Next audio track"],
+    ] },
+    { title: "Menus and window", rows: [
+      state.showEpisodes && [[["E"]], "Episodes"],
+      state.showSources && [[["Q"]], "Sources"],
+      hasChapterList() && [[["C"]], "Chapters"],
+      [[["F"], ["F11"]], "Full screen"],
+      String(state.pipLabel || "").trim() && [[["P"]], "Picture in picture"],
+      [[["Esc"]], "Close a menu, leave full screen, or close the player"],
+      [[["?"]], "These shortcuts"],
+    ] },
+    { title: "Mouse", rows: [
+      [[["Click"]], "Play or pause"],
+      [[["Double-click"]], "Full screen"],
+      boost && [[["Hold", "Click"]], `Play at ${boost} while held`],
+      [[["Wheel"]], "Louder or quieter"],
+      [[["Wheel on the bar"]], "1 second back or forward"],
+    ] },
+  ].map(group => ({ ...group, rows: group.rows.filter(Boolean) }));
+};
+
+const buildShortcutKeys = alternatives => {
+  const keys = document.createElement("span");
+  keys.className = "shortcut-keys";
+  // Shift + ← or Shift + → reads better as Shift + ← or →.
+  const shared = alternatives.length > 1 && alternatives.every(combo => combo.length === 2 && combo[0] === alternatives[0][0] && combo[0] !== "Hold")
+    ? alternatives[0][0] : "";
+  if (shared) {
+    keys.append(Object.assign(document.createElement("kbd"), { textContent: shared }));
+    keys.append(Object.assign(document.createElement("span"), { className: "shortcut-or", textContent: "+" }));
+    alternatives = alternatives.map(combo => [combo[1]]);
+  }
+  alternatives.forEach((combo, index) => {
+    if (index) keys.append(Object.assign(document.createElement("span"), { className: "shortcut-or", textContent: "or" }));
+    combo.forEach((key, keyIndex) => {
+      if (key === "Hold") {
+        keys.append(Object.assign(document.createElement("span"), { className: "shortcut-or", textContent: "hold" }));
+        return;
+      }
+      if (keyIndex && combo[keyIndex - 1] !== "Hold") keys.append(Object.assign(document.createElement("span"), { className: "shortcut-or", textContent: "+" }));
+      keys.append(Object.assign(document.createElement("kbd"), { textContent: key }));
+    });
+  });
+  return keys;
+};
+
+const renderShortcutsModal = () => {
+  const groups = shortcutGroups();
+  const key = JSON.stringify(groups);
+  if (key === shortcutsKey) return;
+  shortcutsKey = key;
+  shortcutsGrid.textContent = "";
+  groups.forEach(group => {
+    const section = document.createElement("section");
+    section.className = "shortcuts-group";
+    const heading = document.createElement("h3");
+    heading.textContent = group.title;
+    section.appendChild(heading);
+    group.rows.forEach(([alternatives, what]) => {
+      const row = document.createElement("div");
+      row.className = "shortcut-row";
+      const label = document.createElement("span");
+      label.className = "shortcut-label";
+      label.textContent = what;
+      row.append(label, buildShortcutKeys(alternatives));
+      section.appendChild(row);
+    });
+    shortcutsGrid.appendChild(section);
+  });
+};
+
+document.getElementById("shortcutsCloseButton").addEventListener("click", event => {
+  event.stopPropagation();
+  closePlayerModal();
+});
 
 const setText = (element, text) => {
   setTextIfChanged(element, text || "");
@@ -866,7 +1141,7 @@ const renderPlayerBadges = () => {
 };
 
 const setVisible = (element, visible) => {
-  element.hidden = !visible;
+  if (element.hidden !== !visible) element.hidden = !visible;
 };
 
 const setActionButtonLabel = (command, label) => {
@@ -874,23 +1149,22 @@ const setActionButtonLabel = (command, label) => {
   if (!button) return;
   const text = String(label || "").trim();
   if (!text) return;
-  button.setAttribute("aria-label", text);
-  button.setAttribute("title", text);
+  setAttributeIfChanged(button, "aria-label", text);
+  setAttributeIfChanged(button, "title", text);
 };
 
 const setImageVisualState = (element, stateName) => {
   const frame = element.parentElement;
   [element, frame].filter(Boolean).forEach(target => {
-    target.classList.remove("image-loading", "image-loaded", "image-error");
-    if (stateName) target.classList.add(`image-${stateName}`);
+    ["loading", "loaded", "error"].forEach(name => target.classList.toggle(`image-${name}`, name === stateName));
   });
 };
 
 const setImageSource = (element, source) => {
   const url = String(source || "").trim();
   if (!url) {
-    element.removeAttribute("src");
-    element.removeAttribute("data-loaded-src");
+    if (element.hasAttribute("src")) element.removeAttribute("src");
+    if (element.hasAttribute("data-loaded-src")) element.removeAttribute("data-loaded-src");
     setImageVisualState(element, "");
     return "";
   }
@@ -960,18 +1234,15 @@ const renderPauseMetadataOverlay = showOpening => {
     !showOpening,
   );
 
-  pauseWatchingLabel.textContent = state.pauseOverlayWatchingLabel || "You're watching";
-  pauseLogo.hidden = !logoUrl;
-  pauseTitle.textContent = titleText;
-  pauseTitle.hidden = Boolean(logoUrl || !titleText);
-  pauseEpisodeInfo.textContent = episodeInfo;
-  pauseEpisodeInfo.hidden = !episodeInfo;
-  pauseEpisodeTitle.textContent = episodeTitleText;
-  pauseEpisodeTitle.hidden = !episodeTitleText;
-  pauseDescription.textContent = descriptionText;
-  pauseDescription.hidden = !descriptionText;
+  setTextIfChanged(pauseWatchingLabel, state.pauseOverlayWatchingLabel || "You're watching");
+  setVisible(pauseLogo, Boolean(logoUrl));
+  setTextIfChanged(pauseTitle, titleText);
+  setVisible(pauseTitle, !(logoUrl || !titleText));
+  setText(pauseEpisodeInfo, episodeInfo);
+  setText(pauseEpisodeTitle, episodeTitleText);
+  setText(pauseDescription, descriptionText);
   pauseMetadataOverlay.classList.toggle("visible", showOverlay);
-  pauseMetadataOverlay.setAttribute("aria-hidden", showOverlay ? "false" : "true");
+  setAttributeIfChanged(pauseMetadataOverlay, "aria-hidden", showOverlay ? "false" : "true");
 };
 
 const normalizedOpeningProgress = () => {
@@ -983,7 +1254,7 @@ const playbackErrorText = () => String(state.playbackErrorMessage || "").trim();
 
 const rangePositionMs = () => {
   const durationMs = Math.max(0, Number(state.durationMs) || 0);
-  return durationMs > 0 ? Math.round(durationMs * Number(seek.value) / 1000) : 0;
+  return durationMs > 0 ? Math.round(durationMs * Number(seek.value) / (Number(seek.max) || 1)) : 0;
 };
 
 const modalByName = {
@@ -995,6 +1266,8 @@ const modalByName = {
   submitIntro: submitIntroModal,
   p2pConsent: p2pConsentModal,
   party: partyModal,
+  chapters: chaptersModal,
+  shortcuts: shortcutsModal,
 };
 const modalElements = Object.values(modalByName);
 const modalCloseTimers = new Map();
@@ -2611,6 +2884,8 @@ const renderActiveModal = (modalOpened = false) => {
   if (activeModal === "submitIntro") renderSubmitIntroModal();
   if (activeModal === "p2pConsent") renderP2pConsentModal();
   if (activeModal === "party") renderPartyModal();
+  if (activeModal === "chapters") renderChaptersModal();
+  if (activeModal === "shortcuts") renderShortcutsModal();
 };
 
 window.nuvioNativeViewportChanged = () => {
@@ -2661,21 +2936,21 @@ const renderOpeningOverlay = suppress => {
   openingOverlay.classList.toggle("visible", showOpening);
   openingOverlay.classList.toggle("has-artwork", Boolean(artworkUrl));
   openingOverlay.classList.toggle("has-progress", hasProgress);
-  openingOverlay.setAttribute("aria-hidden", showOpening ? "false" : "true");
-  openingBackButton.setAttribute("aria-label", state.closeLabel || "Close player");
+  setAttributeIfChanged(openingOverlay, "aria-hidden", showOpening ? "false" : "true");
+  setAttributeIfChanged(openingBackButton, "aria-label", state.closeLabel || "Close player");
   syncFullscreenButtons();
 
-  openingLogoSlot.hidden = !logoUrl;
+  setVisible(openingLogoSlot, Boolean(logoUrl));
   openingLogoFillClip.style.width = `${(progress || 0) * 100}%`;
 
-  openingTitle.textContent = titleText;
-  openingTitle.hidden = Boolean(logoUrl || !titleText);
-  openingSpinner.hidden = Boolean(logoUrl || titleText);
+  setTextIfChanged(openingTitle, titleText);
+  setVisible(openingTitle, !(logoUrl || !titleText));
+  setVisible(openingSpinner, !(logoUrl || titleText));
   openingLoadingIndicator.setActive(showOpening && !openingSpinner.hidden);
 
-  openingMessage.textContent = messageText;
-  openingStatus.hidden = !(messageText || showHorizontalProgress);
-  openingProgressTrack.hidden = !showHorizontalProgress;
+  setTextIfChanged(openingMessage, messageText);
+  setVisible(openingStatus, Boolean(messageText || showHorizontalProgress));
+  setVisible(openingProgressTrack, showHorizontalProgress);
   openingProgressBar.style.width = `${(progress || 0) * 100}%`;
 
   return showOpening;
@@ -2689,12 +2964,12 @@ const renderPlaybackError = () => {
 
   root.classList.toggle("error-active", showError);
   playbackError.classList.toggle("visible", showError);
-  playbackError.setAttribute("aria-hidden", showError ? "false" : "true");
-  playbackError.setAttribute("aria-label", titleText || "Playback error");
-  playbackErrorTitle.textContent = titleText || "Playback error";
-  playbackErrorMessage.textContent = messageText;
-  playbackErrorActionLabel.textContent = actionText || "Go back";
-  playbackErrorAction.setAttribute("aria-label", actionText || "Go back");
+  setAttributeIfChanged(playbackError, "aria-hidden", showError ? "false" : "true");
+  setAttributeIfChanged(playbackError, "aria-label", titleText || "Playback error");
+  setTextIfChanged(playbackErrorTitle, titleText || "Playback error");
+  setTextIfChanged(playbackErrorMessage, messageText);
+  setTextIfChanged(playbackErrorActionLabel, actionText || "Go back");
+  setAttributeIfChanged(playbackErrorAction, "aria-label", actionText || "Go back");
 
   return showError;
 };
@@ -2771,9 +3046,9 @@ const renderNativePlaybackPrompts = () => {
   const shouldShowSkip = Boolean(state.skipPromptVisible && (!state.skipPromptDismissed || state.controlsVisible));
   const showSkip = Boolean(shouldShowSkip && (!skipPromptAutoHidden || state.controlsVisible));
   const showSkipProgress = Boolean(showSkip && !state.controlsVisible && !skipPromptAutoHidden && !state.skipPromptDismissed);
-  skipPromptLabel.textContent = state.skipPromptLabel || "Skip";
-  skipPrompt.setAttribute("aria-label", state.skipPromptLabel || "Skip");
-  skipPrompt.setAttribute("aria-hidden", showSkip ? "false" : "true");
+  setTextIfChanged(skipPromptLabel, state.skipPromptLabel || "Skip");
+  setAttributeIfChanged(skipPrompt, "aria-label", state.skipPromptLabel || "Skip");
+  setAttributeIfChanged(skipPrompt, "aria-hidden", showSkip ? "false" : "true");
   skipPrompt.classList.toggle("visible", showSkip);
   skipPrompt.classList.toggle("show-progress", showSkipProgress);
   syncSkipPromptPlacement(showSkip);
@@ -2788,12 +3063,11 @@ const renderNativePlaybackPrompts = () => {
   const showNextEpisode = Boolean(state.nextEpisodeVisible);
   const nextThumbUrl = setImageSource(nextEpisodeThumb, state.nextEpisodeThumbnail);
   const blurNextThumb = Boolean(nextThumbUrl) && Boolean(state.nextEpisodeThumbnailBlurred);
-  nextEpisodeHeader.textContent = state.nextEpisodeHeaderLabel || "Next episode";
-  nextEpisodeTitle.textContent = state.nextEpisodeTitle || "";
-  nextEpisodeStatus.textContent = state.nextEpisodeStatus || "";
-  nextEpisodeStatus.hidden = !state.nextEpisodeStatus;
-  nextEpisodeAction.textContent = state.nextEpisodeActionLabel || "Play";
-  nextEpisodeCard.setAttribute("aria-hidden", showNextEpisode ? "false" : "true");
+  setTextIfChanged(nextEpisodeHeader, state.nextEpisodeHeaderLabel || "Next episode");
+  setTextIfChanged(nextEpisodeTitle, state.nextEpisodeTitle || "");
+  setText(nextEpisodeStatus, state.nextEpisodeStatus || "");
+  setTextIfChanged(nextEpisodeAction, state.nextEpisodeActionLabel || "Play");
+  setAttributeIfChanged(nextEpisodeCard, "aria-hidden", showNextEpisode ? "false" : "true");
   nextEpisodeCard.classList.toggle("visible", showNextEpisode);
   nextEpisodeCard.classList.toggle("playable", Boolean(state.nextEpisodePlayable));
   nextEpisodeCard.classList.toggle("has-thumb", Boolean(nextThumbUrl));
@@ -2853,7 +3127,7 @@ const syncHiddenCursor = () => {
   if (!shouldHideCursorForIdleChrome()) {
     clearHiddenCursorTimer();
     hiddenCursorTemporarilyVisible = false;
-    root.classList.remove("cursor-hidden");
+    root.classList.toggle("cursor-hidden", false);
     return;
   }
   root.classList.toggle("cursor-hidden", !hiddenCursorTemporarilyVisible);
@@ -2946,24 +3220,26 @@ const renderChrome = () => {
   if (!state.isInPip && isPipLocked) setPipLocked(false);
   root.classList.toggle("chrome-hidden", Boolean(showError || !state.controlsVisible));
   root.classList.toggle("modal-open", Boolean(activeModal));
-  root.classList.toggle("side-panel-open", Boolean(activeModal && modalByName[activeModal]?.classList.contains("player-side-modal")));
+  // Side panels and the shortcuts sheet lie over the bar, which would show through their glass.
+  const coveringPanel = activeModal ? modalByName[activeModal] : null;
+  root.classList.toggle("panel-covers-bar", Boolean(coveringPanel && (coveringPanel.classList.contains("player-side-modal") || coveringPanel === shortcutsModal)));
   root.classList.toggle("source-visible", Boolean(!showError && !isPlaying && !state.isLoading && (state.streamTitle || state.providerName)));
   syncHiddenCursor();
   const showOpening = renderOpeningOverlay(showError);
   if (state.pauseOverlayEnabled || showError) renderPauseMetadataOverlay(showOpening || showError);
   syncParentalGuide(showOpening || showError);
 
-  title.textContent = state.title || "";
+  setTextIfChanged(title, state.title || "");
   setText(episode, state.episodeText);
   setText(streamTitle, state.streamTitle);
   setText(providerName, state.providerName);
   renderPlayerBadges();
-  resizeLabel.textContent = state.resizeModeLabel || "Fit";
-  speedLabel.textContent = state.playbackSpeedLabel || "1x";
-  subtitlesLabel.textContent = state.subtitlesLabel || "Subs";
-  audioLabel.textContent = state.audioLabel || "Audio";
-  sourcesLabel.textContent = state.sourcesLabel || "Sources";
-  episodesLabel.textContent = state.episodesLabel || "Episodes";
+  setTextIfChanged(resizeLabel, state.resizeModeLabel || "Fit");
+  setTextIfChanged(speedLabel, state.playbackSpeedLabel || "1x");
+  setTextIfChanged(subtitlesLabel, state.subtitlesLabel || "Subs");
+  setTextIfChanged(audioLabel, state.audioLabel || "Audio");
+  setTextIfChanged(sourcesLabel, state.sourcesLabel || "Sources");
+  setTextIfChanged(episodesLabel, state.episodesLabel || "Episodes");
   setActionButtonLabel("resize", state.resizeModeLabel || "Fit");
   setActionButtonLabel("speed", state.playbackSpeedLabel || "1x");
   setActionButtonLabel("subtitles", state.subtitlesLabel || "Subs");
@@ -2972,43 +3248,39 @@ const renderChrome = () => {
   setActionButtonLabel("episodes", state.episodesLabel || "Episodes");
   if (pipButton) {
     const pipLabel = String(state.pipLabel || "").trim();
-    pipButton.setAttribute("aria-label", pipLabel);
-    pipButton.setAttribute("title", pipLabel);
-    pipButton.hidden = !pipLabel;
+    setAttributeIfChanged(pipButton, "aria-label", pipLabel);
+    setAttributeIfChanged(pipButton, "title", pipLabel);
+    setVisible(pipButton, Boolean(pipLabel));
   }
   syncPipLockLabels();
   const showBuffering = Boolean(!showError && state.isLoading && !activeModal && !showOpening);
   bufferingStatus.classList.toggle("visible", showBuffering);
-  bufferingStatus.setAttribute("aria-hidden", showBuffering ? "false" : "true");
+  setAttributeIfChanged(bufferingStatus, "aria-hidden", showBuffering ? "false" : "true");
   bufferingLoadingIndicator.setActive(showBuffering);
 
   setVisible(submitIntroButton, Boolean(state.showSubmitIntro));
   setVisible(videoSettingsButton, Boolean(state.showVideoSettings));
   setVisible(sourcesButton, Boolean(state.showSources));
   setVisible(episodesButton, Boolean(state.showEpisodes));
+  setVisible(chaptersButton, hasChapterList());
+  syncChapterMarks();
   syncActionFocusState();
 
   const playPauseLabel = isPlaying ? state.pauseLabel : state.playLabel;
-  if (toggle) {
-    toggle.setAttribute("aria-label", playPauseLabel || (isPlaying ? "Pause" : "Play"));
-  }
-  if (toggleIcon) {
-    toggleIcon.setAttribute("href", isPlaying ? "#icon-pause" : "#icon-play");
-  }
-  if (toggleLabel) {
-    toggleLabel.textContent = playPauseLabel || (isPlaying ? "Pause" : "Play");
-  }
+  setAttributeIfChanged(toggle, "aria-label", playPauseLabel || (isPlaying ? "Pause" : "Play"));
+  setAttributeIfChanged(toggleIcon, "href", isPlaying ? "#icon-pause" : "#icon-play");
+  setTextIfChanged(toggleLabel, playPauseLabel || (isPlaying ? "Pause" : "Play"));
   if (nextEpisodeButton) {
-    nextEpisodeButton.hidden = !state.nextEpisodePlayable;
+    setVisible(nextEpisodeButton, Boolean(state.nextEpisodePlayable));
     const nextLabel = state.nextEpisodeHeaderLabel || "Next episode";
-    nextEpisodeButton.setAttribute("aria-label", nextLabel);
-    nextEpisodeButton.setAttribute("title", nextLabel);
-    if (nextEpisodeButtonLabel) nextEpisodeButtonLabel.textContent = nextLabel;
+    setAttributeIfChanged(nextEpisodeButton, "aria-label", nextLabel);
+    setAttributeIfChanged(nextEpisodeButton, "title", nextLabel);
+    setTextIfChanged(nextEpisodeButtonLabel, nextLabel);
   }
   syncFullscreenButtons();
-  backButton.setAttribute("aria-label", state.closeLabel || "Close player");
-  submitIntroButton.setAttribute("aria-label", state.submitIntroLabel || "Submit Intro");
-  videoSettingsButton.setAttribute("aria-label", state.videoSettingsLabel || "Video settings");
+  setAttributeIfChanged(backButton, "aria-label", state.closeLabel || "Close player");
+  setAttributeIfChanged(submitIntroButton, "aria-label", state.submitIntroLabel || "Submit Intro");
+  setAttributeIfChanged(videoSettingsButton, "aria-label", state.videoSettingsLabel || "Video settings");
   setProgress(positionMs, durationMs, bufferedPositionMs);
   if (showError) {
     skipPrompt.classList.remove("visible", "show-progress");
@@ -3269,6 +3541,8 @@ const ensureActionFocus = ({ focus = true } = {}) => {
 };
 
 const syncActionFocusState = () => {
+  // Most of the time nothing in the bar has keyboard focus: skip the style reads below.
+  if (!focusedActionCommand && !document.querySelector(".action-pill .action.focused")) return;
   const controls = visibleActionButtons();
   const visibleSet = new Set(controls);
   document.querySelectorAll(".action-pill .action.focused").forEach(button => {
@@ -3553,6 +3827,10 @@ document.querySelectorAll("[data-command]").forEach(button => {
     }
     if (command === "submitIntro") {
       openPlayerModal("submitIntro");
+      return;
+    }
+    if (command === "chapters") {
+      openPlayerModal("chapters");
       return;
     }
     if (command === "toggleFullscreen") {
@@ -3902,18 +4180,35 @@ window.playerUpdate = update => {
     window.clearTimeout(pendingPlaybackTimer);
     pendingPlaybackTimer = 0;
   }
+  const isPlaying = pendingIsPlaying === null ? nativeIsPlaying : pendingIsPlaying;
+  const isLoading = Boolean(update.loading || update.isLoading);
+  const isEnded = Boolean(update.ended);
+  // Most updates only move the clock: they redraw the bar and the times and touch nothing else.
+  const onlyTimeMoved = appliedRememberedVolume &&
+    durationMs === state.durationMs &&
+    isPlaying === state.isPlaying &&
+    isLoading === state.isLoading &&
+    isEnded === state.isEnded &&
+    volumeLevel === state.volumeLevel &&
+    !audioTracksChanged &&
+    !subtitleTracksChanged;
   state = {
     ...state,
     durationMs,
     positionMs,
     bufferedPositionMs,
-    isPlaying: pendingIsPlaying === null ? nativeIsPlaying : pendingIsPlaying,
-    isLoading: Boolean(update.loading || update.isLoading),
-    isEnded: Boolean(update.ended),
+    isPlaying,
+    isLoading,
+    isEnded,
     volumeLevel,
     audioTracks,
     subtitleTracks,
   };
+  if (onlyTimeMoved) {
+    if (!isScrubbing) setProgress(positionMs, durationMs, bufferedPositionMs);
+    syncCurrentChapterRow();
+    return;
+  }
   if (!appliedRememberedVolume) {
     appliedRememberedVolume = true;
     syncVolumeControl();
@@ -4082,6 +4377,9 @@ window.nuvioNativeResizeEnded = () => {
 
 let rootPointerStartX = 0;
 let rootPointerStartY = 0;
+let lastTapAt = 0;
+let previousTapAt = 0;
+let tapToggledAt = 0;
 let pipPointerStartX = 0;
 let pipPointerStartY = 0;
 let pipPointerDown = false;
@@ -4284,7 +4582,11 @@ root.addEventListener("click", event => {
   }
   if (playbackErrorText() || isControlsSurfaceEvent(event)) return;
   window.clearTimeout(tapTimer);
+  previousTapAt = lastTapAt;
+  lastTapAt = event.timeStamp;
+  const tapAt = lastTapAt;
   tapTimer = window.setTimeout(() => {
+    tapToggledAt = tapAt;
     requestPlaybackState("setPlaybackStateQuiet", false);
   }, 220);
 });
@@ -4336,6 +4638,12 @@ root.addEventListener("dblclick", event => {
   if (playbackErrorText() || isControlsSurfaceEvent(event)) return;
   event.preventDefault();
   window.clearTimeout(tapTimer);
+  // A slower double-click (still inside the system's double-click time) lets the first click's
+  // play/pause go through before this event: undo it, so a double-click only changes the window.
+  if (tapToggledAt && tapToggledAt === previousTapAt) {
+    tapToggledAt = 0;
+    requestPlaybackState("setPlaybackStateQuiet", false);
+  }
   if (state.isInPip) {
     send("pictureInPicture", 0);
     return;
@@ -4343,22 +4651,43 @@ root.addEventListener("dblclick", event => {
   togglePlayerFullscreen();
 });
 
+// A mouse wheel notch is one step. A touchpad sends a stream of small deltas, which add up to a
+// step every 50 px (they used to make a step each, sending the volume or the position flying).
+let wheelCarry = 0;
+let wheelCarryAt = 0;
+const wheelSteps = (delta, deltaMode, now) => {
+  const pixels = delta * (deltaMode === 1 ? 40 : deltaMode === 2 ? 800 : 1);
+  if (now - wheelCarryAt > 300) wheelCarry = 0;
+  wheelCarryAt = now;
+  if (Math.abs(pixels) >= 50) {
+    wheelCarry = 0;
+    return Math.sign(pixels);
+  }
+  wheelCarry += pixels;
+  if (Math.abs(wheelCarry) < 50) return 0;
+  const steps = Math.trunc(wheelCarry / 50);
+  wheelCarry -= steps * 50;
+  return steps;
+};
+
 root.addEventListener("wheel", event => {
   if (playbackErrorText() || activeModal) return;
   const isProgressTarget = Boolean(event.target.closest("#seek, .time-row, .time-pill, .scrub"));
   if (isProgressTarget || event.shiftKey) {
     event.preventDefault();
     noteChromeActivity();
-    const delta = event.deltaY !== 0 ? Math.sign(event.deltaY) * -1 : Math.sign(event.deltaX);
-    if (delta !== 0) {
-      fineSeek(delta > 0);
+    const steps = event.deltaY !== 0
+      ? -wheelSteps(event.deltaY, event.deltaMode, event.timeStamp)
+      : wheelSteps(event.deltaX, event.deltaMode, event.timeStamp);
+    if (steps !== 0) {
+      fineSeek(steps > 0);
     }
     return;
   }
   event.preventDefault();
-  const delta = Math.sign(event.deltaY) * -1;
-  if (delta !== 0) {
-    sendKeyboardVolume(delta);
+  const steps = -wheelSteps(event.deltaY, event.deltaMode, event.timeStamp);
+  if (steps !== 0) {
+    sendKeyboardVolume(steps);
   }
 }, { passive: false });
 
@@ -4422,6 +4751,7 @@ document.addEventListener("keydown", event => {
   }
 
   if (activeModal === "sources" && handleSourceListKey(event)) return;
+  if (activeModal === "chapters" && moveListFocus(chapterList, event)) return;
   if (activeModal === "episodes" && moveListFocus(state.episodeStreamsVisible ? episodeStreamList : episodeList, event)) return;
 
   if ((activeModal === "episodes" || activeModal === "sources") && (event.code === "ArrowLeft" || event.code === "ArrowRight")) {
@@ -4557,6 +4887,19 @@ document.addEventListener("keydown", event => {
     }
     return;
   }
+  // "?" is Shift + / on most layouts (where plain / resets the speed below); "؟" on Arabic ones.
+  if (event.key === "?" || event.key === "\u061f" || (event.code === "Slash" && event.shiftKey)) {
+    event.preventDefault();
+    if (activeModal === "shortcuts") closePlayerModal(true);
+    else openPlayerModal("shortcuts");
+    return;
+  }
+  if (event.code === "KeyC" && (activeModal === "chapters" || hasChapterList())) {
+    event.preventDefault();
+    if (activeModal === "chapters") closePlayerModal(true);
+    else openPlayerModal("chapters");
+    return;
+  }
   if (event.code === "KeyQ") {
     event.preventDefault();
     if (activeModal === "sources") {
@@ -4573,6 +4916,12 @@ document.addEventListener("keydown", event => {
     return;
   }
 
+  if ((event.code === "PageUp" || event.code === "PageDown") && playerChapters().length) {
+    event.preventDefault();
+    noteChromeActivity();
+    jumpChapter(event.code === "PageDown" ? 1 : -1);
+    return;
+  }
   if (event.code === "Enter" && state.skipPromptVisible) {
     const activeEl = document.activeElement;
     if (!activeEl || activeEl.tagName === "BODY" || activeEl === root) {

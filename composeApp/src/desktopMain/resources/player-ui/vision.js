@@ -53,10 +53,16 @@
     return clamp((Number(seek.value) || 0) / max, 0, 1);
   };
 
+  // The labels keep one width for the whole file (wide enough for hours when it has them): when
+  // they grew or shrank with the text, the bar between them moved under the pointer.
+  const scrubRow = scrubWrap ? scrubWrap.parentElement : null;
   const renderTimes = () => {
     const shown = scrubbing ? seekFraction() * durationSec : positionSec;
-    if (elapsedLabel) elapsedLabel.textContent = formatTime(shown);
-    if (remainingLabel) remainingLabel.textContent = durationSec > 0 ? `-${formatTime(durationSec - shown)}` : "--:--";
+    const elapsed = formatTime(shown);
+    const remaining = durationSec > 0 ? `-${formatTime(durationSec - shown)}` : "--:--";
+    if (elapsedLabel && elapsedLabel.textContent !== elapsed) elapsedLabel.textContent = elapsed;
+    if (remainingLabel && remainingLabel.textContent !== remaining) remainingLabel.textContent = remaining;
+    if (scrubRow) scrubRow.classList.toggle("has-hours", durationSec >= 3600);
   };
 
   const originalUpdate = window.playerUpdate;
@@ -199,14 +205,22 @@
     return { refresh: refreshGoal };
   };
 
-  // Seek: hover preview bubble that follows the pointer, and live time while dragging.
+  // Seek: hover preview bubble that follows the pointer, and live time while dragging. Over a file
+  // with named chapters it also names the chapter under the pointer.
+  const bubbleTime = document.getElementById("scrubBubbleTime");
+  const bubbleChapter = document.getElementById("scrubBubbleChapter");
   let hoverFraction = null;
   const placeBubble = fraction => {
-    if (!bubble || !scrubWrap) return;
+    if (!bubble || !scrubWrap || !bubbleTime || !bubbleChapter) return;
+    const seconds = fraction * durationSec;
+    const time = durationSec > 0 ? formatTime(seconds) : "--:--";
+    const chapter = durationSec > 0 && typeof window.playerChapterTitleAt === "function" ? window.playerChapterTitleAt(seconds) : "";
+    if (bubbleTime.textContent !== time) bubbleTime.textContent = time;
+    if (bubbleChapter.textContent !== chapter) bubbleChapter.textContent = chapter;
+    if (bubbleChapter.hidden !== !chapter) bubbleChapter.hidden = !chapter;
     const width = scrubWrap.clientWidth;
     const half = (bubble.offsetWidth || 48) / 2;
     const x = clamp(fraction * width, half, Math.max(half, width - half));
-    bubble.textContent = durationSec > 0 ? formatTime(fraction * durationSec) : "--:--";
     bubble.style.left = `${x.toFixed(1)}px`;
   };
   const bubbleVisible = visible => {
@@ -243,8 +257,11 @@
       },
     });
     seek.addEventListener("pointermove", event => {
+      // The range maps the pointer between the thumb's centres at either end (vision.css draws a
+      // 2px thumb), so the bubble does the same and names the time a click would go to.
+      const thumb = 2;
       const rect = seek.getBoundingClientRect();
-      hoverFraction = clamp((event.clientX - rect.left) / Math.max(1, rect.width), 0, 1);
+      hoverFraction = clamp((event.clientX - rect.left - thumb / 2) / Math.max(1, rect.width - thumb), 0, 1);
       if (!scrubbing) placeBubble(hoverFraction);
     });
     seek.addEventListener("pointerenter", () => bubbleVisible(true));
@@ -396,7 +413,7 @@
     if (!layer || !box || !progress) return;
     let target = 0;
     const chromeShown = !root.classList.contains("chrome-hidden") && !root.classList.contains("opening-active") &&
-      !root.classList.contains("side-panel-open");
+      !root.classList.contains("panel-covers-bar");
     if (chromeShown && box.dataset.empty !== "true" && !box.classList.contains("sub-dragging")) {
       const currentY = Number(gsap.getProperty(layer, "y")) || 0;
       const boxBottom = box.getBoundingClientRect().bottom - currentY;
