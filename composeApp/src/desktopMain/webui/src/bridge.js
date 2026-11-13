@@ -22,14 +22,43 @@ let nextId = 1;
  */
 const bridgeError = (message, method, extra = {}) => Object.assign(new Error(message), { bridge: true, method }, extra);
 
+// A topic can be read through a lens: the app's pushes are kept as they came, and what the page
+// reads (useTopic, peek, on) is the lens's view of them. AppContext uses one to take an entry off
+// a list at once while its Undo is up, before the app is told.
+const lenses = new Map();
+const views = new Map();
+const view = topic => {
+  const raw = latest.get(topic);
+  const lens = lenses.get(topic);
+  if (!lens || raw === undefined) return raw;
+  const seen = views.get(topic);
+  if (seen && seen.raw === raw) return seen.view;
+  const next = lens(raw);
+  views.set(topic, { raw, view: next });
+  return next;
+};
+const tell = topic => {
+  const set = listeners.get(topic);
+  if (!set) return;
+  const data = view(topic);
+  for (const fn of [...set]) {
+    try { fn(data); } catch (error) { console.error("topic", topic, error); }
+  }
+};
+
+/** Reads `topic` through `lens` (raw => what the page sees) from now on; null shows it as it is. */
+export const setLens = (topic, lens) => {
+  if (lens) lenses.set(topic, lens);
+  else lenses.delete(topic);
+  views.delete(topic);
+  if (latest.has(topic)) tell(topic);
+};
+
 const deliver = message => {
   if (!message || typeof message !== "object") return;
   if (message.topic) {
     latest.set(message.topic, message.data);
-    const set = listeners.get(message.topic);
-    if (set) for (const fn of [...set]) {
-      try { fn(message.data); } catch (error) { console.error("topic", message.topic, error); }
-    }
+    tell(message.topic);
     return;
   }
   const entry = pending.get(message.id);
@@ -76,7 +105,7 @@ export const on = (topic, fn) => {
   return () => listeners.get(topic)?.delete(fn);
 };
 
-export const peek = topic => latest.get(topic);
+export const peek = topic => view(topic);
 
 /** Fire-and-forget notification (no reply expected). */
 export const notify = (method, params = {}) => {
