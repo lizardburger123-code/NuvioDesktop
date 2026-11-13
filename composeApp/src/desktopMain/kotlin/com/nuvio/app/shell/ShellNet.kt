@@ -230,8 +230,14 @@ internal object ShellNet {
                 out.flush()
                 return
             }
-            out.write("HTTP/1.1 200 Connection Established\r\n\r\n".toByteArray())
-            out.flush()
+            try {
+                out.write("HTTP/1.1 200 Connection Established\r\n\r\n".toByteArray())
+                out.flush()
+            } catch (_: Exception) {
+                // The client left before the tunnel was up (a player seeking): let the server go too.
+                runCatching { upstream.close() }
+                return
+            }
             client.soTimeout = 0
             relay(client, input, upstream, host, tls = port == 443 && mode == Mode.UNBLOCK)
         } else {
@@ -255,7 +261,12 @@ internal object ShellNet {
                 out.flush()
                 return
             }
-            upstream.getOutputStream().apply { write(rebuilt.toByteArray(Charsets.ISO_8859_1)); flush() }
+            try {
+                upstream.getOutputStream().apply { write(rebuilt.toByteArray(Charsets.ISO_8859_1)); flush() }
+            } catch (_: Exception) {
+                runCatching { upstream.close() }
+                return
+            }
             client.soTimeout = 0
             relay(client, input, upstream, host, tls = false)
         }
@@ -278,8 +289,16 @@ internal object ShellNet {
 
     /** A host on the public internet: never this computer or the home network. */
     private fun isPublicHost(host: String): Boolean {
-        val addresses = runCatching { InetAddress.getAllByName(host) }.getOrNull() ?: return false
-        return addresses.isNotEmpty() && addresses.all { address ->
+        val system = runCatching { InetAddress.getAllByName(host) }.getOrNull() ?: return false
+        // "Unblock" connects to what encrypted DNS answers (cached, so the proxy reuses this very
+        // answer), and a name's owner can make that differ from the system's: both must be public.
+        val encrypted = if (mode == Mode.UNBLOCK) {
+            runCatching { Doh.resolve(host) }.getOrNull() ?: return false
+        } else {
+            emptyList<InetAddress>()
+        }
+        val addresses = system.toList() + encrypted
+        return system.isNotEmpty() && addresses.all { address ->
             val bytes = address.address
             val v4 = bytes.size == 4
             val a = bytes[0].toInt() and 0xff

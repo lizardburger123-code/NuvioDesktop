@@ -133,8 +133,15 @@ internal class ShellRpc(private val host: ShellHost) {
     private fun <T> watch(topic: String, flow: Flow<T>, map: (T) -> JsonElement) {
         if (topicJobs[topic]?.isActive == true) return
         topicJobs[topic] = scope.launch {
+            // The page keeps each topic's last value: one equal to it isn't sent again (playback
+            // progress changes the inputs every few seconds while most topics stay the same).
+            var last: JsonElement? = null
             flow.distinctUntilChanged().conflate().collect { value ->
-                val data = withContext(Dispatchers.Default) { runCatching { map(value) }.getOrElse { JsonNull } }
+                val previous = last
+                val data = withContext(Dispatchers.Default) {
+                    runCatching { map(value) }.getOrElse { JsonNull }.takeIf { it != previous }
+                } ?: return@collect
+                last = data
                 push(topic, data)
             }
         }
@@ -205,7 +212,7 @@ internal class ShellRpc(private val host: ShellHost) {
             genres = params["genres"].asStringList(),
             releaseInfo = params.string("releaseInfo"),
         )
-        "people.works" -> ShellPeople.works(params.string("name").orEmpty())
+        "people.works" -> ShellPeople.works(params.string("name").orEmpty(), params.string("titleId"))
         "ratings.get" -> ratingsJson()
         "ratings.set" -> setRatings(params)
         "net.get" -> ShellNet.settings()
@@ -353,6 +360,9 @@ internal class ShellRpc(private val host: ShellHost) {
         }
         "addons.configure" -> {
             val manifestUrl = params.string("id") ?: error("Missing addon.")
+            // Installed addons are stored as web links; anything else would be opened by whatever
+            // program the system has for it.
+            require(manifestUrl.startsWith("https://") || manifestUrl.startsWith("http://")) { "Only web links can be opened." }
             host.openUrl(manifestUrl.replace("/manifest.json", "/configure"))
             JsonPrimitive(true)
         }
@@ -499,6 +509,9 @@ internal class ShellRpc(private val host: ShellHost) {
         // Time watched: the player's own duration where it played the title; episodes add up.
         val durationByTitle = progress.groupBy { it.parentMetaId }
             .mapValues { (_, entries) -> entries.distinctBy { it.videoId }.sumOf { it.durationMs.coerceAtLeast(0L) } }
+        // Artwork from each title's first progress entry: one pass, not two scans per trophy.
+        val firstProgress = HashMap<String, WatchProgressEntry>()
+        progress.forEach { firstProgress.putIfAbsent(it.parentMetaId, it) }
         val all = (films + series).sortedByDescending { it.markedAtEpochMs }.take(400)
         return buildJsonArray {
             all.forEach { item ->
@@ -512,8 +525,8 @@ internal class ShellRpc(private val host: ShellHost) {
                     val duration = durationByTitle[item.id] ?: 0L
                     if (duration > 0) put("durationMs", duration)
                     if (item.type == "series") put("episodes", seriesEpisodes[item.id]?.count { it.isEpisode } ?: 0)
-                    progress.firstOrNull { it.parentMetaId == item.id }?.background?.let { put("backdrop", it) }
-                    progress.firstOrNull { it.parentMetaId == item.id }?.logo?.let { put("logo", it) }
+                    firstProgress[item.id]?.background?.let { put("backdrop", it) }
+                    firstProgress[item.id]?.logo?.let { put("logo", it) }
                 })
             }
         }
@@ -874,6 +887,8 @@ internal class ShellRpc(private val host: ShellHost) {
             val videos = meta?.videos.orEmpty().filter { (it.season ?: 0) > 0 }
                 .sortedWith(compareBy({ it.season ?: 0 }, { it.episode ?: 0 }))
             val index = videos.indexOfFirst { it.id == videoId || (it.season == season && it.episode == episode) }
+            // Not in the list (another catalog's numbering): the first episode is not "the next one".
+            if (index < 0) error("Couldn't find that episode in the title's episode list.")
             val next = videos.getOrNull(index + 1) ?: error("That was the last episode.")
             videoId = next.id
             season = next.season

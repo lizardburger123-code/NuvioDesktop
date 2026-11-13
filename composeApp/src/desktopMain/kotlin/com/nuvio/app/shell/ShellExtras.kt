@@ -594,7 +594,11 @@ internal object ShellAddonStore {
             if (page > 1) add("page=$page")
         }.joinToString("&")
         val now = System.currentTimeMillis()
-        val parsed = pageCache[params]?.takeIf { now - it.first < Fresh }?.second ?: parseList(site("/addons?$params")).also { pageCache[params] = now to it }
+        val parsed = pageCache[params]?.takeIf { now - it.first < Fresh }?.second ?: parseList(site("/addons?$params")).also {
+            // One entry per search typed: keep a bounded number.
+            if (pageCache.size >= 64) pageCache.clear()
+            pageCache[params] = now to it
+        }
         val installed = AddonRepository.uiState.value.addons
         val installedIds = installed.mapNotNull { addon -> addon.manifest?.id?.let { it to addon } }.toMap()
         val showAdult = showAdult()

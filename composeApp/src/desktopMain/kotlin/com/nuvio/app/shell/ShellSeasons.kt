@@ -167,7 +167,12 @@ internal object ShellSeasons {
         val meta = runCatching { MetaDetailsRepository.fetch(type = if (type == "anime") "series" else type, id = id, cacheResult = false) }
             .onFailure { log.w { "No episodes for $id: ${it.message}" } }
             .getOrNull() ?: return null
-        synchronized(metas) { metas[id] = System.currentTimeMillis() to meta }
+        synchronized(metas) {
+            val now = System.currentTimeMillis()
+            // Whole series details: drop the stale ones instead of keeping every series ever checked.
+            metas.values.removeAll { (at, _) -> now - at >= MetaCacheMs }
+            metas[id] = now to meta
+        }
         return meta
     }
 
