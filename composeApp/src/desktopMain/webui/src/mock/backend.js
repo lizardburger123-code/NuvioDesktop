@@ -1,6 +1,11 @@
 // Preview backend: answers the same bridge methods the desktop app does, with sample data
 // shaped like the real payloads. Titles come from the owner's own watch history and home rows.
 import { backdrop, logoText, person, poster, still } from "./art.js";
+import homeLane from "./lane-home.js";
+import titleLane from "./lane-title.js";
+import sourcesLane from "./lane-sources.js";
+import findLane from "./lane-find.js";
+import shellLane from "./lane-shell.js";
 
 const movie = (id, name, year, extra = {}) => ({
   id, type: "movie", name, releaseInfo: String(year), poster: poster(name), banner: backdrop(name),
@@ -510,6 +515,16 @@ export const createMockBackend = deliver => {
     ],
     "settings.playback.set": () => true,
   };
+
+  // Each area of the interface keeps its own additions to the preview in mock/lane-*.js. A lane
+  // file returns handlers; one with the name of a handler above replaces it and can still reach
+  // the original through ctx.base.
+  const ctx = {
+    push,
+    base: { ...handlers },
+    data: { all, byKey, trendingMovies, trendingSeries, anime, library, continueWatching, sections, cast, detailsFor, streamRows },
+  };
+  [homeLane, titleLane, sourcesLane, findLane, shellLane].forEach(lane => Object.assign(handlers, lane(ctx)));
 
   return {
     handle(message) {

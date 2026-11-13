@@ -24,6 +24,9 @@ import Library from "./screens/Library.jsx";
 import Settings from "./screens/Settings.jsx";
 import Addons from "./screens/Addons.jsx";
 
+// The preview (a plain browser with ?mock) can be driven from a test script.
+if (typeof window !== "undefined" && /[?&]mock\b/.test(window.location.search)) window.__nav = { navigate, goSection, back };
+
 const SCREENS = { home: Home, browse: Browse, search: Search, details: Details, person: Person, library: Library, settings: Settings, addons: Addons };
 
 /**
