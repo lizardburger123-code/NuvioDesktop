@@ -107,8 +107,12 @@ export function AppProvider({ boot, children }) {
     });
   }, [toast]);
 
+  // Read through a ref so toggleLater stays the same function when the list changes: every
+  // poster on screen holds it, and a new one would redraw them all on each bookmark.
+  const laterRef = useRef(laterIds);
+  laterRef.current = laterIds;
   const toggleLater = useCallback(item => {
-    const was = laterIds.has(`${item.type}:${item.id}`);
+    const was = laterRef.current.has(`${item.type}:${item.id}`);
     const payload = { id: item.id, type: item.type, name: item.name, poster: item.poster, banner: item.banner, logo: item.logo, releaseInfo: item.releaseInfo, imdbRating: item.imdbRating, genres: item.genres };
     call("watchLater.toggle", { item: payload }).then(
       () => toast(was ? `Removed ${item.name} from your list` : `Added ${item.name} to your list`, {
@@ -117,7 +121,7 @@ export function AppProvider({ boot, children }) {
       }),
       error => toast(error.message, { tone: "error" }),
     );
-  }, [laterIds, toast]);
+  }, [toast]);
 
   // An AniList title for a later season opens on that season.
   const openDetails = useCallback(item => navigate("details", { type: item.type, id: item.id, name: item.name, ...(item.season ? { season: item.season } : {}) }), []);

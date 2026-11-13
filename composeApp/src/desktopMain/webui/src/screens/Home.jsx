@@ -19,9 +19,9 @@ import "./Home.css";
 const NONE = [];
 
 /**
- * The title to suggest from: the one watched last (in progress or finished) whose genres are
- * known from what the page already has (catalog rows, the library, My list). Suggestions are
- * found by genre, so a title without them can't seed any.
+ * The title to suggest from: the one watched last (in progress or finished). Suggestions are
+ * found by genre: the page passes them when it has them (catalog rows, the library, My list),
+ * and the app looks them up itself for an IMDb title; any other title without them can't seed.
  */
 const useBecauseSeed = (recentEntries, finished, sections, watchLater) => {
   const library = useTopic("library", null);
@@ -38,6 +38,7 @@ const useBecauseSeed = (recentEntries, finished, sections, watchLater) => {
     for (const title of recent) {
       const found = known.get(`${title.type}:${title.id}`);
       if (found) return { type: title.type, id: title.id, name: title.name, genres: found.genres, releaseInfo: found.releaseInfo || "" };
+      if (String(title.id).startsWith("tt")) return { type: title.type, id: title.id, name: title.name, genres: [], releaseInfo: "" };
     }
     return null;
   }, [recentEntries, finished, sections, library, watchLater]);

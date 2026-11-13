@@ -72,13 +72,26 @@ internal object ShellSimilar {
         }
     }.distinct()
 
+    /** Genres and year of [id] from Cinemeta, for a title the page knows only by its id. */
+    private suspend fun lookUp(kind: String, id: String): Pair<List<String>, String?>? = withContext(Dispatchers.IO) {
+        withTimeoutOrNull(7_000) {
+            runCatching {
+                val body = suggestGet("$Cinemeta/meta/$kind/$id.json", 6)
+                val meta = (suggestJson.parseToJsonElement(body) as? JsonObject)?.get("meta") as? JsonObject
+                meta?.let { it.texts("genres") to (it.text("releaseInfo") ?: it.text("year")) }
+            }.getOrNull()
+        }
+    }
+
     suspend fun forTitle(type: String, id: String, name: String, genres: List<String>, releaseInfo: String?): JsonArray {
         val key = "$type:$id"
         cache[key]?.let { return it }
         val kind = if (type == "movie") "movie" else "series"
-        val wanted = genresOf(genres)
+        // Continue watching knows a title only by its id: ask Cinemeta for its genres and year.
+        val looked = if (genresOf(genres).isEmpty() && id.startsWith("tt")) lookUp(kind, id) else null
+        val wanted = genresOf(looked?.first?.takeIf { it.isNotEmpty() } ?: genres)
         if (wanted.isEmpty()) return JsonArray(emptyList())
-        val year = releaseInfo?.let { Regex("\\d{4}").find(it)?.value?.toIntOrNull() }
+        val year = (releaseInfo ?: looked?.second)?.let { Regex("\\d{4}").find(it)?.value?.toIntOrNull() }
         // The rarer genres say more about a title than "Drama" does: ask for those lists first.
         val asked = wanted.sortedBy { it in setOf("Drama", "Comedy", "Action") }.take(3)
         val lists = withContext(Dispatchers.IO) {
