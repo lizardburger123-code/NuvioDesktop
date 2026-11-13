@@ -56,11 +56,12 @@ internal fun chapterSkipIntervals(chapters: List<PlayerChapter>, durationSec: Do
     }
 
     // Unnamed chapters still mark where each part begins; a part exactly as long as a theme
-    // song, where a theme song goes, is one.
-    if (spans.size < 3) return emptyList()
-    val opening = spans.firstOrNull { it.length in ThemeLength && it.start < durationSec * 0.35 }
-    val ending = spans.lastOrNull { it !== opening && it.length in ThemeLength && it.start > durationSec * 0.6 }
-    return listOfNotNull(opening?.interval("op"), ending?.interval("ed"))
+    // song, where a theme song goes, is one. Both have to be there: a single part of that length
+    // could as well be a cold open, which must never be skipped.
+    if (spans.size < 4) return emptyList()
+    val opening = spans.firstOrNull { it.length in ThemeLength && it.start < durationSec * 0.35 } ?: return emptyList()
+    val ending = spans.lastOrNull { it !== opening && it.length in ThemeLength && it.start > durationSec * 0.6 } ?: return emptyList()
+    return listOf(opening.interval("op"), ending.interval("ed"))
 }
 
 internal fun skipSegmentCategory(type: String): String? = when (type.trim().lowercase()) {

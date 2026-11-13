@@ -548,7 +548,10 @@ private fun buildFileName(
         title.ifBlank { fallbackTitle }
     }
 
-    val extension = preferredExtension ?: sourceUrl.fileExtensionFromUrl()
+    // Only a video extension: an addon's file name or link must never make a download an
+    // executable or a shortcut ("Episode 1.exe") that runs when opened.
+    val extension = listOfNotNull(preferredExtension, sourceUrl.fileExtensionFromUrl())
+        .firstOrNull { it in VideoFileExtensions } ?: "mp4"
     return buildString {
         append(baseTitle.sanitizeFileName().ifBlank { "download" }.take(92))
         append('_')
@@ -557,6 +560,10 @@ private fun buildFileName(
         append(extension)
     }
 }
+
+private val VideoFileExtensions = setOf(
+    "mkv", "mp4", "m4v", "avi", "mov", "webm", "ts", "m2ts", "mts", "wmv", "flv", "mpg", "mpeg", "ogv", "3gp",
+)
 
 private fun String.sanitizeFileName(): String =
     trim().replace(Regex("[^A-Za-z0-9._ -]"), "_")

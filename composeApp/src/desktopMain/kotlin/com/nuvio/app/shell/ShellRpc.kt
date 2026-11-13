@@ -29,6 +29,8 @@ import com.nuvio.app.features.watched.WatchedItem
 import com.nuvio.app.features.watched.WatchedRepository
 import com.nuvio.app.features.watched.episodePlaybackId
 import com.nuvio.app.features.watching.application.WatchingActions
+import com.nuvio.app.features.watchprogress.CurrentDateProvider
+import com.nuvio.app.features.watching.domain.isReleasedBy
 import com.nuvio.app.features.watchprogress.WatchProgressUiState
 import com.nuvio.app.features.watchprogress.WatchProgressEntry
 import com.nuvio.app.features.watched.WatchedUiState
@@ -631,14 +633,16 @@ internal class ShellRpc(private val host: ShellHost) {
         }
 
         val on = params.bool("on") ?: true
+        val today = CurrentDateProvider.todayIsoDate()
         val season = params.int("season")
         val listed = (params["episodes"] as? JsonArray)
             ?.mapNotNull { entry -> (entry as? JsonObject)?.let { find(it) } }
             .orEmpty()
         val episodes = listed.ifEmpty { meta.videos.filter { season != null && it.season == season } }
             .filter { it.episode != null }
-            // Marking a season watched leaves alone what hasn't aired yet.
-            .filter { !on || it.available }
+            // Marking a season watched leaves alone what hasn't aired yet: addons often list a
+            // coming episode with its date and no "unavailable" flag.
+            .filter { !on || isReleasedBy(today, it.released, it.available) }
             .filter { isWatched(it) != on }
         if (episodes.isNotEmpty()) {
             WatchingActions.toggleSeasonWatched(meta = meta, episodes = episodes, areCurrentlyWatched = !on)
