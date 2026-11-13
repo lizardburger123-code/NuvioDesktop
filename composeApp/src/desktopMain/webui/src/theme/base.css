@@ -162,6 +162,17 @@ p { text-wrap: pretty; }
 .empty p { font-size: var(--fs-15); line-height: 1.55; color: var(--ink-2); }
 .empty .btn { margin-top: 8px; }
 
+/* ---- A part of the interface that failed (App.jsx): what happened, and the ways on ---------- */
+.screen-error { display: flex; align-items: center; }
+.screen-error-body { max-width: 62ch; margin: 0 var(--gutter); padding: 48px 0 15vh; display: flex; flex-direction: column; align-items: flex-start; gap: 14px; }
+.screen-error-body p { font-size: var(--fs-15); line-height: 1.55; color: var(--ink-2); }
+.screen-error-body .screen-error-detail {
+  max-width: 100%; padding: 10px 14px; border-radius: var(--r-s); background: var(--surface-1); box-shadow: inset 0 0 0 1px var(--line);
+  font: 500 var(--fs-13)/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--ink-3); overflow-wrap: anywhere;
+}
+.screen-error-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+.chrome-fallback { position: fixed; top: 16px; left: 16px; z-index: 46; display: flex; gap: 8px; }
+
 /* ---- Pictures that didn't load ------------------------------------------------------------
    App.jsx retries a failed picture, then marks it; the frame draws a tile in its place. Never the
    browser's broken-image icon. */

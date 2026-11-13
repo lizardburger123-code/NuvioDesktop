@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { call } from "./bridge.js";
 import { useTopic } from "./store.js";
 import { navigate } from "./lib/router.js";
@@ -32,6 +32,25 @@ export function AppProvider({ boot, children }) {
     // Mark it leaving first so it can animate out, then drop it.
     window.setTimeout(dismiss, stay);
   }, []);
+
+  // A request nobody waited for that failed (opening a link, a classic page...) would otherwise
+  // fail in silence. Say so once: the same failure is not repeated for half a minute, and
+  // several at once (a lost connection) make one note, not a pile.
+  useEffect(() => {
+    let last = { message: "", at: 0 };
+    const onRejection = event => {
+      const reason = event.reason;
+      // Superseded animations and page transitions reject on purpose; nothing went wrong.
+      if (reason?.name === "AbortError" || reason?.name === "InvalidStateError") return;
+      const message = reason?.bridge ? reason.message : "Something didn't work. Try again, and restart Nuvio if it keeps happening.";
+      const now = Date.now();
+      if (now - last.at < 4000 || (message === last.message && now - last.at < 30000)) return;
+      last = { message, at: now };
+      toast(message, { tone: "error" });
+    };
+    window.addEventListener("unhandledrejection", onRejection);
+    return () => window.removeEventListener("unhandledrejection", onRejection);
+  }, [toast]);
 
   const setAppearance = useCallback(patch => {
     setAppearanceState(prev => ({ ...prev, ...patch }));

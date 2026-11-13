@@ -72,6 +72,21 @@ const copyStatic = () => {
   writeFileSync(join(out, "index.html"), html);
 };
 
+// The app opens the page from a file, and a script loaded from another file counts as
+// cross-origin: the web view then hides its errors (only "Script error." reaches the page) and
+// never reports its unhandled promise rejections, so nothing could log or explain a failure.
+// Inline, the bundle is the page's own script. "</script" and "<!--" in it are written as
+// "\x3C..." (the same text inside strings, regexes and templates) so the HTML parser can't end
+// or bend the script early.
+const inlineScript = () => {
+  const js = readFileSync(join(out, "app.js"), "utf8").replace(/<(\/script|!--)/gi, "\\x3C$1");
+  const page = readFileSync(join(out, "index.html"), "utf8");
+  const tag = '<script src="app.js"></script>';
+  if (!page.includes(tag)) throw new Error(`index.html has no ${tag} to inline`);
+  writeFileSync(join(out, "index.html"), page.replace(tag, () => `<script>${js}</script>`));
+  rmSync(join(out, "app.js"));
+};
+
 if (!watch) rmSync(out, { recursive: true, force: true });
 copyStatic();
 if (watch) {
@@ -79,6 +94,7 @@ if (watch) {
   await ctx.watch();
 } else {
   await build(options);
+  inlineScript();
   // The app installs the page from its resources using this index (files are not listable in a jar).
   const files = readdirSync(out, { recursive: true, withFileTypes: true })
     .filter(entry => entry.isFile())
