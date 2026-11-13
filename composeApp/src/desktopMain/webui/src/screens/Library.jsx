@@ -44,13 +44,21 @@ const SORTERS = {
 };
 
 /** Tab counts, in their own component: a topic push (downloads tick twice a second) re-renders only this. */
-const LibraryTabs = memo(function LibraryTabs({ tab, cloudCount }) {
+const LibraryTabs = memo(function LibraryTabs({ tab, cloudCount, pending }) {
   const { watchLater } = useApp();
   const continueWatching = useTopic("continue", NO_ITEMS);
   const library = useTopic("library", null);
   const completed = useTopic("completed", NO_ITEMS);
   const downloads = useTopic("downloads", NO_ITEMS);
-  const counts = { later: watchLater.length, continue: continueWatching.length, saved: library?.items?.length ?? 0, completed: completed.length, cloud: cloudCount, downloads: downloads.length };
+  // Taken off but still undoable: not counted, so the count agrees with what the tab shows.
+  const counts = {
+    later: watchLater.length,
+    continue: continueWatching.filter(entry => !pending.continue.has(entry.key)).length,
+    saved: library?.items?.length ?? 0,
+    completed: completed.length,
+    cloud: cloudCount,
+    downloads: downloads.filter(item => !pending.downloads.has(item.id)).length,
+  };
   const listRef = useRef(null);
   const go = id => navigate("library", { tab: id }, { replace: true });
   // Arrow keys move along the tabs, like any tab list.
@@ -81,6 +89,14 @@ export default function Library({ params }) {
   // shows once that answer is in, so it doesn't change under the user.
   const [cloud, setCloud] = useState({ items: null, error: null });
   const [clearing, setClearing] = useState(false);
+  // Continue watching entries and downloads taken off while their Undo is up.
+  const [pending, setPending] = useState(() => ({ continue: new Set(), downloads: new Set() }));
+  const hold = useCallback((kind, key, on) => setPending(prev => {
+    const next = new Set(prev[kind]);
+    if (on) next.add(key);
+    else next.delete(key);
+    return { ...prev, [kind]: next };
+  }), []);
   const loadCloud = useCallback(() => {
     setCloud(prev => ({ ...prev, error: null, loading: true }));
     call("library.cloud", {}, { timeoutMs: 30000 }).then(
@@ -99,7 +115,7 @@ export default function Library({ params }) {
       <section className="library-head">
         <h1 className="t-page">Library</h1>
         <div className="library-bar">
-          <LibraryTabs tab={tab} cloudCount={cloud.items ? cloud.items.length : null} />
+          <LibraryTabs tab={tab} cloudCount={cloud.items ? cloud.items.length : null} pending={pending} />
           <div className="library-tools">
             {tab === "cloud" ? (
               <div className="library-cloud-tools">
@@ -112,9 +128,9 @@ export default function Library({ params }) {
       </section>
 
       <div role="tabpanel" aria-labelledby={`library-tab-${tab}`}>
-        {tab === "downloads" ? <Downloads />
+        {tab === "downloads" ? <Downloads gone={pending.downloads} onGone={(id, on) => hold("downloads", id, on)} />
           : tab === "completed" ? <Trophies />
-            : tab === "continue" ? <ContinueTab />
+            : tab === "continue" ? <ContinueTab hidden={pending.continue} onHide={(key, on) => hold("continue", key, on)} />
               : tab === "cloud" ? <CloudTab state={cloud} onRetry={loadCloud} />
                 : tab === "saved" ? <SavedTab />
                   : <LaterTab />}
@@ -188,26 +204,24 @@ function CloudTab({ state, onRetry }) {
   );
 }
 
-function ContinueTab() {
+function ContinueTab({ hidden, onHide }) {
   const { resume, toast } = useApp();
   const entries = useTopic("continue", NO_ITEMS);
   // Taken off at once and only forgotten when the Undo has passed: the app keeps no copy to restore.
-  const [hidden, setHidden] = useState(() => new Set());
-  const unhide = key => setHidden(prev => { const next = new Set(prev); next.delete(key); return next; });
   const remove = useCallback(entry => {
-    setHidden(prev => new Set(prev).add(entry.key));
+    onHide(entry.key, true);
     let undone = false;
     const timer = window.setTimeout(() => {
       if (undone) return;
       call("continue.remove", { id: entry.id, type: entry.type }).catch(error => {
-        unhide(entry.key);
+        onHide(entry.key, false);
         toast(error.message, { tone: "error" });
       });
     }, 5400);
     toast(`Removed ${entry.name} from Continue watching`, {
-      action: { label: "Undo", run: () => { undone = true; window.clearTimeout(timer); unhide(entry.key); } },
+      action: { label: "Undo", run: () => { undone = true; window.clearTimeout(timer); onHide(entry.key, false); } },
     });
-  }, [toast]);
+  }, [toast, onHide]);
   const shown = useMemo(() => entries.filter(entry => !hidden.has(entry.key)), [entries, hidden]);
   if (!shown.length) {
     return (
