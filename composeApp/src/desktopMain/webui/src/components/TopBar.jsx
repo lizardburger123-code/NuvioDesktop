@@ -3,7 +3,7 @@ import { LuArrowLeft, LuFlame, LuSearch, LuSettings2 } from "react-icons/lu";
 import { activeSection, back, canGoBack, goSection } from "../lib/router.js";
 import { useTopic } from "../store.js";
 import { level, streaks } from "../lib/trophies.js";
-import { NAV_ITEMS } from "../lib/nav.js";
+import { NAV_ITEMS, focusSearch } from "../lib/nav.js";
 import { useApp } from "../AppContext.jsx";
 import ProfileCard, { Avatar } from "./ProfileCard.jsx";
 import HazeChrome from "../haze/Chrome.jsx";
@@ -88,10 +88,10 @@ function CinemaBar({ route, stack, profile, compact }) {
             <LuFlame aria-hidden="true" />{streak}
           </button>
         ) : null}
-        <button className={`topbar-tool${section === "search" ? " is-on" : ""}`} aria-label="Search" title="Search (Ctrl+K)" onClick={() => goSection("search")}>
+        <button className={`topbar-tool${section === "search" ? " is-on" : ""}`} aria-label="Search" aria-current={section === "search" ? "page" : undefined} title="Search (Ctrl+K)" onClick={focusSearch}>
           <LuSearch />
         </button>
-        <button className={`topbar-tool${section === "settings" ? " is-on" : ""}`} aria-label="Settings" title="Settings" onClick={() => goSection("settings")}>
+        <button className={`topbar-tool${section === "settings" ? " is-on" : ""}`} aria-label="Settings" aria-current={section === "settings" ? "page" : undefined} title="Settings" onClick={() => goSection("settings")}>
           <LuSettings2 />
         </button>
         <button

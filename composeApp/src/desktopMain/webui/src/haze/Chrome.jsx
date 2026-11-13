@@ -5,7 +5,7 @@ import {
 import { back, canGoBack, goSection, sectionId } from "../lib/router.js";
 import { useTopic } from "../store.js";
 import { level, streaks } from "../lib/trophies.js";
-import { NAV_ITEMS } from "../lib/nav.js";
+import { NAV_ITEMS, focusSearch } from "../lib/nav.js";
 import { switchLook } from "../lib/look.js";
 import { useApp } from "../AppContext.jsx";
 import ProfileCard, { Avatar } from "../components/ProfileCard.jsx";
@@ -19,7 +19,7 @@ const TABS = NAV_ITEMS.filter(item => item.inTopBar).map(item => ({ ...item, id:
 /** Everything the app has, one icon each. `match` tells whether the place on screen is this one. */
 const RAIL = [
   { id: "home", label: "Home", icon: LuHouse, go: () => goSection("home"), match: (id) => id === "home" },
-  { id: "search", label: "Search", hint: "Ctrl K", icon: LuSearch, go: () => goSection("search"), match: id => id === "search" },
+  { id: "search", label: "Search", hint: "Ctrl K", icon: LuSearch, go: focusSearch, match: id => id === "search" },
   { id: "movies", label: "Movies", icon: LuFilm, go: () => goSection("browse", { kind: "movie" }), match: id => id === "browse:movie" },
   { id: "series", label: "Series", icon: LuTv, go: () => goSection("browse", { kind: "series" }), match: id => id === "browse:series" },
   { id: "anime", label: "Anime", icon: LuSparkles, go: () => goSection("browse", { kind: "anime" }), match: id => id === "browse:anime" },
@@ -149,7 +149,7 @@ export default function HazeChrome({ stack, profile }) {
             ))}
           </nav>
         </div>
-        <button className={`hz-search${place.id === "search" ? " is-on" : ""}`} onClick={() => goSection("search")} aria-label="Search">
+        <button className={`hz-search${place.id === "search" ? " is-on" : ""}`} onClick={focusSearch} aria-label="Search" aria-keyshortcuts="Control+K">
           <LuSearch aria-hidden="true" />
           <span>Search films, series, people</span>
           <kbd>Ctrl K</kbd>

@@ -1,4 +1,4 @@
-import { Component, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Component, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { LuArrowLeft, LuHouse, LuRotateCcw } from "react-icons/lu";
 import { gsap } from "gsap";
 import { call, notify, on } from "./bridge.js";
@@ -11,6 +11,8 @@ import { recovered, reloadApp } from "./lib/session.js";
 import { setArtProxy } from "./lib/artColor.js";
 import { switchLook } from "./lib/look.js";
 import { ScreenActiveContext } from "./lib/screen.js";
+import { SHORTCUTS, focusSearch } from "./lib/nav.js";
+import Shortcuts from "./components/Shortcuts.jsx";
 import Background from "./components/Background.jsx";
 import TopBar from "./components/TopBar.jsx";
 import Toasts from "./components/Toasts.jsx";
@@ -189,21 +191,44 @@ function Shell() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  const [keysOpen, setKeysOpen] = useState(false);
   useEffect(() => {
-    const isTyping = target => target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+    const open = () => setKeysOpen(true);
+    window.addEventListener(SHORTCUTS, open);
+    return () => window.removeEventListener(SHORTCUTS, open);
+  }, []);
+
+  useEffect(() => {
+    // Keys never leave a field the user is typing in, except Esc (which leaves the field).
+    const isTyping = target => Boolean(target && (/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) || target.isContentEditable));
     const onKey = event => {
-      if ((event.ctrlKey && event.key.toLowerCase() === "k") || (event.key === "/" && !isTyping(event.target))) {
+      // Something on top (the shelf's open case, a sheet) already took this key.
+      if (event.defaultPrevented) return;
+      const key = event.key || "";
+      const plain = !event.ctrlKey && !event.altKey && !event.metaKey;
+      // A layer that is open (a sheet, the profile card, Who's watching?) owns the keys.
+      const layer = document.querySelector("[data-modal-open]");
+      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && key.toLowerCase() === "k") {
         event.preventDefault();
-        goSection("search");
+        if (!layer) focusSearch();
         return;
       }
-      if (event.key === "Escape" && !document.querySelector("[data-modal-open]")) {
-        if (isTyping(event.target)) event.target.blur();
-        else back();
+      // Alt+arrows edit nothing in a field, so they move through history from anywhere.
+      if (event.altKey && !event.ctrlKey && !event.shiftKey && (key === "ArrowLeft" || key === "ArrowRight")) {
+        if (layer) return;
+        event.preventDefault();
+        if (key === "ArrowLeft") back();
+        else forward();
+        return;
       }
-      if (event.key === "Backspace" && !isTyping(event.target)) back();
-      if (event.altKey && event.key === "ArrowLeft") { event.preventDefault(); back(); }
-      if (event.altKey && event.key === "ArrowRight") { event.preventDefault(); forward(); }
+      if (isTyping(event.target)) {
+        if (key === "Escape" && !layer) event.target.blur();
+        return;
+      }
+      if (layer) return;
+      if (key === "/" && plain) { event.preventDefault(); focusSearch(); return; }
+      if (key === "?" && plain) { event.preventDefault(); setKeysOpen(true); return; }
+      if ((key === "Escape" || key === "Backspace") && plain && !event.shiftKey) back();
     };
     // Mouse side buttons: back and forward, like a browser.
     const onMouse = event => {
@@ -248,7 +273,7 @@ function Shell() {
   }, [gate, toast, setAppearance]);
   useEffect(() => {
     const onKey = event => {
-      if (!(event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "l")) return;
+      if (!(event.ctrlKey && event.shiftKey && String(event.key || "").toLowerCase() === "l")) return;
       event.preventDefault();
       const next = document.documentElement.dataset.layout === "haze" ? "cinema" : "haze";
       switchLook(next, layout => setAppearance({ layout }));
@@ -257,6 +282,7 @@ function Shell() {
     return () => window.removeEventListener("keydown", onKey);
   }, [setAppearance]);
 
+  const closeKeys = useCallback(() => setKeysOpen(false), []);
   const compact = top.name !== "home" || scrolled;
   const sceneArt = top.name === "details" ? art : null;
 
@@ -274,6 +300,7 @@ function Shell() {
       {gate ? <Guard name="profile gate" onError={() => setGate(false)}><ProfileGate onDone={() => setGate(false)} /></Guard> : null}
       <Guard name="toasts"><Toasts /></Guard>
       <Guard name="trophy toast"><TrophyToast /></Guard>
+      {keysOpen ? <Guard name="shortcuts"><Shortcuts onClose={closeKeys} /></Guard> : null}
     </>
   );
 }

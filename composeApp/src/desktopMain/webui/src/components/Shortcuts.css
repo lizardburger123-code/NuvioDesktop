@@ -1,0 +1,27 @@
+/* Keyboard shortcuts: one sheet in the middle of a dimmed room. */
+.keys-layer {
+  position: fixed; inset: 0; z-index: 95; display: grid; place-items: center; padding: 24px;
+  background: rgb(4 5 7 / .62);
+}
+.keys-sheet {
+  width: min(560px, 100%); max-height: calc(100vh - 48px); overflow: hidden auto; overscroll-behavior: contain; scrollbar-width: thin;
+  padding: 22px 24px 20px; border-radius: var(--r-xl); display: flex; flex-direction: column; gap: 18px;
+  background: rgb(18 19 24 / .96); box-shadow: inset 0 0 0 1px var(--line-strong), 0 30px 80px rgb(0 0 0 / .6);
+}
+.keys-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.keys-head h2 { font-size: var(--fs-20); font-weight: 800; letter-spacing: -.02em; }
+.keys-group h3 { margin-bottom: 6px; font-size: var(--fs-13); font-weight: 600; color: var(--ink-3); }
+.keys-group dl { margin: 0; }
+.keys-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); align-items: center; gap: 16px; min-height: 40px; box-shadow: inset 0 -1px 0 var(--line); }
+.keys-row:last-child { box-shadow: none; }
+.keys-row dt { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.keys-row dd { margin: 0; font-size: var(--fs-14); color: var(--ink-2); }
+.keys-combo { display: inline-flex; gap: 4px; }
+.keys-or { font-size: var(--fs-12); color: var(--ink-3); }
+.keys-sheet kbd {
+  min-width: 26px; height: 26px; padding: 0 7px; border-radius: 7px; display: inline-grid; place-items: center;
+  font: inherit; font-size: var(--fs-12); font-weight: 700; color: #fff;
+  background: rgb(255 255 255 / .09); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1), inset 0 -2px 0 rgb(0 0 0 / .3);
+}
+.keys-note { font-size: var(--fs-13); color: var(--ink-3); }
+[data-layout="haze"] .keys-sheet kbd { box-shadow: inset 0 0 0 1px rgb(var(--haze-rgb) / .3), inset 0 -2px 0 rgb(0 0 0 / .3); }
