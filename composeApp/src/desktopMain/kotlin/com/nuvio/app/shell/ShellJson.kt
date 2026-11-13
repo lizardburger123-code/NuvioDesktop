@@ -19,6 +19,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import java.util.Locale
 
 /** Converts app models into the payloads the web shell reads (see webui/src/mock/backend.js). */
 internal object ShellJson {
@@ -230,9 +231,10 @@ internal object ShellJson {
         put("streams", buildJsonArray { group.streams.forEachIndexed { index, item -> add(stream(group.addonId, index, item)) } })
     }
 
+    /** "12.3 GB" in plain digits whatever the system's language (it would give "12,3" or Arabic digits). */
     fun formatBytes(bytes: Long): String {
         val gb = bytes / 1_073_741_824.0
-        return if (gb >= 1) "%.1f GB".format(gb) else "%.0f MB".format(bytes / 1_048_576.0)
+        return if (gb >= 1) "%.1f GB".format(Locale.ROOT, gb) else "%.0f MB".format(Locale.ROOT, bytes / 1_048_576.0)
     }
 
     fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull
