@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  LuCheck, LuClapperboard, LuLayoutGrid, LuList, LuListVideo, LuPlay, LuPlus, LuSearch, LuTrophy,
+  LuCheck, LuChevronDown, LuChevronUp, LuClapperboard, LuLayoutGrid, LuList, LuListVideo, LuPlay, LuPlus, LuSearch, LuTrophy,
 } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useApp } from "../AppContext.jsx";
@@ -9,8 +9,8 @@ import Row from "../components/Row.jsx";
 import { PosterCard, WideCard } from "../components/Cards.jsx";
 import TitleMark from "../components/TitleMark.jsx";
 import Ratings, { EpisodeScore } from "../components/Ratings.jsx";
-import EpisodePicker from "../components/EpisodePicker.jsx";
 import Person from "../components/Person.jsx";
+import { reduceMotion } from "../lib/motion.js";
 import { year } from "../lib/format.js";
 import "./Details.css";
 
@@ -137,7 +137,7 @@ function RatingsSheet({ meta, seasons, onPlay }) {
 }
 
 /** A title's page in the Haze look. The data and the play logic come from Details; this is the furniture. */
-export default function HazeDetails({ meta, topic, seasons, season, setSeason, episodes, target, chosen, onPickEpisode, similar, play, openSources, saved, heroRef, children }) {
+export default function HazeDetails({ meta, topic, seasons, season, setSeason, episodes, target, similar, play, openSources, saved, heroRef, children }) {
   const { appearance, laterIds, toggleLater, openDetails, toast } = useApp();
   const color = useArtColor([meta.background, meta.banner, meta.poster], appearance?.hazeArt !== false);
   const series = seasons.length > 0;
@@ -154,6 +154,27 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
   const [query, setQuery] = useState("");
   useEffect(() => { setQuery(""); }, [season]);
   const chooseView = next => { setView(next); try { window.localStorage.setItem(VIEW_KEY, next); } catch { /* a nicety */ } };
+
+  // The episode list folds away: a title opens on what to watch next, with the rest of the page
+  // (similar titles, the collection) in reach, and the whole season one click away.
+  const [open, setOpen] = useState(false);
+  useEffect(() => { setOpen(false); }, [meta.id]);
+  const expanded = open || query.trim() !== "";
+  // The list stays in the page for the length of its closing move, then leaves it.
+  const [listed, setListed] = useState(false);
+  useEffect(() => {
+    if (expanded) { setListed(true); return undefined; }
+    const timer = window.setTimeout(() => setListed(false), 380);
+    return () => window.clearTimeout(timer);
+  }, [expanded]);
+  const toggleRef = useRef(null);
+  const fold = () => {
+    setOpen(false);
+    setQuery("");
+    toggleRef.current?.scrollIntoView({ block: "center", behavior: reduceMotion() ? "auto" : "smooth" });
+  };
+  const lead = episodes.find(video => video.id === target?.videoId) || null;
+  const seen = episodes.filter(video => video.watched).length;
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -189,16 +210,15 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
         </div>
         {meta.description ? <p className="details-desc" data-rise dir="auto">{meta.description}</p> : null}
         <div className="details-actions">
-          <button data-rise className="btn btn-primary details-play" onClick={() => chosen && play(chosen)}>
+          <button data-rise className="btn btn-primary details-play" onClick={() => target && play(target)}>
             <LuPlay className="fill" />
-            <span>{chosen?.label}</span>
-            {chosen?.sub ? <span className="details-play-sub num">{chosen.sub}</span> : null}
+            <span>{target?.label}</span>
+            {target?.sub ? <span className="details-play-sub num">{target.sub}</span> : null}
           </button>
-          {series ? <EpisodePicker meta={meta} seasons={seasons} value={chosen?.videoId} onPick={onPickEpisode} /> : null}
           <button data-rise className={`btn btn-glass${saved ? " is-on" : ""}`} onClick={() => toggleLater(meta)} aria-pressed={saved}>
             {saved ? <LuCheck /> : <LuPlus />} {saved ? "In my list" : "My list"}
           </button>
-          <button data-rise className="btn btn-glass btn-icon" onClick={() => chosen && openSources(chosen)} aria-label="Sources" title="Choose a source"><LuListVideo /></button>
+          <button data-rise className="btn btn-glass btn-icon" onClick={() => target && openSources(target)} aria-label="Sources" title="Choose a source"><LuListVideo /></button>
           {meta.type !== "series" ? (
             <button
               data-rise
@@ -225,7 +245,7 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
         <section className="hz-d-panel">
           <div className="hz-ep-tools">
             <div className="hz-seasons" role="tablist" aria-label="Seasons" data-keep-scroll>
-              {seasons.map(s => <button key={s} role="tab" className="chip" aria-selected={s === season} aria-pressed={s === season} onClick={() => setSeason(s)}>{seasonName(s)}</button>)}
+              {seasons.map(s => <button key={s} role="tab" className="chip" aria-selected={s === season} aria-pressed={s === season} onClick={() => { setSeason(s); setOpen(true); }}>{seasonName(s)}</button>)}
             </div>
             <div className="hz-ep-right">
               <label className="hz-find">
@@ -238,16 +258,42 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
               </div>
             </div>
           </div>
-          {shown.length === 0 ? <p className="hz-none">No episode matches “{query}”.</p> : null}
-          {view === "list" ? (
-            <div className="hz-eps" key={season}>
-              {shown.map(video => <Episode key={video.id} video={video} meta={meta} next={video.id === target?.videoId} nextLabel={nextLabel} onPlay={play} />)}
+          <button
+            ref={toggleRef}
+            className="hz-ep-toggle"
+            aria-expanded={expanded}
+            aria-controls="hz-ep-list"
+            onClick={() => (expanded ? fold() : setOpen(true))}
+          >
+            <span className="hz-ep-toggle-name">{seasonName(season)}</span>
+            <span className="hz-ep-toggle-count num">
+              {episodes.length} {episodes.length === 1 ? "episode" : "episodes"}{seen ? ` · ${seen} watched` : ""}
+            </span>
+            <span className="hz-ep-toggle-act">{expanded ? "Hide episodes" : "Show all episodes"}</span>
+            <LuChevronDown aria-hidden="true" />
+          </button>
+          {!expanded && lead ? (
+            <div className="hz-eps hz-ep-lead">
+              <Episode video={lead} meta={meta} next nextLabel={nextLabel} onPlay={play} />
             </div>
-          ) : (
-            <div className="hz-tiles" key={season}>
-              {shown.map(video => <EpisodeTile key={video.id} video={video} meta={meta} next={video.id === target?.videoId} onPlay={play} />)}
+          ) : null}
+          <div id="hz-ep-list" className="hz-ep-fold" data-open={expanded} inert={expanded ? undefined : ""}>
+            <div className="hz-ep-fold-in">
+              {listed && shown.length === 0 ? <p className="hz-none">No episode matches “{query}”.</p> : null}
+              {!listed ? null : view === "list" ? (
+                <div className="hz-eps" key={season}>
+                  {shown.map(video => <Episode key={video.id} video={video} meta={meta} next={video.id === target?.videoId} nextLabel={nextLabel} onPlay={play} />)}
+                </div>
+              ) : (
+                <div className="hz-tiles" key={season}>
+                  {shown.map(video => <EpisodeTile key={video.id} video={video} meta={meta} next={video.id === target?.videoId} onPlay={play} />)}
+                </div>
+              )}
+              {listed && shown.length > 5 ? (
+                <button className="hz-ep-less" onClick={fold}><LuChevronUp aria-hidden="true" /> Hide episodes</button>
+              ) : null}
             </div>
-          )}
+          </div>
         </section>
       ) : null}
 

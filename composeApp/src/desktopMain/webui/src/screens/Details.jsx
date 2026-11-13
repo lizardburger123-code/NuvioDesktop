@@ -10,7 +10,6 @@ import { PosterCard, WideCard } from "../components/Cards.jsx";
 import Sources from "./Sources.jsx";
 import TitleMark from "../components/TitleMark.jsx";
 import Ratings from "../components/Ratings.jsx";
-import EpisodePicker from "../components/EpisodePicker.jsx";
 import Person from "../components/Person.jsx";
 import { useSimilar } from "../lib/similar.js";
 import HazeDetails from "../haze/Details.jsx";
@@ -29,9 +28,6 @@ export default function Details({ params }) {
   const meta = state.meta;
   const [season, setSeason] = useState(params.season ?? null);
   const [sources, setSources] = useState(null);
-  // An episode chosen from the menu beside Play: it becomes what Play starts.
-  const [picked, setPicked] = useState(null);
-  useEffect(() => { setPicked(null); }, [key]);
   const similar = useSimilar(meta);
   const heroRef = useRef(null);
   const active = useScreenActive();
@@ -109,10 +105,6 @@ export default function Details({ params }) {
   };
 
   const saved = laterIds.has(key);
-  const chosen = picked
-    ? { videoId: picked.id, season: picked.season, episode: picked.episode, title: picked.title, thumbnail: picked.thumbnail, label: "Play", sub: episodeCode(picked.season, picked.episode) }
-    : target;
-  const pickEpisode = video => { setPicked(video); setSeason(video.season); };
 
   if (!meta) {
     return (
@@ -132,7 +124,7 @@ export default function Details({ params }) {
     return (
       <HazeDetails
         meta={meta} topic={topic} seasons={seasons} season={season} setSeason={setSeason} episodes={episodes}
-        target={target} chosen={chosen} onPickEpisode={pickEpisode} similar={similar}
+        target={target} similar={similar}
         play={play} openSources={setSources} saved={saved} heroRef={heroRef}
       >
         {sources ? <Sources meta={meta} video={sources} onClose={() => setSources(null)} /> : null}
@@ -159,16 +151,15 @@ export default function Details({ params }) {
         </div>
         {meta.description ? <p className="details-desc" data-rise dir="auto">{meta.description}</p> : null}
         <div className="details-actions">
-          <button data-rise className="btn btn-primary details-play" onClick={() => chosen && play(chosen)}>
+          <button data-rise className="btn btn-primary details-play" onClick={() => target && play(target)}>
             <LuPlay className="fill" />
-            <span>{chosen?.label}</span>
-            {chosen?.sub ? <span className="details-play-sub num">{chosen.sub}</span> : null}
+            <span>{target?.label}</span>
+            {target?.sub ? <span className="details-play-sub num">{target.sub}</span> : null}
           </button>
-          {seasons.length ? <EpisodePicker meta={meta} seasons={seasons} value={chosen?.videoId} onPick={pickEpisode} /> : null}
           <button data-rise className={`btn btn-glass${saved ? " is-on" : ""}`} onClick={() => toggleLater(meta)} aria-pressed={saved}>
             {saved ? <LuBookmarkCheck /> : <LuBookmark />} {saved ? "In my list" : "Add to list"}
           </button>
-          <button data-rise className="btn btn-line" onClick={() => chosen && setSources(chosen)}>
+          <button data-rise className="btn btn-line" onClick={() => target && setSources(target)}>
             <LuListVideo /> Sources
           </button>
           {meta.type !== "series" ? (
