@@ -21,8 +21,9 @@ import java.time.temporal.ChronoUnit
  * (or its latest season) only becomes a trophy once it has stopped airing.
  *
  * A series counts as still airing when an episode is listed that hasn't aired yet, or when its
- * latest season is coming out week by week and the last episode is recent (next week's episode
- * is often not listed until it airs). A series marked ended or cancelled is over.
+ * latest season is coming out in parts (weekly, twice a week, daily) and the last episode is
+ * recent (the next one is often not listed until it airs). A series marked ended, cancelled or
+ * finished is over.
  *
  * Verdicts are kept between launches and looked at again after a few days.
  */
@@ -122,17 +123,20 @@ internal object ShellAiring {
         // An episode that is listed but not out yet.
         if (episodes.any { video -> video.available == false || dateOf(video.released)?.isAfter(today) == true }) return true
         val status = meta.status.orEmpty().lowercase()
-        if ("ended" in status || "cancel" in status) return false
-        // Nothing upcoming is listed. A season coming out weekly often gets its next episode
-        // listed late, so a recent weekly episode still means "more to come".
+        // Anime catalogs say "Finished Airing" or "finished" where others say "Ended".
+        if ("ended" in status || "cancel" in status || "finished" in status) return false
+        // Nothing upcoming is listed. A season coming out in parts often gets its next episode
+        // listed late, so a recent episode still means "more to come". Recent is three weeks:
+        // a weekly show can skip a week or two (a holiday, a sports broadcast).
         val lastSeason = episodes.maxOf { it.season ?: 0 }
         val inSeason = episodes.filter { it.season == lastSeason }
         val dates = inSeason.mapNotNull { dateOf(it.released) }.distinct().sorted()
         val last = dates.lastOrNull() ?: return false
-        if (ChronoUnit.DAYS.between(last, today) >= 10) return false
-        val weekly = dates.size >= 2 && ChronoUnit.DAYS.between(dates[dates.size - 2], last) in 5..9
-        // A premiere: one or two episodes on a single day (a whole season at once is many).
-        val premiere = dates.size == 1 && inSeason.size <= 2
-        return weekly || premiere
+        if (ChronoUnit.DAYS.between(last, today) > 21) return false
+        // Weekly, twice a week (two nights in a row) or daily: the latest two air dates are close.
+        val inParts = dates.size >= 2 && ChronoUnit.DAYS.between(dates[dates.size - 2], last) in 1..9
+        // A premiere: up to three episodes on a single day (a whole season at once is more).
+        val premiere = dates.size == 1 && inSeason.size <= 3
+        return inParts || premiere
     }
 }

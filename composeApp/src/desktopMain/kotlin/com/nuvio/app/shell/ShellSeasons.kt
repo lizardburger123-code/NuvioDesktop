@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -59,7 +60,7 @@ internal object ShellSeasons {
             store.putStringSet("seasons_announced", announced.toSet())
         }
         log.i { "Season $season of $id is still airing: its trophy is taken back" }
-        _events.value = _events.value.filterNot { it["key"]?.toString()?.trim('"') == "$id:$season" }
+        _events.update { list -> list.filterNot { it["key"]?.toString()?.trim('"') == "$id:$season" } }
     }
 
     @Synchronized fun start() {
@@ -155,7 +156,8 @@ internal object ShellSeasons {
             put("at", System.currentTimeMillis())
         }
         log.i { "Season complete: ${meta.name} S$season" }
-        _events.value = (listOf(event) + _events.value).take(20)
+        // Several seasons can finish at once (each checked on its own thread): add, don't overwrite.
+        _events.update { list -> (listOf(event) + list).take(20) }
     }
 
     private suspend fun meta(type: String, id: String): MetaDetails? {
