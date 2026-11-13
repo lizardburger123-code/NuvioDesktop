@@ -18,10 +18,12 @@
   box-shadow: inset 1px 0 0 var(--line-strong), -40px 0 80px rgb(0 0 0 / .5);
   -webkit-backdrop-filter: blur(32px) saturate(1.4); backdrop-filter: blur(32px) saturate(1.4);
 }
+/* The sheet itself takes focus when it opens (so keys work at once); only its controls show a ring. */
+.sources:focus-visible { outline: none; }
 
 .sources-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 28px 28px 14px; }
 .sources-titles { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.sources-title { font-size: var(--fs-28); font-weight: 800; letter-spacing: -.035em; line-height: 1.05; }
+.sources-title { font-size: var(--fs-28); font-weight: 800; letter-spacing: -.035em; line-height: 1.05; overflow-wrap: anywhere; }
 .sources-sub { font-size: var(--fs-14); color: var(--ink-2); font-weight: 600; }
 
 .sources-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 28px 16px; }
@@ -30,27 +32,101 @@
 .sources-tools .btn-icon.btn-sm, .sources-tools .btn-ghost { width: 40px; padding: 0; }
 .sources-tools .btn-primary:disabled { opacity: .4; cursor: default; }
 
-.sources-list { flex: 1; overflow-y: auto; padding: 0 16px 28px; }
+/* Typing anywhere in the sheet lands here. */
+.sources-search {
+  flex: 1 1 220px; min-width: 0; height: 40px; display: flex; align-items: center; gap: 10px; padding: 0 4px 0 14px;
+  border-radius: 999px; background: rgb(255 255 255 / .08);
+  transition: box-shadow var(--t-fast) ease, background-color var(--t-fast) ease;
+}
+.sources-search:focus-within { background: rgb(255 255 255 / .1); box-shadow: inset 0 0 0 2px #fff; }
+.sources-search > svg { flex: none; width: 16px; height: 16px; color: var(--ink-3); }
+.sources-search input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: none; color: var(--ink); font: inherit; font-size: var(--fs-14); }
+.sources-search input::placeholder { color: var(--ink-3); }
+.sources-search input:focus-visible { outline: none; }
+.sources-search-clear { flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; color: var(--ink-3); transition: background-color var(--t-fast) ease, color var(--t-fast) ease; }
+.sources-search-clear::before { content: ""; position: absolute; inset: -4px; }
+.sources-search-clear { position: relative; }
+.sources-search-clear:hover { color: var(--ink); background: rgb(255 255 255 / .1); }
+.sources-search-clear svg { width: 14px; height: 14px; }
+[data-layout="haze"] .sources-search:focus-within { box-shadow: inset 0 0 0 2px rgb(var(--haze-rgb) / .8); }
+
+/* Order and addon: native menus dressed as chips (the keyboard and screen readers get them free). */
+.sources-menu { position: relative; display: inline-flex; flex: none; }
+.sources-menu select {
+  appearance: none; -webkit-appearance: none; height: 40px; padding: 0 34px 0 16px; border: 0; border-radius: 999px;
+  font: inherit; font-size: var(--fs-14); font-weight: 600; color: var(--ink-2); background: rgb(255 255 255 / .08); cursor: pointer;
+  max-width: 220px; text-overflow: ellipsis;
+  transition: background-color var(--t-fast) ease, color var(--t-fast) ease;
+}
+.sources-menu select:hover { background: rgb(255 255 255 / .16); color: #fff; }
+.sources-menu select option { background: #16181d; color: var(--ink); }
+.sources-menu > svg { position: absolute; right: 13px; top: 50%; width: 15px; height: 15px; margin-top: -7.5px; pointer-events: none; color: var(--ink-3); }
+.sources-menu.is-set select { background: #fff; color: #0a0b0d; }
+.sources-menu.is-set > svg { color: #0a0b0d; }
+[data-layout="haze"] .sources-menu.is-set select {
+  color: #fff;
+  background:
+    radial-gradient(120% 200% at 0% 50%, rgb(var(--haze-rgb) / .42), rgb(var(--haze-rgb) / .16) 60%, rgb(var(--haze-rgb) / .08) 100%),
+    rgb(255 255 255 / .06);
+  box-shadow: inset 0 0 0 1px rgb(var(--haze-rgb) / .46);
+}
+[data-layout="haze"] .sources-menu.is-set > svg { color: #fff; }
+
+.sources-list { flex: 1; overflow-y: auto; padding: 0 16px 28px; overscroll-behavior: contain; scroll-padding-block: 12px; }
+
+/* What the list is still waiting for, and what went wrong, in one quiet line at the top. */
+.sources-status {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin: 4px 12px 6px; padding: 10px 14px;
+  border-radius: var(--r-s); background: rgb(255 255 255 / .05); font-size: var(--fs-13); color: var(--ink-2); line-height: 1.45;
+}
+.sources-status > svg { flex: none; width: 15px; height: 15px; color: var(--ink-3); }
+.sources-status > span { flex: 1; min-width: 0; }
+.sources-status.is-error { background: rgb(255 120 110 / .1); color: #ffc4be; }
+.sources-retry {
+  flex: none; height: 32px; padding: 0 14px; border-radius: 999px; font-size: var(--fs-13); font-weight: 700; color: #fff;
+  background: rgb(255 255 255 / .12); position: relative;
+  transition: background-color var(--t-fast) ease, transform var(--t-fast) var(--ease-soft);
+}
+.sources-retry::before { content: ""; position: absolute; inset: -4px 0; }
+.sources-retry:hover { background: rgb(255 255 255 / .2); }
+.sources-retry:active { transform: scale(.96); }
 
 .sources-group { margin-top: 14px; }
 .sources-group-head {
-  display: flex; align-items: center; justify-content: space-between; padding: 10px 12px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px;
   font-size: var(--fs-12); font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3);
 }
-.sources-group-head svg { width: 16px; height: 16px; }
-.sources-group-head .num { letter-spacing: 0; }
+.sources-group-head > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sources-group-head svg { width: 16px; height: 16px; flex: none; }
+.sources-group-head .num { letter-spacing: 0; flex: none; }
 .sources-note { padding: 2px 12px 12px; font-size: var(--fs-14); color: var(--ink-3); }
+.sources-note.is-error { display: flex; align-items: center; gap: 12px; color: #ffb4ad; }
+.sources-note.is-error > span { flex: 1; min-width: 0; }
+/* Files the addon itself filtered out: one quiet line under its list that shows or hides them. */
+.sources-more {
+  display: block; margin: 4px 0 0; padding: 0 12px; height: 40px; border-radius: var(--r-s); text-align: left;
+  font-size: var(--fs-13); font-weight: 600; color: var(--ink-3);
+  transition: background-color var(--t-fast) ease, color var(--t-fast) ease;
+}
+.sources-more:hover { color: var(--ink); background: rgb(255 255 255 / .06); }
+.sources-more:focus-visible { outline-offset: -2px; }
 
+/* Rows are cheap off screen: the browser skips drawing the ones out of view (lists run to 300+).
+   Containment clips what a row paints outside itself, so its focus ring and hairline sit inside. */
+.source-item { position: relative; content-visibility: auto; contain-intrinsic-size: auto 78px; }
+.source-item + .source-item { border-top: 1px solid var(--line); }
 .source-row {
   width: 100%; display: grid; grid-template-columns: 64px minmax(0, 1fr) 40px 44px; align-items: center; gap: 14px;
   padding: 12px; border-radius: var(--r-m); text-align: left;
-  transition: background-color var(--t-fast) ease, transform var(--t-fast) var(--ease-soft);
+  transition: background-color var(--t-fast) ease, transform var(--t-fast) var(--ease-soft), opacity var(--t-fast) ease;
 }
-.source-item + .source-item { box-shadow: 0 -1px 0 var(--line); }
-.source-row:hover:not(:disabled), .source-row:focus-visible { background: rgb(255 255 255 / .08); }
-.source-row:active:not(:disabled) { transform: scale(.99); }
-.source-row:disabled { cursor: default; }
+.source-row:hover:not([aria-disabled="true"]), .source-row:focus-visible { background: rgb(255 255 255 / .08); }
+.source-row:focus-visible { outline-offset: -2px; }
+.source-row:active:not([aria-disabled="true"]) { transform: scale(.99); }
+.source-row[aria-disabled="true"] { cursor: default; }
 .source-row[aria-busy="true"] { background: rgb(255 255 255 / .12); }
+/* While one file starts, the others step back. */
+.source-item.is-waiting .source-row { opacity: .5; }
 
 /* Quality first: the best picture is the white tile. */
 .source-q {
@@ -63,8 +139,9 @@
 .source-q.q-4k small { color: rgb(10 11 13 / .7); }
 
 .source-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+/* File names in Arabic read from the right; start-aligned, they hug their own edge. */
 .source-release {
-  font-size: var(--fs-14); font-weight: 600; line-height: 1.35; overflow-wrap: anywhere;
+  font-size: var(--fs-14); font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; text-align: start;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .source-tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
@@ -75,6 +152,14 @@
 .source-cached { color: #8fe3a8; background: rgb(143 227 168 / .14); }
 .source-cached svg { width: 12px; height: 12px; }
 .source-size { background: none; padding: 0 2px; color: var(--ink-3); }
+.source-addon { font-size: var(--fs-12); font-weight: 600; color: var(--ink-3); }
+.source-addon::before { content: "·"; margin-right: 6px; }
+
+/* Files the addon's own filters dropped, shown on request with the reason: listed, not offered. */
+.source-item.is-removed .source-q { background: rgb(255 255 255 / .05); box-shadow: none; color: var(--ink-3); }
+.source-item.is-removed .source-q small { color: var(--ink-3); }
+.source-item.is-removed .source-release { color: var(--ink-3); text-decoration: line-through; text-decoration-color: rgb(255 255 255 / .25); }
+.source-tag.source-reason { height: auto; min-height: 22px; padding: 2px 8px; color: #ffc4be; background: rgb(255 120 110 / .12); overflow-wrap: anywhere; }
 
 .source-go {
   width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
@@ -82,7 +167,8 @@
   transition: opacity var(--t-fast) ease, transform var(--t-med) var(--ease-out);
 }
 .source-go svg { width: 17px; height: 17px; fill: currentColor; }
-.source-row:hover .source-go, .source-row:focus-visible .source-go, .source-row[aria-busy="true"] .source-go { opacity: 1; transform: scale(1); }
+.source-go .lucide-external-link, .source-go svg[class*="external"] { fill: none; }
+.source-row:hover:not([aria-disabled="true"]) .source-go, .source-row:focus-visible .source-go, .source-row[aria-busy="true"] .source-go { opacity: 1; transform: scale(1); }
 .source-row[aria-busy="true"] .source-go svg { fill: none; }
 
 .source-skel { grid-template-columns: 64px 1fr; }
@@ -91,13 +177,13 @@
 
 .sources-empty { margin: 24px 12px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
 .sources-empty h3 { font-size: var(--fs-20); font-weight: 700; letter-spacing: -.015em; }
-.sources-empty p { font-size: var(--fs-14); line-height: 1.55; color: var(--ink-2); }
+.sources-empty p { font-size: var(--fs-14); line-height: 1.55; color: var(--ink-2); overflow-wrap: anywhere; }
+.sources-empty.is-filtered { margin-top: 18px; }
 
 .spin { animation: spin 900ms linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* Cache on TorBox: a control laid over the row's spare column (a button can't hold a button). */
-.source-item { position: relative; }
 .source-item.has-cache .source-row { grid-template-columns: 64px minmax(0, 1fr) 146px 40px 44px; }
 .source-cache {
   position: absolute; top: 50%; right: 126px; width: 146px; height: 36px; transform: translateY(-50%);
@@ -123,8 +209,10 @@ button.source-cache:active { transform: translateY(-50%) scale(.96); }
 }
 .source-dl svg { width: 17px; height: 17px; }
 .source-item:hover .source-dl, .source-dl:focus-visible { color: #fff; }
-.source-dl:hover { background: rgb(255 255 255 / .16); }
-.source-dl:active { transform: translateY(-50%) scale(.96); }
+.source-dl:hover:not([aria-disabled="true"]) { background: rgb(255 255 255 / .16); }
+.source-dl:active:not([aria-disabled="true"]) { transform: translateY(-50%) scale(.96); }
+.source-dl[aria-disabled="true"] { cursor: default; opacity: .4; }
+.source-dl:focus-visible, .source-cache:focus-visible { outline-offset: -2px; }
 
 /* ---- Kinds: each kind of release has its own colour --------------------------------------------
    The quality tile and the kind's tag take it; the best file of each kind sits in the strip at the
@@ -150,9 +238,11 @@ button.source-cache:active { transform: translateY(-50%) scale(.96); }
 .source-tag.tag-remux { background: rgb(242 196 109 / .18); color: #f7d99c; }
 .source-tag.tag-hdr { background: rgb(255 159 90 / .16); color: #ffc49b; }
 
-/* The strip: one file per kind, its colour washing in from the left. */
+/* The strip: one file per kind, its colour washing in from the left. Its glow reaches past the
+   row, so these few rows are drawn normally. */
 .sources-picks { margin-top: 4px; padding-bottom: 6px; }
-.sources-picks .source-item + .source-item { box-shadow: none; margin-top: 6px; }
+.source-item.is-pick, .source-item.is-lead { content-visibility: visible; }
+.sources-picks .source-item + .source-item { border-top: 0; margin-top: 6px; }
 .source-item.is-pick .source-row {
   background:
     radial-gradient(90% 180% at 0% 50%, rgb(var(--kind) / .3), rgb(var(--kind) / .1) 42%, transparent 72%),
@@ -160,7 +250,7 @@ button.source-cache:active { transform: translateY(-50%) scale(.96); }
     rgb(255 255 255 / .03);
   box-shadow: inset 0 0 0 1px rgb(var(--kind) / .34);
 }
-.source-item.is-pick .source-row:hover:not(:disabled), .source-item.is-pick .source-row:focus-visible {
+.source-item.is-pick .source-row:hover:not([aria-disabled="true"]), .source-item.is-pick .source-row:focus-visible {
   background:
     radial-gradient(90% 180% at 0% 50%, rgb(var(--kind) / .38), rgb(var(--kind) / .14) 42%, transparent 72%),
     radial-gradient(60% 120% at 12% 0%, rgb(var(--kind) / .18), transparent 70%),
@@ -171,3 +261,24 @@ button.source-cache:active { transform: translateY(-50%) scale(.96); }
 .source-pick { font-size: var(--fs-12); font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: rgb(var(--kind)); }
 .source-pick em { font-style: normal; font-weight: 600; letter-spacing: .04em; text-transform: none; color: var(--ink-2); }
 .source-item.is-pick[data-kind="web"] .source-pick { color: #fff; }
+
+/* The same source as last time: first in the list, in plain white (in Haze, the haze). */
+.sources-lead { margin-top: 6px; }
+.source-item.is-lead .source-row {
+  background: rgb(255 255 255 / .08);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .3);
+}
+.source-item.is-lead .source-row:hover:not([aria-disabled="true"]), .source-item.is-lead .source-row:focus-visible { background: rgb(255 255 255 / .13); }
+.source-item.is-lead .source-lead-label { color: #fff; }
+[data-layout="haze"] .source-item.is-lead .source-row {
+  background:
+    radial-gradient(90% 180% at 0% 50%, rgb(var(--haze-rgb) / .3), rgb(var(--haze-rgb) / .1) 42%, transparent 72%),
+    rgb(255 255 255 / .04);
+  box-shadow: inset 0 0 0 1px rgb(var(--haze-rgb) / .5);
+}
+[data-layout="haze"] .source-item.is-lead .source-row:hover:not([aria-disabled="true"]),
+[data-layout="haze"] .source-item.is-lead .source-row:focus-visible {
+  background:
+    radial-gradient(90% 180% at 0% 50%, rgb(var(--haze-rgb) / .4), rgb(var(--haze-rgb) / .14) 42%, transparent 72%),
+    rgb(255 255 255 / .07);
+}
