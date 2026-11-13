@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { LuCloudDownload, LuCopy, LuExternalLink, LuLoaderCircle, LuTrash2, LuX } from "react-icons/lu";
+import { LuCloudDownload, LuCopy, LuExternalLink, LuLoaderCircle, LuRefreshCw, LuTrash2, LuX } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useApp } from "../AppContext.jsx";
 import { EASE, reduceMotion } from "../lib/motion.js";
@@ -15,21 +15,26 @@ const size = bytes => (bytes >= 1e12 ? `${(bytes / 1e12).toFixed(1)} TB` : bytes
 export default function TorboxClear({ onClose, onCleared, mode = "clear", onConnected }) {
   const connectOnly = mode === "connect";
   const { toast } = useApp();
-  const [step, setStep] = useState("checking"); // checking | connect | confirm | clearing | done
+  const [step, setStep] = useState("checking"); // checking | failed | connect | confirm | clearing | done
   const [summary, setSummary] = useState(null);
   const [device, setDevice] = useState(null);
+  // Why TorBox couldn't be asked (the first look, or a sign-in code that didn't come).
+  const [problem, setProblem] = useState(null);
   const [result, setResult] = useState(null);
   const [attempt, setAttempt] = useState(0);
+  const layerRef = useRef(null);
   const ref = useRef(null);
   const closing = useRef(false);
+  const clearing = useRef(false);
 
   const check = () => {
     setStep("checking");
+    setProblem(null);
     call("torbox.summary", {}, { timeoutMs: 30000 }).then(s => {
       setSummary(s);
       if (s?.connected && connectOnly) { onConnected?.(); close(); return; }
       setStep(s?.connected ? "confirm" : "connect");
-    }, error => { toast(error.message, { tone: "error" }); setStep("connect"); });
+    }, error => { setProblem(error.message || "TorBox didn't answer."); setStep("failed"); });
   };
   useEffect(check, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -38,6 +43,7 @@ export default function TorboxClear({ onClose, onCleared, mode = "clear", onConn
     if (step !== "connect") return undefined;
     let alive = true;
     let timer = 0;
+    setProblem(null);
     call("torbox.connect.start").then(start => {
       if (!alive) return;
       setDevice(start);
@@ -53,7 +59,7 @@ export default function TorboxClear({ onClose, onCleared, mode = "clear", onConn
         }, Math.max(3, start.interval || 5) * 1000);
       };
       poll();
-    }, error => toast(error.message, { tone: "error" }));
+    }, error => { if (alive) setProblem(error.message || "TorBox didn't give a sign-in code."); });
     return () => { alive = false; window.clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, attempt]);
@@ -65,19 +71,52 @@ export default function TorboxClear({ onClose, onCleared, mode = "clear", onConn
     ref.current.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "scale(.97)" }], { duration: 150, easing: EASE.exit, fill: "forwards" }).onfinish = onClose;
   };
 
+  // Focus moves into the window and goes back to what opened it.
+  const opener = useRef(undefined);
+  if (opener.current === undefined) opener.current = document.activeElement;
+  useEffect(() => () => {
+    const node = opener.current;
+    if (node && node !== document.body && node.isConnected && !node.closest("[inert], .is-parked")) node.focus({ preventScroll: true });
+  }, []);
+
   useLayoutEffect(() => {
+    ref.current?.focus({ preventScroll: true });
     if (!ref.current || reduceMotion()) return;
     ref.current.animate([{ opacity: 0, transform: "translate3d(0, 12px, 0) scale(.97)" }, { opacity: 1, transform: "none" }], { duration: 320, easing: EASE.out });
   }, []);
 
   useEffect(() => {
-    const onKey = event => { if (event.key === "Escape" && step !== "clearing") { event.stopPropagation(); close(); } };
+    const onKey = event => {
+      const layers = document.querySelectorAll("[data-modal-open]");
+      if (layers[layers.length - 1] !== layerRef.current) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (step !== "clearing") close();
+        return;
+      }
+      if (event.key === "Tab") {
+        const items = [...ref.current.querySelectorAll("button:not([disabled])")];
+        const first = items[0];
+        const last = items[items.length - 1];
+        const at = document.activeElement;
+        if (!items.length) { event.preventDefault(); return; }
+        if (!ref.current.contains(at) || at === ref.current) { event.preventDefault(); (event.shiftKey ? last : first).focus(); }
+        else if (!event.shiftKey && at === last) { event.preventDefault(); first.focus(); }
+        else if (event.shiftKey && at === first) { event.preventDefault(); last.focus(); }
+        return;
+      }
+      // The app's own keys (Backspace goes back, / opens search) don't reach the page under it.
+      if (event.key === "Backspace" || event.key === "/") { event.preventDefault(); event.stopPropagation(); }
+    };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
   const clear = async () => {
+    if (clearing.current) return;
+    clearing.current = true;
     setStep("clearing");
     try {
       const r = await call("torbox.clear", {}, { timeoutMs: 600000 });
@@ -87,29 +126,48 @@ export default function TorboxClear({ onClose, onCleared, mode = "clear", onConn
     } catch (error) {
       toast(error.message, { tone: "error" });
       setStep("confirm");
+    } finally {
+      clearing.current = false;
     }
   };
 
   return createPortal(
-    <div className="tbx-layer" data-modal-open onClick={() => step !== "clearing" && close()}>
-      <div ref={ref} className="tbx" role="dialog" aria-label={connectOnly ? "Connect TorBox" : "Clear TorBox library"} onClick={event => event.stopPropagation()}>
+    <div ref={layerRef} className="tbx-layer" data-modal-open onClick={() => step !== "clearing" && close()}>
+      <div ref={ref} className="tbx" role="dialog" aria-modal="true" aria-label={connectOnly ? "Connect TorBox" : "Clear TorBox library"} tabIndex={-1} onClick={event => event.stopPropagation()}>
         <header className="tbx-head">
           <span className={`tbx-icon${connectOnly ? " is-calm" : ""}`}>{connectOnly ? <LuCloudDownload /> : <LuTrash2 />}</span>
           <h2>{connectOnly ? "Connect TorBox" : "Clear your TorBox library"}</h2>
           <button className="btn btn-glass btn-icon btn-sm" onClick={close} disabled={step === "clearing"} aria-label="Close"><LuX /></button>
         </header>
 
-        {step === "checking" ? <p className="tbx-text"><LuLoaderCircle className="spin" /> Looking at your TorBox…</p> : null}
+        {step === "checking" ? <p className="tbx-text" role="status"><LuLoaderCircle className="spin" /> Looking at your TorBox…</p> : null}
+
+        {step === "failed" ? (
+          <div className="tbx-body" role="alert">
+            <p className="tbx-text">TorBox couldn't be reached{problem ? `: ${problem}` : "."}</p>
+            <div className="tbx-actions">
+              <button className="btn btn-ghost" onClick={close}>Close</button>
+              <button className="btn btn-primary" onClick={check}><LuRefreshCw /> Try again</button>
+            </div>
+          </div>
+        ) : null}
 
         {step === "connect" ? (
           <div className="tbx-body">
             <p className="tbx-text">{connectOnly ? "To cache sources on TorBox, Nuvio signs in to TorBox once." : "Nuvio needs to sign in to TorBox once to manage your files."} Open the link, sign in, and enter this code:</p>
-            <div className="tbx-code">
-              {device ? <strong className="num">{device.code}</strong> : <LuLoaderCircle className="spin" />}
-              {device ? <button className="btn btn-ghost btn-sm" onClick={() => navigator.clipboard?.writeText(device.code).then(() => toast("Code copied"), () => {})}><LuCopy /> Copy</button> : null}
-            </div>
+            {problem && !device ? (
+              <div className="tbx-code is-failed" role="alert">
+                <span>{`No sign-in code: ${problem}`}</span>
+                <button className="btn btn-ghost btn-sm" onClick={() => setAttempt(n => n + 1)}><LuRefreshCw /> Try again</button>
+              </div>
+            ) : (
+              <div className="tbx-code">
+                {device ? <strong className="num">{device.code}</strong> : <LuLoaderCircle className="spin" aria-label="Getting a code" />}
+                {device ? <button className="btn btn-ghost btn-sm" onClick={() => navigator.clipboard?.writeText(device.code).then(() => toast("Code copied"), () => toast("Couldn't copy; type the code instead", { tone: "error" }))}><LuCopy /> Copy</button> : null}
+              </div>
+            )}
             <div className="tbx-actions">
-              <button className="btn btn-primary" disabled={!device} onClick={() => call("app.openUrl", { url: device.url })}><LuExternalLink /> Open TorBox</button>
+              <button className="btn btn-primary" disabled={!device} onClick={() => call("app.openUrl", { url: device.url }).catch(error => toast(error.message, { tone: "error" }))}><LuExternalLink /> Open TorBox</button>
             </div>
             <p className="tbx-note">This waits here and continues by itself once TorBox confirms.</p>
           </div>

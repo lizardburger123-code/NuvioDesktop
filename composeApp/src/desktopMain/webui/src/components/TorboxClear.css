@@ -37,3 +37,6 @@
 .tbx-actions .btn { height: 44px; }
 
 .tbx-icon.is-calm { background: rgb(255 255 255 / .1); color: #fff; }
+.tbx:focus-visible { outline: none; }
+.tbx-code.is-failed { gap: 12px; font-size: var(--fs-14); line-height: 1.5; color: #ffc4be; background: rgb(255 120 110 / .1); }
+.tbx-code.is-failed span { min-width: 0; overflow-wrap: anywhere; }
