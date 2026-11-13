@@ -594,6 +594,9 @@ internal class ShellRpc(private val host: ShellHost) {
                         })
                     }
                 })
+                // Why nothing came back (as on the streams topic): NoActiveAddons, NoSearchCatalogs
+                // (no addon can search), NoResults or RequestFailed (with error).
+                state.emptyStateReason?.let { put("empty", it.name) }
                 state.errorMessage?.let { put("error", it) }
             }
         }
