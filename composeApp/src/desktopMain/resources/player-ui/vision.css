@@ -842,10 +842,12 @@ button.action:focus-visible,
 
 /* ---- Next episode, skip ------------------------------------------------------------------- */
 
+/* A tighter shadow than the panels': the skip prompt floats just above the title, and the panels'
+   long shadow fell on the title's first words and dimmed them. */
 .skip-prompt,
 .next-episode-card {
   background: var(--v-sheen), var(--v-mat-raised);
-  box-shadow: var(--v-edge), var(--v-lift);
+  box-shadow: var(--v-edge), 0 8px 22px rgba(0, 0, 0, .3);
 }
 
 /* ---- Pause overlay: let the title breathe ------------------------------------------------ */
