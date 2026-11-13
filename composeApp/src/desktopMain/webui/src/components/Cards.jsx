@@ -21,7 +21,8 @@ export const PosterCard = memo(function PosterCard({ item, onOpen, onToggleLater
           {saved ? <LuBookmarkCheck /> : <LuBookmark />}
         </button>
       ) : null}
-      <div className="poster-text">
+      {/* The words open the title too (the picture is the button keyboards reach). */}
+      <div className="poster-text" onClick={() => onOpen(item)}>
         <span className="poster-title" dir="auto">{item.name}</span>
         <span className="poster-meta num">{[year(item.releaseInfo), item.imdbRating || (item.score ? `${item.score}%` : null)].filter(Boolean).join(" · ")}</span>
       </div>
@@ -47,7 +48,7 @@ export const WideCard = memo(function WideCard({ image, fallbackImage, logo, tit
           <LuX />
         </button>
       ) : null}
-      <div className="wide-text">
+      <div className="wide-text" onClick={onOpen}>
         <span className="wide-line">
           <span className="wide-title" dir="auto">{title}</span>
           {meta ? <span className="wide-meta num">{meta}</span> : null}

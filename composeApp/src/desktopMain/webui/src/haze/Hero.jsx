@@ -1,12 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { LuCheck, LuInfo, LuPlay, LuPlus, LuSparkles, LuStar } from "react-icons/lu";
 import { EASE, reduceMotion } from "../lib/motion.js";
-import { useScreenActive } from "../lib/screen.js";
 import { year } from "../lib/format.js";
 import { navigate } from "../lib/router.js";
 import { useArtColor } from "../lib/artColor.js";
 import { useApp } from "../AppContext.jsx";
-import { Art, Title, nextEpisodeLabel } from "../components/Showcase.jsx";
+import { Art, FeaturedPicker, Title, nextEpisodeLabel, useFeatured } from "../components/Showcase.jsx";
 import "./Hero.css";
 
 const openDetails = item => navigate("details", { type: item.type, id: item.id, name: item.name, ...(item.season ? { season: item.season } : {}) });
@@ -17,19 +16,11 @@ const openDetails = item => navigate("details", { type: item.type, id: item.id, 
  */
 export default function HazeHero({ items = [], short = false, onPlay, onToggleLater, laterIds }) {
   const { appearance } = useApp();
-  const [index, setIndex] = useState(0);
-  const [held, setHeld] = useState(false);
+  const { index, show, held, bind } = useFeatured(items);
   const bodyRef = useRef(null);
   const first = useRef(true);
-  const active = useScreenActive();
-  const item = items[index % Math.max(1, items.length)];
+  const item = items[index];
   const color = useArtColor([item?.banner, item?.poster], appearance?.hazeArt !== false);
-
-  useEffect(() => {
-    if (items.length < 2 || !active || held) return undefined;
-    const timer = window.setInterval(() => setIndex(i => (i + 1) % items.length), 12000);
-    return () => window.clearInterval(timer);
-  }, [items.length, active, held]);
 
   useLayoutEffect(() => {
     if (first.current) { first.current = false; return undefined; }
@@ -51,15 +42,22 @@ export default function HazeHero({ items = [], short = false, onPlay, onToggleLa
   return (
     <section
       className={`hz-hero${short ? " is-short" : ""}`}
+      aria-roledescription="carousel"
       aria-label="Featured"
       style={color ? { "--haze-rgb": color } : undefined}
-      onMouseEnter={() => setHeld(true)}
-      onMouseLeave={() => setHeld(false)}
+      {...bind}
     >
       <Art src={item.banner || item.poster} fallback={item.bannerAlt || item.poster} />
       <div className="hz-hero-scrim" />
       <div className="hz-hero-glow" />
-      <div className="hz-hero-body showcase-body" ref={bodyRef}>
+      <div
+        className="hz-hero-body showcase-body"
+        ref={bodyRef}
+        role="group"
+        aria-roledescription="slide"
+        aria-label={`${index + 1} of ${items.length}: ${item.name}`}
+        aria-live={held ? "polite" : "off"}
+      >
         <div className="hz-hero-chips">
           <span className="hz-tag is-haze"><LuSparkles aria-hidden="true" /> Featured</span>
           <span className="hz-tag">{kind}</span>
@@ -74,20 +72,14 @@ export default function HazeHero({ items = [], short = false, onPlay, onToggleLa
         </div>
         {item.description ? <p className="hz-hero-desc" dir="auto">{item.description}</p> : null}
         <div className="hz-hero-actions">
-          <button className="btn btn-primary" onClick={() => onPlay?.(item)}><LuPlay className="fill" /> Play</button>
-          <button className={`btn btn-glass${saved ? " is-on" : ""}`} aria-pressed={saved} onClick={() => onToggleLater?.(item)}>
+          <button className="btn btn-primary" onClick={() => onPlay?.(item)} aria-label={`Play ${item.name}`}><LuPlay className="fill" /> Play</button>
+          <button className={`btn btn-glass${saved ? " is-on" : ""}`} onClick={() => onToggleLater?.(item)} aria-label={saved ? `Remove ${item.name} from My list` : `Add ${item.name} to My list`}>
             {saved ? <LuCheck /> : <LuPlus />} {saved ? "In my list" : "My list"}
           </button>
           <button className="btn btn-glass btn-icon" onClick={() => openDetails(item)} aria-label={`About ${item.name}`} title="Details"><LuInfo /></button>
         </div>
       </div>
-      {items.length > 1 ? (
-        <div className="hz-hero-dots" role="tablist" aria-label="Featured titles">
-          {items.map((entry, i) => (
-            <button key={`${entry.type}:${entry.id}`} role="tab" aria-selected={i === index % items.length} aria-label={entry.name} onClick={() => setIndex(i)} />
-          ))}
-        </div>
-      ) : null}
+      <FeaturedPicker className="hz-hero-dots" items={items} index={index} onPick={show} />
     </section>
   );
 }

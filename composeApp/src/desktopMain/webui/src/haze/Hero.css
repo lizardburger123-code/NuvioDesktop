@@ -59,8 +59,8 @@
 .hz-hero-dots button { position: relative; width: 8px; height: 44px; padding: 0; transition: width 360ms var(--ease-out); }
 .hz-hero-dots button::after { content: ""; position: absolute; left: 0; right: 0; top: 20px; height: 4px; border-radius: 4px; background: rgb(255 255 255 / .3); transition: background-color 200ms ease, box-shadow 300ms ease; }
 .hz-hero-dots button:hover::after { background: rgb(255 255 255 / .6); }
-.hz-hero-dots button[aria-selected="true"] { width: 28px; }
-.hz-hero-dots button[aria-selected="true"]::after { background: rgb(var(--haze-rgb)); box-shadow: 0 0 14px rgb(var(--haze-rgb) / .8); }
+.hz-hero-dots button[aria-current="true"] { width: 28px; }
+.hz-hero-dots button[aria-current="true"]::after { background: rgb(var(--haze-rgb)); box-shadow: 0 0 14px rgb(var(--haze-rgb) / .8); }
 
 @container (max-height: 600px) { .hz-hero-desc { -webkit-line-clamp: 2; } }
 

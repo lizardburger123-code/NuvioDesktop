@@ -47,21 +47,30 @@ export default function Row({ title, subtitle, action, children, className = "",
 
   const page = direction => {
     const track = trackRef.current;
-    if (!track) return;
+    if (!track || (direction < 0 ? edges.start : edges.end)) return;
     track.scrollBy({ left: direction * Math.max(320, track.clientWidth * 0.82), behavior: "smooth" });
   };
 
+  // At an end the arrow is marked unavailable rather than disabled: a disabled button drops the
+  // keyboard focus it had, and paging with Enter would end on nothing. A row that fits has none.
+  const fits = edges.start && edges.end;
   return (
     <section ref={rowRef} className={`row ${className}`}>
       <header className="row-head">
         <div className="row-titles">
-          {onMore ? <h2 className="row-title"><button className="row-title-link" onClick={onMore} aria-label={`${title}: ${moreLabel.toLowerCase()}`}>{title}<LuChevronRight aria-hidden="true" /></button></h2> : <h2 className="row-title">{title}</h2>}
-          {subtitle ? <span className="row-sub">{subtitle}</span> : null}
+          {onMore ? (
+            <h2 className="row-title"><button className="row-title-link" onClick={onMore} aria-label={`${title}: ${moreLabel.toLowerCase()}`}><span className="row-title-text" dir="auto">{title}</span><LuChevronRight aria-hidden="true" /></button></h2>
+          ) : <h2 className="row-title"><span className="row-title-text" dir="auto">{title}</span></h2>}
+          {subtitle ? <span className="row-sub" dir="auto">{subtitle}</span> : null}
         </div>
         <div className="row-tools">
           {action}
-          <button className="row-arrow" onClick={() => page(-1)} disabled={edges.start} aria-label={`Scroll ${title} left`}><LuChevronLeft /></button>
-          <button className="row-arrow" onClick={() => page(1)} disabled={edges.end} aria-label={`Scroll ${title} right`}><LuChevronRight /></button>
+          {fits ? null : (
+            <>
+              <button className="row-arrow" onClick={() => page(-1)} aria-disabled={edges.start} aria-label={`Scroll ${title} left`}><LuChevronLeft /></button>
+              <button className="row-arrow" onClick={() => page(1)} aria-disabled={edges.end} aria-label={`Scroll ${title} right`}><LuChevronRight /></button>
+            </>
+          )}
         </div>
       </header>
       <div className="row-track" ref={trackRef} onScroll={measure}>
