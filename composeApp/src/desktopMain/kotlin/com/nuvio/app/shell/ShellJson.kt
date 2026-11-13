@@ -208,6 +208,8 @@ internal object ShellJson {
         putIfNotNull("title", stream.title)
         putIfNotNull("description", stream.description)
         putIfNotNull("filename", stream.behaviorHints.filename)
+        // The addon's own "same release" tag across episodes, as the player matches it.
+        putIfNotNull("bingeGroup", stream.behaviorHints.bingeGroup)
         stream.behaviorHints.videoSize?.takeIf { it > 0 }?.let { put("size", formatBytes(it)) }
         put("addonName", stream.addonName)
         stream.debridCacheStatus?.let { status ->
