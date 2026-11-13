@@ -59,6 +59,16 @@ const personName = query => {
 
 const fold = text => String(text || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 
+// Anime addons often search catalogs typed "series": the same rule Home's rows use (sectionKind
+// in ShellJson.kt) puts them with the anime.
+const ANIME_WORDS = ["kitsu", "anime", "myanimelist", "anilist", "mal."];
+const ANIME_ID = /^(kitsu|mal|anilist):/;
+const kindOfSection = section => {
+  const haystack = [section.key, section.addonName, section.title].join(" ").toLowerCase();
+  const anime = ANIME_WORDS.some(word => haystack.includes(word)) || section.items.slice(0, 6).filter(item => ANIME_ID.test(String(item.id))).length >= 3;
+  return anime ? "anime" : section.type || "other";
+};
+
 /**
  * One list per kind (films, series, anime) whatever addon found them. The addons' lists are
  * interleaved so each one's best answers come first, a title found twice shows once, and a title
@@ -68,7 +78,7 @@ function groupResults(sections, query, addon) {
   const byKind = new Map();
   sections.forEach(section => {
     if (!section.items?.length || (addon !== "all" && (section.addonName || "Other") !== addon)) return;
-    const kind = section.type || "other";
+    const kind = kindOfSection(section);
     if (!byKind.has(kind)) byKind.set(kind, []);
     byKind.get(kind).push(section.items);
   });

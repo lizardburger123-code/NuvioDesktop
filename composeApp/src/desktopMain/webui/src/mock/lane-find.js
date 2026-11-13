@@ -36,6 +36,8 @@ export default ctx => {
       { key: "cinemeta.series", title: "Series", type: "series", addonName: "Cinemeta", items: hits.filter(item => item.type === "series" && !item.id.startsWith("kitsu")) },
       { key: "aio.movie", title: "TMDB Movies", type: "movie", addonName: "AIOMetadata", items: [...films].reverse().slice(0, 3) },
       { key: "kitsu.anime", title: "Anime", type: "anime", addonName: "Anime Kitsu", items: hits.filter(item => item.id.startsWith("kitsu")) },
+      // An anime catalog typed "series", as some anime addons do.
+      { key: "aio.mal.search", title: "MAL", type: "series", addonName: "AIOMetadata", items: hits.filter(item => item.id.startsWith("kitsu")).reverse() },
     ].filter(section => section.items.length);
   };
 
