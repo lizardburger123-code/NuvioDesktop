@@ -842,10 +842,12 @@ button.action:focus-visible,
 
 /* ---- Next episode, skip ------------------------------------------------------------------- */
 
+/* A tighter shadow than the panels': the skip prompt floats just above the title, and the panels'
+   long shadow fell on the title's first words and dimmed them. */
 .skip-prompt,
 .next-episode-card {
   background: var(--v-sheen), var(--v-mat-raised);
-  box-shadow: var(--v-edge), var(--v-lift);
+  box-shadow: var(--v-edge), 0 8px 22px rgba(0, 0, 0, .3);
 }
 
 /* ---- Pause overlay: let the title breathe ------------------------------------------------ */
@@ -1378,6 +1380,7 @@ button.action:focus-visible,
 .skip-prompt { border-radius: 999px; }
 .skip-prompt-row { height: 48px; padding: 0 22px 0 18px; }
 .skip-prompt-label { padding-left: 10px; font-size: 15px; font-weight: 700; }
+.skip-progress-fill { width: 100%; transform: scaleX(0); transform-origin: left center; }
 .skip-progress-track { position: absolute; left: 18px; right: 18px; bottom: 7px; width: auto; height: 2px; border-radius: 2px; background: rgba(255, 255, 255, .2); }
 
 /* ---- Pause: what you are watching, set like a title card ------------------------------------ */
@@ -1551,3 +1554,10 @@ button.action:focus-visible,
   white-space: nowrap;
 }
 .shortcut-or { font-size: 13px; color: var(--v-ink-3); }
+
+/* Volume and seek toasts change their number in place: keep the digits from shifting. */
+.player-toast-text { font-variant-numeric: tabular-nums; }
+
+/* controls.css gives every row its own compositing layer (translateZ + will-change); a long episode
+   or source list made one layer per row. Rows press with an ordinary transform transition. */
+.track-row { transform: none; will-change: auto; }

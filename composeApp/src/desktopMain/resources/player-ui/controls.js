@@ -501,11 +501,13 @@ const send = (type, value = 0) => {
 const syncFullscreenButtons = () => {
   const isFullscreen = Boolean(state.isFullscreen);
   const icon = isFullscreen ? "#icon-fullscreen-exit" : "#icon-fullscreen";
-  const label = isFullscreen ? "Exit fullscreen" : "Enter fullscreen";
+  const label = isFullscreen ? "Leave full screen (F)" : "Full screen (F)";
   setAttributeIfChanged(fullscreenIcon, "href", icon);
   setAttributeIfChanged(openingFullscreenIcon, "href", icon);
-  setAttributeIfChanged(fullscreenButton, "aria-label", label);
-  setAttributeIfChanged(openingFullscreenButton, "aria-label", label);
+  [fullscreenButton, openingFullscreenButton].forEach(button => {
+    setAttributeIfChanged(button, "aria-label", label);
+    setAttributeIfChanged(button, "title", label);
+  });
 };
 
 const togglePlayerFullscreen = (fromEscape = false) => {
@@ -568,6 +570,11 @@ const volumeToastLabel = (fallbackDelta = 0) => {
   return "";
 };
 
+const showVolumeToast = (delta = 0) => {
+  const muted = !(Number(state.volumeLevel) > 0);
+  showPlayerToast(volumeToastLabel(delta), { icon: muted ? "icon-volume-muted" : "icon-volume" });
+};
+
 const syncVolumeControl = () => {
   if (!volumeControl || !volumeSlider || !volumeIcon) return;
   const volumeLevel = state.volumeLevel;
@@ -585,7 +592,7 @@ const syncVolumeControl = () => {
   volumeSlider.setAttribute("title", label);
   volumeIcon.setAttribute("href", percent === 0 ? "#icon-volume-muted" : "#icon-volume");
   if (volumeButton) {
-    const btnLabel = percent === 0 ? "Unmute" : "Mute";
+    const btnLabel = percent === 0 ? "Unmute (M)" : "Mute (M)";
     volumeButton.setAttribute("aria-label", btnLabel);
     volumeButton.setAttribute("title", btnLabel);
   }
@@ -1113,6 +1120,11 @@ function setTextIfChanged(element, text) {
 
 function setAttributeIfChanged(element, name, value) {
   if (element && element.getAttribute(name) !== value) element.setAttribute(name, value);
+}
+
+// Surfaces that fade out stay in the page: inert keeps Tab and clicks off their buttons meanwhile.
+function setInert(element, inert) {
+  if (element && element.inert !== inert) element.inert = inert;
 }
 
 let playerBadgesSignature = "";
@@ -2937,6 +2949,7 @@ const renderOpeningOverlay = suppress => {
   openingOverlay.classList.toggle("has-artwork", Boolean(artworkUrl));
   openingOverlay.classList.toggle("has-progress", hasProgress);
   setAttributeIfChanged(openingOverlay, "aria-hidden", showOpening ? "false" : "true");
+  setInert(openingOverlay, !showOpening);
   setAttributeIfChanged(openingBackButton, "aria-label", state.closeLabel || "Close player");
   syncFullscreenButtons();
 
@@ -2965,6 +2978,7 @@ const renderPlaybackError = () => {
   root.classList.toggle("error-active", showError);
   playbackError.classList.toggle("visible", showError);
   setAttributeIfChanged(playbackError, "aria-hidden", showError ? "false" : "true");
+  setInert(playbackError, !showError);
   setAttributeIfChanged(playbackError, "aria-label", titleText || "Playback error");
   setTextIfChanged(playbackErrorTitle, titleText || "Playback error");
   setTextIfChanged(playbackErrorMessage, messageText);
@@ -2980,18 +2994,19 @@ const resetSkipPromptAutoHide = () => {
   skipPromptAutoHideActive = false;
   skipPromptAutoHidden = false;
   skipPromptProgress.style.transition = "none";
-  skipPromptProgress.style.width = "0%";
+  skipPromptProgress.style.transform = "scaleX(0)";
 };
 
 const startSkipPromptAutoHide = () => {
   if (skipPromptAutoHideActive || skipPromptAutoHidden) return;
   skipPromptAutoHideActive = true;
   skipPromptProgress.style.transition = "none";
-  skipPromptProgress.style.width = "0%";
+  skipPromptProgress.style.transform = "scaleX(0)";
+  // The countdown line grows by transform, not width: no layout on each of its frames.
   window.requestAnimationFrame(() => {
     window.requestAnimationFrame(() => {
-      skipPromptProgress.style.transition = `width ${prefersReducedMotion ? 1 : 10000}ms linear`;
-      skipPromptProgress.style.width = "100%";
+      skipPromptProgress.style.transition = `transform ${prefersReducedMotion ? 1 : 10000}ms linear`;
+      skipPromptProgress.style.transform = "scaleX(1)";
     });
   });
   skipPromptAutoHideTimer = window.setTimeout(() => {
@@ -3001,7 +3016,16 @@ const startSkipPromptAutoHide = () => {
   }, prefersReducedMotion ? 1 : 10000);
 };
 
+// The lift only depends on these; working it out reads layout, so it is done when one changes,
+// not on every render.
+let skipPlacementKey = "";
 const syncSkipPromptPlacement = showSkip => {
+  const key = [
+    showSkip, state.controlsVisible, title.textContent, episode.textContent, streamTitle.textContent,
+    providerName.textContent, playerBadgesSignature, window.innerWidth, window.innerHeight,
+  ].join("\u0001");
+  if (key === skipPlacementKey) return;
+  skipPlacementKey = key;
   const currentLift = Math.max(0, Number.parseFloat(
     skipPrompt.style.getPropertyValue("--skip-prompt-lift"),
   ) || 0);
@@ -3049,6 +3073,7 @@ const renderNativePlaybackPrompts = () => {
   setTextIfChanged(skipPromptLabel, state.skipPromptLabel || "Skip");
   setAttributeIfChanged(skipPrompt, "aria-label", state.skipPromptLabel || "Skip");
   setAttributeIfChanged(skipPrompt, "aria-hidden", showSkip ? "false" : "true");
+  setInert(skipPrompt, !showSkip);
   skipPrompt.classList.toggle("visible", showSkip);
   skipPrompt.classList.toggle("show-progress", showSkipProgress);
   syncSkipPromptPlacement(showSkip);
@@ -3068,6 +3093,7 @@ const renderNativePlaybackPrompts = () => {
   setText(nextEpisodeStatus, state.nextEpisodeStatus || "");
   setTextIfChanged(nextEpisodeAction, state.nextEpisodeActionLabel || "Play");
   setAttributeIfChanged(nextEpisodeCard, "aria-hidden", showNextEpisode ? "false" : "true");
+  setInert(nextEpisodeCard, !showNextEpisode);
   nextEpisodeCard.classList.toggle("visible", showNextEpisode);
   nextEpisodeCard.classList.toggle("playable", Boolean(state.nextEpisodePlayable));
   nextEpisodeCard.classList.toggle("has-thumb", Boolean(nextThumbUrl));
@@ -3240,12 +3266,13 @@ const renderChrome = () => {
   setTextIfChanged(audioLabel, state.audioLabel || "Audio");
   setTextIfChanged(sourcesLabel, state.sourcesLabel || "Sources");
   setTextIfChanged(episodesLabel, state.episodesLabel || "Episodes");
-  setActionButtonLabel("resize", state.resizeModeLabel || "Fit");
-  setActionButtonLabel("speed", state.playbackSpeedLabel || "1x");
-  setActionButtonLabel("subtitles", state.subtitlesLabel || "Subs");
-  setActionButtonLabel("audio", state.audioLabel || "Audio");
-  setActionButtonLabel("sources", state.sourcesLabel || "Sources");
-  setActionButtonLabel("episodes", state.episodesLabel || "Episodes");
+  // The bar shows icons only: names say what each button does (not just "Fit" or "1x") and its key.
+  setActionButtonLabel("resize", `Picture size: ${state.resizeModeLabel || "Fit"}`);
+  setActionButtonLabel("speed", `Playback speed: ${state.playbackSpeedLabel || "1x"} (\`)`);
+  setActionButtonLabel("subtitles", `${state.subtitlesLabel || "Subtitles"} (S)`);
+  setActionButtonLabel("audio", `${state.audioLabel || "Audio"} (A)`);
+  setActionButtonLabel("sources", `${state.sourcesLabel || "Sources"} (Q)`);
+  setActionButtonLabel("episodes", `${state.episodesLabel || "Episodes"} (E)`);
   if (pipButton) {
     const pipLabel = String(state.pipLabel || "").trim();
     setAttributeIfChanged(pipButton, "aria-label", pipLabel);
@@ -3279,6 +3306,7 @@ const renderChrome = () => {
   }
   syncFullscreenButtons();
   setAttributeIfChanged(backButton, "aria-label", state.closeLabel || "Close player");
+  setAttributeIfChanged(backButton, "title", state.closeLabel || "Close player");
   setAttributeIfChanged(submitIntroButton, "aria-label", state.submitIntroLabel || "Submit Intro");
   setAttributeIfChanged(videoSettingsButton, "aria-label", state.videoSettingsLabel || "Video settings");
   setProgress(positionMs, durationMs, bufferedPositionMs);
@@ -3656,7 +3684,7 @@ const sendKeyboardVolume = delta => {
     ? state.volumeLevel
     : 1;
   if (delta > 0 && currentLevel >= standardMaxVolumeLevel) {
-    showPlayerToast(volumeToastLabel(delta));
+    showVolumeToast(delta);
     return;
   }
   const adjustedLevel = currentLevel + (delta * volumeStepLevel);
@@ -3668,7 +3696,7 @@ const sendKeyboardVolume = delta => {
     preMuteVolumeLevel = nextLevel;
   }
   syncVolumeControl();
-  showPlayerToast(volumeToastLabel(delta));
+  showVolumeToast(delta);
   send("volumeChange", nextLevel);
 };
 
@@ -3711,7 +3739,13 @@ const clearPressedButton = () => {
   pressedButton = null;
 };
 
+// Which element got focus from a mouse press (a click focuses the button), so Enter can tell it from
+// one the user reached with the keyboard. :focus-visible cannot: a key press turns it on.
+let lastPointerDownAt = -1;
+let pointerFocusedElement = null;
+
 document.addEventListener("pointerdown", event => {
+  lastPointerDownAt = event.timeStamp;
   if (event.button === 3) {
     showCommandToast("seekBack");
     send("seekBack", 0);
@@ -3740,8 +3774,24 @@ document.addEventListener("pointerdown", event => {
   button.classList.add("is-pressed");
 }, true);
 
+// Moving the mouse brings the controls back. The host does that too when it hears of the movement,
+// but only after a round trip; showing them here makes it immediate. A pointer that did not move
+// (events fired as the page changes under it) shows nothing.
+let lastPointerX = null;
+let lastPointerY = null;
+const revealChromeFromPointer = event => {
+  const moved = lastPointerX !== null && (event.clientX !== lastPointerX || event.clientY !== lastPointerY);
+  lastPointerX = event.clientX;
+  lastPointerY = event.clientY;
+  if (!moved || state.controlsVisible || isPipLocked || playbackErrorText() || isOpeningOverlayActive()) return;
+  chromeAutoHideActivity += 1;
+  state = { ...state, controlsVisible: true };
+  renderChrome();
+};
+
 document.addEventListener("pointermove", event => {
   noteCursorActivity();
+  revealChromeFromPointer(event);
   const inside = isChromeInteractionTarget(event.target);
   updateChromePointerInside(inside);
   if (inside) {
@@ -3756,6 +3806,7 @@ document.addEventListener("pointerleave", () => {
   updateChromePointerInside(false);
 }, true);
 document.addEventListener("focusin", event => {
+  pointerFocusedElement = lastPointerDownAt >= 0 && event.timeStamp - lastPointerDownAt < 500 ? event.target : null;
   isChromeFocusInside = isChromeInteractionTarget(event.target);
   const actionButton = event.target.closest && event.target.closest(".action-pill .action");
   if (actionButton) {
@@ -3979,6 +4030,7 @@ sourceList.addEventListener("focusout", event => {
 });
 window.addEventListener("resize", () => {
   if (activeModal === "sources") requestSourceVirtualRender();
+  syncSkipPromptPlacement(skipPrompt.classList.contains("visible"));
 });
 episodesCloseButton.addEventListener("click", event => {
   event.stopPropagation();
@@ -4137,7 +4189,7 @@ volumeSlider.addEventListener("input", event => {
     preMuteVolumeLevel = nextLevel;
   }
   syncVolumeControl();
-  showPlayerToast(volumeToastLabel());
+  showVolumeToast();
   send("volumeChange", nextLevel);
 });
 
@@ -4161,7 +4213,12 @@ timeLabel.addEventListener("click", () => {
   renderChrome();
 });
 
+// When the native player last reported the clock (playerUpdate). Its times are fresher than the
+// ones the host's state carries, which can lag a seek by a moment.
+let nativeClockAt = -Infinity;
+
 window.playerUpdate = update => {
+  nativeClockAt = window.performance.now();
   const durationMs = Math.round((Number(update.duration) || 0) * 1000);
   const positionMs = Math.round((Number(update.position) || 0) * 1000);
   const bufferedPositionMs = Math.round((Number(update.bufferedPosition) || 0) * 1000);
@@ -4246,9 +4303,16 @@ window.playerControls = nextState => {
     ? state.isPlaying
     : pendingIsPlaying;
   const currentVolumeLevel = hasReceivedPlayerControls ? state.volumeLevel : undefined;
+  // While the native clock is live, the host's (older) times would pull the bar back for a moment,
+  // most visibly just after a seek.
+  const clockIsLive = window.performance.now() - nativeClockAt < 2000;
+  const clock = clockIsLive
+    ? { durationMs: state.durationMs, positionMs: state.positionMs, bufferedPositionMs: state.bufferedPositionMs }
+    : {};
   state = {
     ...state,
     ...nextState,
+    ...clock,
     isPlaying: currentPlaybackState,
     volumeLevel: currentVolumeLevel ?? nextState.volumeLevel,
   };
@@ -4922,13 +4986,19 @@ document.addEventListener("keydown", event => {
     jumpChapter(event.code === "PageDown" ? 1 : -1);
     return;
   }
-  if (event.code === "Enter" && state.skipPromptVisible) {
-    const activeEl = document.activeElement;
-    if (!activeEl || activeEl.tagName === "BODY" || activeEl === root) {
-      event.preventDefault();
-      send("skipInterval", 0);
-      return;
-    }
+  // Enter takes the offered skip, or else the next episode on offer. A button that only holds focus
+  // because it was clicked does not keep Enter from them; one reached with the keyboard does.
+  const activeEl = document.activeElement;
+  const enterIsFree = !activeEl || activeEl === document.body || activeEl === root || activeEl === pointerFocusedElement;
+  if (event.code === "Enter" && enterIsFree && state.skipPromptVisible) {
+    event.preventDefault();
+    send("skipInterval", 0);
+    return;
+  }
+  if (event.code === "Enter" && enterIsFree && state.nextEpisodeVisible && state.nextEpisodePlayable) {
+    event.preventDefault();
+    send("playNextEpisode", 0);
+    return;
   }
   if (event.shiftKey && event.code === "KeyN") {
     event.preventDefault();
