@@ -5,16 +5,29 @@
   position: relative; display: block; width: 100%; overflow: hidden;
   border-radius: 12px; background: #14161b;
   outline: 1px solid rgb(255 255 255 / .1); outline-offset: -1px;
-  transition: transform 260ms var(--ease-out), outline-color var(--t-fast) ease, box-shadow 260ms var(--ease-out);
+  transition: transform 260ms var(--ease-out), outline-color var(--t-fast) ease, outline-width var(--t-fast) ease, box-shadow 260ms var(--ease-out);
 }
 .wide .card-face { border-radius: 14px; }
-.card-face > img:first-child { width: 100%; height: 100%; object-fit: cover; }
-.card-face:hover, .card-face:focus-visible {
+.card-face > img:first-child { width: 100%; height: 100%; object-fit: cover; -webkit-user-drag: none; }
+/* Lifted while the pointer is anywhere on the card (the words under it too), not only on the
+   picture: a pointer resting on the picture's bottom edge would lift the picture out from under
+   itself, let it drop back and flicker. The short wait keeps a pointer that is only passing
+   over a row from lighting up every card it crosses; keyboard focus shows at once. */
+.card-face:hover, :is(.poster, .wide, .hz-rank):hover > .card-face, .card-face:focus-visible {
   transform: translateY(-4px) scale(1.02);
   outline: 2px solid #fff; outline-offset: -2px;
   box-shadow: 0 18px 40px rgb(0 0 0 / .55);
 }
-.card-face:active { transform: scale(.98); }
+[data-layout="haze"] :is(.poster, .wide, .hz-rank):hover > .card-face {
+  transform: translateY(-4px);
+  outline: 2px solid rgb(var(--haze-rgb) / .92); outline-offset: -2px;
+  box-shadow: 0 0 34px rgb(var(--haze-rgb) / .3), 0 18px 40px rgb(0 0 0 / .55);
+}
+:is(.poster, .wide, .hz-rank):hover > .card-face { transition-delay: 60ms; }
+.card-face:focus-visible { transition-delay: 0s; }
+.card-face:active, :is(.poster, .wide, .hz-rank):hover > .card-face:active, [data-layout="haze"] :is(.poster, .wide, .hz-rank):hover > .card-face:active {
+  transform: translateY(-4px) scale(.98); transition-delay: 0s;
+}
 
 .poster-fallback { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; text-align: center; font-weight: 700; color: var(--ink-2); }
 
@@ -30,6 +43,7 @@
 .poster-save:hover { background: #fff; color: #0a0b0d; }
 .poster-save.is-saved { background: #fff; color: #0a0b0d; }
 
+.poster-text, .wide-text { cursor: pointer; }
 .poster-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .poster-title { font-size: var(--fs-14); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .poster-meta { font-size: var(--fs-13); color: var(--ink-3); font-weight: 500; min-height: 1.45em; }

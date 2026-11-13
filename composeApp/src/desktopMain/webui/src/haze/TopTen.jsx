@@ -5,7 +5,8 @@ import "./TopTen.css";
 const Rank = memo(function Rank({ item, place, onOpen }) {
   return (
     <div className={`hz-rank${place >= 10 ? " is-wide" : ""}`} data-card>
-      <span className="hz-rank-n num" data-n={place} aria-hidden="true">{place}</span>
+      {/* The numeral lights up with its poster, so a click on it opens the title as well. */}
+      <span className="hz-rank-n num" data-n={place} aria-hidden="true" onClick={() => onOpen(item)}>{place}</span>
       <button className="card-face" data-hero onClick={() => onOpen(item)} aria-label={`${place}. ${item.name}`}>
         {item.poster ? <img src={item.poster} alt="" loading="lazy" decoding="async" /> : <span className="poster-fallback" dir="auto">{item.name}</span>}
       </button>

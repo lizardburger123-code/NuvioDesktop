@@ -7,7 +7,8 @@
 .home-top + .row.home-strip { position: relative; z-index: 3; margin-top: calc(-1 * clamp(240px, 30vh, 268px)); }
 .home-strip .row-title { font-size: var(--fs-15); }
 
-.home-empty.is-first { margin-top: calc(var(--topbar-h) + 48px); }
+.screen.home.no-hero { padding-top: var(--topbar-h); }
+[data-layout="haze"] .screen.home.no-hero { padding-top: calc(var(--topbar-h) + 8px); }
 .home-empty {
   margin: 56px var(--gutter);
   padding: 28px;
@@ -18,3 +19,4 @@
   align-items: flex-start;
   gap: 10px;
 }
+.home-empty-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }

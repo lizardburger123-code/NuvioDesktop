@@ -7,6 +7,7 @@
 .browse-showcase + .row { margin-top: 0; }
 
 .browse-empty { margin: 40px var(--gutter) 0; font-size: var(--fs-15); line-height: 1.55; color: var(--ink-2); max-width: 56ch; }
+div.browse-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
 
 /* Anime tab, until Anime Catalogs is in: one line of what it brings, one button. */
 .anime-offer {

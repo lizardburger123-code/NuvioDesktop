@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { LuRotateCw } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
 import { useApp } from "../AppContext.jsx";
@@ -118,7 +119,12 @@ export default function Browse({ params }) {
         </Row>
       ))}
       {mode === "highlights" && !home.loading && !sections.length ? (
-        <p className="browse-empty">None of your addons has a {TITLES[kind]?.toLowerCase() || kind} catalog on Home. Turn one on in Settings, or install a catalog addon.</p>
+        home.error ? (
+          <div className="browse-empty" role="alert">
+            <p>Couldn't load your catalogs. <span dir="auto">{home.error}</span></p>
+            <button className="btn btn-glass btn-sm" onClick={() => call("home.refresh").catch(() => {})}><LuRotateCw aria-hidden="true" /> Try again</button>
+          </div>
+        ) : <p className="browse-empty">None of your addons has a {TITLES[kind]?.toLowerCase() || kind} catalog on Home. Turn one on in Settings, or install a catalog addon.</p>
       ) : null}
       <div className="screen-end" />
     </main>
