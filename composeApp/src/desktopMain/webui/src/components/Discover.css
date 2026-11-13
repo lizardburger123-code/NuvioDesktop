@@ -59,7 +59,10 @@
   color: var(--ink-2);
 }
 .discover-more svg { width: 16px; height: 16px; }
+.discover-more-line { display: inline-flex; align-items: center; gap: 12px; padding: 0 var(--gutter); text-align: center; }
+.discover-end { color: var(--ink-3); }
 .discover-note { padding: 20px var(--gutter); color: var(--ink-2); }
+.discover-failed { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
 
 
 /* Highlights / Discover switch in the section header. */
