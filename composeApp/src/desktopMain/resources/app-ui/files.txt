@@ -1,5 +1,4 @@
 app.css
-app.js
 fonts/Almarai-Bold.ttf
 fonts/Almarai-ExtraBold.ttf
 fonts/Almarai-Regular.ttf
