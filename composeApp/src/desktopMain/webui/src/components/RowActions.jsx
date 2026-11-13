@@ -31,9 +31,17 @@ export const useToggleLater = () => {
   return useCallback(item => latest.current(item), []);
 };
 
+// My list changing only matters to the rows holding the title that went in or out.
+const sameRow = (prev, next) => prev.section === next.section && prev.onOpen === next.onOpen && prev.onToggleLater === next.onToggleLater
+  && (prev.laterIds === next.laterIds || prev.section.items.every(item => {
+    const key = `${item.type}:${item.id}`;
+    return prev.laterIds.has(key) === next.laterIds.has(key);
+  }));
+
 /**
- * A catalog's row of posters. Drawn again only when its catalog or My list changes, not when
- * anything else on the page does (Continue watching moving on, the look, a toast).
+ * A catalog's row of posters. Drawn again only when its catalog changes or one of its titles
+ * goes in or out of My list, not when anything else on the page does (another row's bookmark,
+ * Continue watching moving on, the look, a toast).
  */
 export const CatalogRow = memo(function CatalogRow({ section, laterIds, onOpen, onToggleLater }) {
   return (
@@ -48,4 +56,4 @@ export const CatalogRow = memo(function CatalogRow({ section, laterIds, onOpen, 
       ))}
     </Row>
   );
-});
+}, sameRow);
