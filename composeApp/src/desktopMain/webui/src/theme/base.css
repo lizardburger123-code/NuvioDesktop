@@ -247,8 +247,11 @@ select.field option { background: #16181d; color: var(--ink); }
 
 .range { width: 100%; accent-color: var(--accent); }
 
+/* No transitions at all (not 1ms): every element transitions every property by default, and a
+   screen shown again would stay `visibility: hidden` for that millisecond, so focus could not land
+   on it (Back would drop the keyboard to the page). Nothing waits for transitionend. */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { transition-duration: 1ms !important; animation-duration: 1ms !important; }
+  *, *::before, *::after { transition-duration: 0s !important; animation-duration: 1ms !important; }
 }
 
 /* ---- Screens and transitions ----------------------------------------------------------------
