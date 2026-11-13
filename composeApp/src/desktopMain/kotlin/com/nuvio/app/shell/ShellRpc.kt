@@ -340,7 +340,8 @@ internal class ShellRpc(private val host: ShellHost) {
             WatchProgressRepository.removeProgress(contentId = id)
             JsonPrimitive(true)
         }
-        "settings.appearance.get" -> appearanceJson()
+        // Reads the wallpaper file and encodes it: kept off the window's thread.
+        "settings.appearance.get" -> withContext(Dispatchers.IO) { appearanceJson() }
         "settings.appearance.set" -> setAppearance(params)
         "settings.subtitles.get" -> subtitlesJson()
         "settings.subtitles.set" -> setSubtitles(params)
@@ -418,6 +419,8 @@ internal class ShellRpc(private val host: ShellHost) {
         val avatars = state.profiles.associate { profile ->
             profile.profileIndex to (if (profile.profileIndex == active?.profileIndex) avatar else runCatching { ShellProfiles.avatarFor(profile) }.getOrNull())
         }
+        // The wallpaper (up to several megabytes) is read and encoded off the window's thread.
+        val appearance = withContext(Dispatchers.IO) { appearanceJson() }
         return buildJsonObject {
             put("profile", buildJsonObject {
                 put("id", active?.profileIndex ?: activeIndex)
@@ -437,7 +440,7 @@ internal class ShellRpc(private val host: ShellHost) {
                 }
             })
             put("version", AppVersionConfig.DESKTOP_VERSION_NAME)
-            put("appearance", appearanceJson())
+            put("appearance", appearance)
             put("native", true)
         }
     }

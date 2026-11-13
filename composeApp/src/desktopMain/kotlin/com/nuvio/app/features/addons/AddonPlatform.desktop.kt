@@ -2,7 +2,11 @@ package com.nuvio.app.features.addons
 
 import com.nuvio.app.core.storage.DesktopStorage
 import com.nuvio.app.core.network.DesktopIPv4FirstDns
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
@@ -10,9 +14,11 @@ import kotlinx.serialization.json.Json
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.network_empty_response_body
 import nuvio.composeapp.generated.resources.network_request_failed_http
+import okhttp3.Call
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.ResponseBody
 import org.jetbrains.compose.resources.getString
@@ -116,7 +122,7 @@ actual suspend fun httpRequestRaw(
     }
     val request = buildDesktopRequest(method, url, headers, body, bodyBytes)
 
-    client.newCall(request).execute().use { response ->
+    client.newCall(request).executeCancellable { response ->
         RawHttpResponse(
             status = response.code,
             statusText = response.message,
@@ -138,7 +144,7 @@ private suspend fun executeTextRequest(
     body: String = "",
 ): String = withContext(Dispatchers.IO) {
     val request = buildDesktopRequest(method, url, headers, body)
-    desktopHttpClient.newCall(request).execute().use { response ->
+    desktopHttpClient.newCall(request).executeCancellable { response ->
         val payload = readResponseBody(response.body)
         if (!response.isSuccessful) {
             error(runBlocking { getString(Res.string.network_request_failed_http, response.code) })
@@ -147,6 +153,34 @@ private suspend fun executeTextRequest(
             throw IllegalStateException(runBlocking { getString(Res.string.network_empty_response_body) })
         }
         payload
+    }
+}
+
+/**
+ * Runs a blocking OkHttp call so that it stops as soon as the coroutine waiting for it is
+ * cancelled. execute() never notices a cancellation by itself, so a withTimeoutOrNull around an
+ * addon request (or a screen being closed) used to leave the request running for up to a
+ * minute; the watcher below cancels the call instead, which makes execute() give up at once.
+ */
+private suspend fun <T> Call.executeCancellable(read: suspend (Response) -> T): T = coroutineScope {
+    val call = this@executeCancellable
+    val watcher = launch(start = CoroutineStart.UNDISPATCHED) {
+        try {
+            awaitCancellation()
+        } finally {
+            // Also runs after a normal finish, where cancelling a completed call does nothing.
+            call.cancel()
+        }
+    }
+    try {
+        val response = call.execute()
+        try {
+            read(response)
+        } finally {
+            response.close()
+        }
+    } finally {
+        watcher.cancel()
     }
 }
 
