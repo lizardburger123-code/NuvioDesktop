@@ -365,13 +365,18 @@ let activeModal = "";
 let pressedButton = null;
 let focusedActionCommand = "";
 let sourceFilterId = "";
-let sourceVirtualKey = "";
+let sourceListSignature = "";
+let sourceListResetPending = false;
 let sourceVirtualItems = [];
-let sourceVirtualHeights = [];
+let sourceVirtualIndexByKey = new Map();
 let sourceVirtualOffsets = [];
 let sourceVirtualTotalHeight = 0;
 let sourceVirtualSpacer = null;
 let sourceVirtualRenderRaf = 0;
+let sourceFocusKey = "";
+let sourceListWidth = 0;
+const sourceRowHeights = new Map();
+const sourceRenderedRows = new Map();
 let appliedRememberedVolume = false;
 let rememberedEpisodeSeason = null;
 let currentEpisodeStreamItems = [];
@@ -821,9 +826,19 @@ const setProgress = (positionMs, durationMs, bufferedPositionMs) => {
 };
 
 const setText = (element, text) => {
-  element.textContent = text || "";
-  element.hidden = !text;
+  setTextIfChanged(element, text || "");
+  if (element.hidden !== !text) element.hidden = !text;
 };
+
+// Writing the same text again still replaces the text node and dirties layout; the page gets state
+// several times a second, so unchanged text and attributes are left alone.
+function setTextIfChanged(element, text) {
+  if (element && element.textContent !== text) element.textContent = text;
+}
+
+function setAttributeIfChanged(element, name, value) {
+  if (element && element.getAttribute(name) !== value) element.setAttribute(name, value);
+}
 
 let playerBadgesSignature = "";
 
@@ -1058,6 +1073,11 @@ const openPlayerModal = modal => {
   }
   if (modal === "subtitles") {
     resetSubtitleSelectionState();
+  }
+  if (modal === "sources") {
+    // A freshly opened list starts at the top, where the playing file is.
+    sourceListResetPending = true;
+    sourceFocusKey = "";
   }
   renderActiveModal();
   modalElements.forEach(modalElement => {
@@ -1660,10 +1680,12 @@ filterRows.forEach(filterRow => {
 const normalizeItems = items =>
   Array.isArray(items) ? items.filter(item => item && typeof item === "object") : [];
 
-const appendFilterChip = (container, label, selected, onSelect, isLoading = false, hasError = false) => {
+const appendFilterChip = (container, label, selected, onSelect, isLoading = false, hasError = false, id = "") => {
   const chip = document.createElement("button");
   chip.type = "button";
   chip.className = `filter-chip${selected ? " selected" : ""}${hasError ? " has-error" : ""}`;
+  chip.dataset.filterId = id;
+  chip.setAttribute("aria-pressed", selected ? "true" : "false");
   if (isLoading) {
     const loading = document.createElement("span");
     loading.className = "filter-chip-loading";
@@ -1682,9 +1704,21 @@ const appendFilterChip = (container, label, selected, onSelect, isLoading = fals
   container.appendChild(chip);
 };
 
+// Chips are rebuilt only when what they show changes, so the one with keyboard focus keeps it while
+// state arrives; when they are rebuilt, focus goes back to the chip with the same filter.
+const filterRowSignatures = new WeakMap();
+
 const renderFilterRow = (container, filters, selectedId, onSelect) => {
-  container.textContent = "";
   const list = normalizeItems(filters);
+  const signature = JSON.stringify([
+    String(selectedId ?? ""),
+    state.allFilterLabel || "",
+    list.map(filter => [String(filter.id ?? ""), filter.label || "", Boolean(filter.isLoading), Boolean(filter.hasError)]),
+  ]);
+  if (filterRowSignatures.get(container) === signature) return;
+  filterRowSignatures.set(container, signature);
+  const focusedId = container.contains(document.activeElement) ? document.activeElement.dataset.filterId : null;
+  container.textContent = "";
   container.hidden = list.length === 0;
   list.forEach(filter => {
     appendFilterChip(
@@ -1694,60 +1728,53 @@ const renderFilterRow = (container, filters, selectedId, onSelect) => {
       () => onSelect(String(filter.id ?? "")),
       Boolean(filter.isLoading),
       Boolean(filter.hasError),
+      String(filter.id ?? ""),
     );
   });
+  if (focusedId != null) {
+    Array.from(container.children).find(chip => chip.dataset.filterId === focusedId)?.focus({ preventScroll: true });
+  }
 };
 
-const SourceRowEstimatedHeight = 116;
+// ---- Sources in the player: a windowed list --------------------------------------------------
+// An episode can bring back hundreds of streams, so only the rows near the viewport exist. Rows
+// are keyed by what they show, not by position: a state push that changes nothing leaves the list
+// alone, sources that arrive later keep the rows already built (and the one with focus), and a
+// measured height stays with its row.
 const SourceRowGap = 8;
 const SourceRowOverscanPx = 720;
+let sourceRowEstimate = 116;
+let sourceHeaderEstimate = 31;
 
-const sourceKeyForItems = items => {
-  const first = items[0] || {};
-  const last = items[items.length - 1] || {};
-  return [
-    sourceFilterId || "",
-    items.length,
-    first.index == null ? "" : first.index,
-    first.label || "",
-    last.index == null ? "" : last.index,
-    last.label || "",
-  ].join("\u0001");
-};
-
-const resetSourceVirtualState = (items, key) => {
-  sourceVirtualKey = key;
-  sourceVirtualItems = items;
-  sourceVirtualHeights = new Array(items.length).fill(SourceRowEstimatedHeight);
-  sourceVirtualOffsets = [];
-  sourceVirtualTotalHeight = 0;
-  sourceVirtualSpacer = null;
-  window.cancelAnimationFrame(sourceVirtualRenderRaf);
-  sourceVirtualRenderRaf = 0;
+const sourceRowHeight = index => {
+  const row = sourceVirtualItems[index];
+  if (!row) return 0;
+  return sourceRowHeights.get(row.key) || (row.header ? sourceHeaderEstimate : sourceRowEstimate);
 };
 
 const rebuildSourceVirtualLayout = () => {
+  const count = sourceVirtualItems.length;
   let offset = 0;
-  sourceVirtualOffsets = sourceVirtualItems.map((_, index) => {
-    const current = offset;
-    offset += sourceVirtualHeights[index] || SourceRowEstimatedHeight;
-    if (index < sourceVirtualItems.length - 1) offset += SourceRowGap;
-    return current;
-  });
+  sourceVirtualOffsets = new Array(count);
+  for (let index = 0; index < count; index += 1) {
+    sourceVirtualOffsets[index] = offset;
+    offset += sourceRowHeight(index);
+    if (index < count - 1) offset += SourceRowGap;
+  }
   sourceVirtualTotalHeight = offset;
   if (sourceVirtualSpacer) {
     sourceVirtualSpacer.style.height = `${sourceVirtualTotalHeight}px`;
   }
 };
 
+// The first row whose bottom edge is at or below `offset`.
 const sourceIndexForOffset = offset => {
   let low = 0;
   let high = sourceVirtualOffsets.length - 1;
   let result = 0;
   while (low <= high) {
     const mid = Math.floor((low + high) / 2);
-    const rowBottom = sourceVirtualOffsets[mid] + (sourceVirtualHeights[mid] || SourceRowEstimatedHeight);
-    if (rowBottom < offset) {
+    if (sourceVirtualOffsets[mid] + sourceRowHeight(mid) < offset) {
       low = mid + 1;
     } else {
       result = mid;
@@ -1755,6 +1782,24 @@ const sourceIndexForOffset = offset => {
     }
   }
   return result;
+};
+
+// Rows above the viewport can change height (first measured, or new sources arriving above): keep
+// the row at the top of the viewport where it is, so the list never jumps under the reader.
+const sourceScrollAnchor = () => {
+  const top = sourceList.scrollTop;
+  if (top <= 0 || !sourceVirtualItems.length) return null;
+  const index = sourceIndexForOffset(top);
+  const row = sourceVirtualItems[index];
+  return row ? { key: row.key, delta: top - sourceVirtualOffsets[index] } : null;
+};
+
+const restoreSourceScrollAnchor = anchor => {
+  if (!anchor) return;
+  const index = sourceVirtualIndexByKey.get(anchor.key);
+  if (index == null) return;
+  const next = Math.max(0, sourceVirtualOffsets[index] + anchor.delta);
+  if (Math.abs(next - sourceList.scrollTop) >= 1) sourceList.scrollTop = next;
 };
 
 // ---- What kind of release a source is: the same reading as the Sources sheet -------------------
@@ -1846,9 +1891,9 @@ const sourceDisplayRows = items => {
   return rows;
 };
 
-const buildSourceHeader = text => {
+const buildSourceHeader = (text, first = false) => {
   const head = document.createElement("div");
-  head.className = "source-section-head";
+  head.className = `source-section-head${first ? " is-first" : ""}`;
   head.textContent = text;
   return head;
 };
@@ -1875,10 +1920,14 @@ const buildSourceRow = (item, onSelect, pick = null) => {
     }
     row.appendChild(plate);
   }
-  row.addEventListener("click", event => {
-    event.stopPropagation();
-    onSelect(item);
-  });
+  // The windowed sources list handles clicks for all its rows at once (the row's stream index can
+  // change while the row stays); the episode streams list passes its own handler.
+  if (onSelect) {
+    row.addEventListener("click", event => {
+      event.stopPropagation();
+      onSelect(item);
+    });
+  }
 
   const copy = document.createElement("span");
   copy.className = "track-copy";
@@ -2024,53 +2073,130 @@ function formatCssColor(colorStr) {
   return row;
 };
 
-const renderSourceVirtualRows = () => {
-  sourceVirtualRenderRaf = 0;
-  if (!sourceVirtualSpacer) return;
+// What a row shows, without its stream index: a row keeps its element when sources arrive before it.
+const sourceItemSignature = item => JSON.stringify([
+  item.label, item.subtitle, item.filename, item.formattedSize, item.isEnabled, item.match,
+  item.isCurrent ? (state.playingLabel || "Playing") : "",
+  item.badgePlacement, item.badges, item.showAddonLogo, item.addonLogo, item.addonName,
+]);
+
+// Each display row gets a key from its section and content; the same file twice in one section is
+// told apart by order.
+const keySourceDisplayRows = rows => {
+  const seen = new Map();
+  return rows.map((row, index) => {
+    const section = row.lead ? "lead" : row.pick ? `pick:${row.pick.kind}:${row.pick.best ? 1 : 0}:${row.pick.also.join(",")}` : "all";
+    const base = row.header ? `h:${row.header}${index === 0 ? ":first" : ""}` : `${section}:${sourceItemSignature(row.item)}`;
+    const count = seen.get(base) || 0;
+    seen.set(base, count + 1);
+    return { ...row, key: count ? `${base}#${count}` : base };
+  });
+};
+
+const buildSourceVirtualRow = (row, index) => {
+  const wrapper = document.createElement("div");
+  wrapper.className = "source-virtual-row";
+  wrapper.appendChild(row.header ? buildSourceHeader(row.header, index === 0) : buildSourceRow(row.item, null, row.pick || null));
+  return wrapper;
+};
+
+let sourceRowMeasuredTotal = 0;
+let sourceRowMeasuredCount = 0;
+let sourceRefocusIndex = -1;
+
+// Puts the rows of the current window in place. Returns true when rows measured for the first time
+// moved the layout, so the window has to be worked out again.
+const placeSourceVirtualRows = () => {
   const count = sourceVirtualItems.length;
-  if (count === 0) return;
-
-  const viewportTop = Math.max(0, sourceList.scrollTop - SourceRowOverscanPx);
-  const viewportBottom = sourceList.scrollTop + sourceList.clientHeight + SourceRowOverscanPx;
-  const start = sourceIndexForOffset(viewportTop);
+  const top = sourceList.scrollTop;
+  const start = sourceIndexForOffset(Math.max(0, top - SourceRowOverscanPx));
+  const viewBottom = top + sourceList.clientHeight + SourceRowOverscanPx;
   let end = start;
-  while (end < count && sourceVirtualOffsets[end] <= viewportBottom) {
-    end += 1;
-  }
-  end = Math.min(count, Math.max(end + 1, start + 1));
+  while (end < count && sourceVirtualOffsets[end] <= viewBottom) end += 1;
+  const indexes = [];
+  for (let index = start; index < end; index += 1) indexes.push(index);
+  // The row with keyboard focus stays in the document while it is scrolled away, or focus is lost.
+  const focusIndex = sourceFocusKey ? sourceVirtualIndexByKey.get(sourceFocusKey) : undefined;
+  if (focusIndex != null && (focusIndex < start || focusIndex >= end)) indexes.push(focusIndex);
 
-  sourceVirtualSpacer.textContent = "";
-  const fragment = document.createDocumentFragment();
-  const rendered = [];
-  for (let index = start; index < end; index += 1) {
-    const entry = sourceVirtualItems[index];
-    const wrapper = document.createElement("div");
-    wrapper.className = "source-virtual-row";
-    wrapper.style.transform = `translateY(${sourceVirtualOffsets[index]}px)`;
-    const row = entry.header ? buildSourceHeader(entry.header) : buildSourceRow(entry.item, selected => {
-      send("selectSource", Number(selected.index) || 0);
-      window.setTimeout(closePlayerModal, 120);
-    }, entry.pick || null);
-    wrapper.appendChild(row);
-    fragment.appendChild(wrapper);
-    rendered.push({ index, wrapper });
-  }
-  sourceVirtualSpacer.appendChild(fragment);
+  const wanted = new Set(indexes.map(index => sourceVirtualItems[index].key));
+  sourceRenderedRows.forEach((wrapper, key) => {
+    if (wanted.has(key)) return;
+    if (wrapper.contains(document.activeElement)) sourceRefocusIndex = Number(wrapper.dataset.index);
+    wrapper.remove();
+    sourceRenderedRows.delete(key);
+  });
 
-  window.requestAnimationFrame(() => {
-    let changed = false;
-    rendered.forEach(({ index, wrapper }) => {
-      const measured = Math.ceil(wrapper.getBoundingClientRect().height);
-      if (measured > 0 && Math.abs((sourceVirtualHeights[index] || SourceRowEstimatedHeight) - measured) > 1) {
-        sourceVirtualHeights[index] = measured;
-        changed = true;
-      }
-    });
-    if (changed) {
-      rebuildSourceVirtualLayout();
-      requestSourceVirtualRender();
+  const unmeasured = [];
+  indexes.forEach(index => {
+    const row = sourceVirtualItems[index];
+    let wrapper = sourceRenderedRows.get(row.key);
+    if (!wrapper) {
+      wrapper = buildSourceVirtualRow(row, index);
+      sourceVirtualSpacer.appendChild(wrapper);
+      sourceRenderedRows.set(row.key, wrapper);
+    }
+    if (wrapper.dataset.index !== String(index)) wrapper.dataset.index = String(index);
+    const y = sourceVirtualOffsets[index];
+    if (wrapper.sourceY !== y) {
+      wrapper.sourceY = y;
+      wrapper.style.transform = `translateY(${y}px)`;
+    }
+    if (!sourceRowHeights.has(row.key)) unmeasured.push(row);
+  });
+  if (!unmeasured.length) return false;
+
+  // Measured here, in the frame that lays the new rows out anyway. Rows are placed with
+  // transforms, so moving them afterwards costs no second layout.
+  let changed = false;
+  unmeasured.forEach(row => {
+    const height = sourceRenderedRows.get(row.key).offsetHeight;
+    if (height <= 0) return;
+    if (height !== (row.header ? sourceHeaderEstimate : sourceRowEstimate)) changed = true;
+    sourceRowHeights.set(row.key, height);
+    if (!row.header) {
+      sourceRowMeasuredTotal += height;
+      sourceRowMeasuredCount += 1;
+    } else if (!row.key.endsWith(":first")) {
+      sourceHeaderEstimate = height;
     }
   });
+  if (sourceRowMeasuredCount) sourceRowEstimate = Math.round(sourceRowMeasuredTotal / sourceRowMeasuredCount);
+  if (changed) {
+    const anchor = sourceScrollAnchor();
+    rebuildSourceVirtualLayout();
+    restoreSourceScrollAnchor(anchor);
+  }
+  return changed;
+};
+
+const renderSourceVirtualRows = () => {
+  window.cancelAnimationFrame(sourceVirtualRenderRaf);
+  sourceVirtualRenderRaf = 0;
+  if (!sourceVirtualSpacer || !sourceList.clientHeight) return;
+  if (sourceListResetPending) {
+    sourceListResetPending = false;
+    sourceList.scrollTop = 0;
+  }
+  const width = sourceList.clientWidth;
+  if (width !== sourceListWidth) {
+    // Another width wraps the text differently, so every height is measured again.
+    if (sourceListWidth) {
+      sourceRowHeights.clear();
+      sourceRowMeasuredTotal = 0;
+      sourceRowMeasuredCount = 0;
+    }
+    sourceListWidth = width;
+  }
+  let settled = false;
+  for (let pass = 0; pass < 4 && !settled; pass += 1) settled = !placeSourceVirtualRows();
+  if (!settled) requestSourceVirtualRender();
+  if (sourceRefocusIndex >= 0) {
+    const index = Math.min(sourceRefocusIndex, sourceVirtualItems.length - 1);
+    sourceRefocusIndex = -1;
+    const target = nextSourceFocusable(index, 1) >= 0 ? nextSourceFocusable(index, 1) : nextSourceFocusable(index, -1);
+    if (target >= 0) focusSourceIndex(target);
+  }
 };
 
 const requestSourceVirtualRender = () => {
@@ -2078,12 +2204,25 @@ const requestSourceVirtualRender = () => {
   sourceVirtualRenderRaf = window.requestAnimationFrame(renderSourceVirtualRows);
 };
 
+const clearSourceVirtualList = () => {
+  window.cancelAnimationFrame(sourceVirtualRenderRaf);
+  sourceVirtualRenderRaf = 0;
+  sourceVirtualItems = [];
+  sourceVirtualIndexByKey = new Map();
+  sourceVirtualOffsets = [];
+  sourceVirtualTotalHeight = 0;
+  sourceVirtualSpacer = null;
+  sourceRenderedRows.clear();
+  sourceFocusKey = "";
+  sourceList.textContent = "";
+  sourceList.classList.remove("virtualized");
+};
+
 const renderSourceModal = (modalOpened = false) => {
-  sourcePanelTitle.textContent = state.sourcesPanelTitle || "Sources";
-  sourceReloadButton.textContent = state.reloadLabel || "Reload";
-  sourceCloseButton.textContent = state.panelCloseLabel || "Close";
-  sourceContextLabel.textContent = state.episodeText || state.title || "";
-  sourceContextLabel.hidden = !sourceContextLabel.textContent;
+  setTextIfChanged(sourcePanelTitle, state.sourcesPanelTitle || "Sources");
+  setTextIfChanged(sourceReloadButton, state.reloadLabel || "Reload");
+  setTextIfChanged(sourceCloseButton, state.panelCloseLabel || "Close");
+  setText(sourceContextLabel, state.episodeText || state.title || "");
 
   const filters = normalizeItems(state.sourceFilters);
   if (sourceFilterId && !filters.some(filter => String(filter.id || "") === sourceFilterId)) {
@@ -2091,7 +2230,7 @@ const renderSourceModal = (modalOpened = false) => {
   }
   renderFilterRow(sourceFilterList, filters, sourceFilterId, id => {
     sourceFilterId = id;
-    sourceList.scrollTop = 0;
+    sourceListResetPending = true;
     renderSourceModal(true);
   });
 
@@ -2102,37 +2241,135 @@ const renderSourceModal = (modalOpened = false) => {
     });
   }
 
-  sourceList.textContent = "";
-  sourceList.classList.remove("virtualized");
   let items = normalizeItems(state.sourceItems);
   if (sourceFilterId) {
     items = items.filter(item => String(item.filterId || "") === sourceFilterId);
   }
-  if (items.length === 0) {
-    sourceVirtualItems = [];
-    sourceVirtualSpacer = null;
-    window.cancelAnimationFrame(sourceVirtualRenderRaf);
-    sourceVirtualRenderRaf = 0;
-    appendEmptyTrackState(
-      sourceList,
-      state.sourceIsLoading ? "Loading streams..." : (state.noStreamsLabel || "No streams found"),
-    );
+  const emptyLabel = items.length ? "" : (state.sourceIsLoading ? "Loading streams..." : (state.noStreamsLabel || "No streams found"));
+  const signature = JSON.stringify([sourceFilterId, state.playingLabel || "", emptyLabel, items]);
+  if (signature === sourceListSignature) {
+    if (sourceListResetPending || !modalOpened) requestSourceVirtualRender();
     return;
   }
-  const rows = sourceDisplayRows(items);
-  const nextKey = `${sourceKeyForItems(items)}\u0001${rows.map(row => row.header ? "h" : row.pick ? `p${row.item.index}` : row.lead ? `l${row.item.index}` : "").join("")}`;
-  if (nextKey !== sourceVirtualKey) {
-    resetSourceVirtualState(rows, nextKey);
-    sourceList.scrollTop = 0;
-  } else {
-    sourceVirtualItems = rows;
+  sourceListSignature = signature;
+  if (!items.length) {
+    clearSourceVirtualList();
+    appendEmptyTrackState(sourceList, emptyLabel);
+    return;
   }
-  sourceList.classList.add("virtualized");
-  sourceVirtualSpacer = document.createElement("div");
-  sourceVirtualSpacer.className = "source-virtual-spacer";
-  sourceList.appendChild(sourceVirtualSpacer);
+  const anchor = sourceListResetPending ? null : sourceScrollAnchor();
+  sourceVirtualItems = keySourceDisplayRows(sourceDisplayRows(items));
+  sourceVirtualIndexByKey = new Map(sourceVirtualItems.map((row, index) => [row.key, index]));
+  if (!sourceVirtualSpacer) {
+    sourceList.textContent = "";
+    sourceList.classList.add("virtualized");
+    sourceVirtualSpacer = document.createElement("div");
+    sourceVirtualSpacer.className = "source-virtual-spacer";
+    sourceList.appendChild(sourceVirtualSpacer);
+  }
   rebuildSourceVirtualLayout();
+  restoreSourceScrollAnchor(anchor);
   requestSourceVirtualRender();
+};
+
+// ---- Keyboard in the panel lists -------------------------------------------------------------
+// Up and Down walk a list's rows (not the panel's buttons and chips), Home and End go to either
+// end, Page Up and Page Down move a screen. Focus enters a list on its chosen row, or the first
+// row in view.
+const LIST_NAV_KEYS = new Set(["ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"]);
+
+const sourceRowFocusable = index => {
+  const row = sourceVirtualItems[index];
+  return Boolean(row && row.item && row.item.isEnabled !== false);
+};
+
+const nextSourceFocusable = (from, step) => {
+  for (let index = from; index >= 0 && index < sourceVirtualItems.length; index += step) {
+    if (sourceRowFocusable(index)) return index;
+  }
+  return -1;
+};
+
+const scrollSourceIndexIntoView = index => {
+  // The first row of a section brings its heading with it.
+  const headed = index > 0 && sourceVirtualItems[index - 1].header;
+  const top = sourceVirtualOffsets[headed ? index - 1 : index];
+  const bottom = sourceVirtualOffsets[index] + sourceRowHeight(index);
+  const listStyle = window.getComputedStyle(sourceList);
+  const padding = (parseFloat(listStyle.paddingTop) || 0) + (parseFloat(listStyle.paddingBottom) || 0);
+  const viewTop = sourceList.scrollTop;
+  const viewHeight = sourceList.clientHeight;
+  if (top < viewTop) sourceList.scrollTop = top;
+  else if (bottom + padding > viewTop + viewHeight) sourceList.scrollTop = bottom + padding - viewHeight;
+};
+
+const focusSourceIndex = index => {
+  const row = sourceVirtualItems[index];
+  if (!row || !sourceVirtualSpacer) return;
+  sourceFocusKey = row.key;
+  scrollSourceIndexIntoView(index);
+  renderSourceVirtualRows();
+  // The row may have been measured just now, which can move it: check once more.
+  scrollSourceIndexIntoView(sourceVirtualIndexByKey.get(row.key) ?? index);
+  renderSourceVirtualRows();
+  const wrapper = sourceRenderedRows.get(row.key);
+  const button = wrapper && wrapper.querySelector(".track-row");
+  if (button) button.focus({ preventScroll: true });
+};
+
+const handleSourceListKey = event => {
+  if (!LIST_NAV_KEYS.has(event.code) || !sourceVirtualSpacer || !sourceVirtualItems.length) return false;
+  event.preventDefault();
+  const active = document.activeElement;
+  const wrapper = active && sourceList.contains(active) ? active.closest(".source-virtual-row") : null;
+  const current = wrapper ? Number(wrapper.dataset.index) : -1;
+  const last = sourceVirtualItems.length - 1;
+  let target = -1;
+  if (event.code === "Home") {
+    target = nextSourceFocusable(0, 1);
+  } else if (event.code === "End") {
+    target = nextSourceFocusable(last, -1);
+  } else if (current < 0) {
+    target = nextSourceFocusable(sourceIndexForOffset(sourceList.scrollTop), 1);
+  } else if (event.code === "ArrowDown") {
+    target = nextSourceFocusable(current + 1, 1);
+  } else if (event.code === "ArrowUp") {
+    target = nextSourceFocusable(current - 1, -1);
+  } else {
+    const distance = Math.max(1, sourceList.clientHeight - sourceRowHeight(current));
+    const goal = sourceVirtualOffsets[current] + (event.code === "PageDown" ? distance : -distance);
+    const landing = sourceIndexForOffset(Math.max(0, goal));
+    target = nextSourceFocusable(landing, 1);
+    if (event.code === "PageDown" && (target < 0 || target <= current)) target = nextSourceFocusable(last, -1);
+    if (event.code === "PageUp" && (target < 0 || target >= current)) target = nextSourceFocusable(current - 1, -1);
+  }
+  focusSourceIndex(target >= 0 ? target : current);
+  return true;
+};
+
+const moveListFocus = (list, event) => {
+  if (!LIST_NAV_KEYS.has(event.code) || !list) return false;
+  const rows = Array.from(list.querySelectorAll(".track-row:not(:disabled)"));
+  if (!rows.length) return false;
+  event.preventDefault();
+  const current = rows.indexOf(document.activeElement);
+  let next;
+  if (event.code === "Home") {
+    next = 0;
+  } else if (event.code === "End") {
+    next = rows.length - 1;
+  } else if (current < 0) {
+    const chosen = rows.findIndex(row => row.classList.contains("selected"));
+    const listTop = list.getBoundingClientRect().top;
+    next = chosen >= 0 ? chosen : Math.max(0, rows.findIndex(row => row.getBoundingClientRect().bottom > listTop));
+  } else {
+    const page = Math.max(1, Math.floor(list.clientHeight / Math.max(1, rows[current].offsetHeight)) - 1);
+    const step = { ArrowDown: 1, ArrowUp: -1, PageDown: page, PageUp: -page }[event.code];
+    next = Math.max(0, Math.min(rows.length - 1, current + step));
+  }
+  rows[next].focus({ preventScroll: true });
+  rows[next].scrollIntoView({ block: "nearest" });
+  return true;
 };
 
 const appendEpisodeRow = (container, item) => {
@@ -2709,6 +2946,7 @@ const renderChrome = () => {
   if (!state.isInPip && isPipLocked) setPipLocked(false);
   root.classList.toggle("chrome-hidden", Boolean(showError || !state.controlsVisible));
   root.classList.toggle("modal-open", Boolean(activeModal));
+  root.classList.toggle("side-panel-open", Boolean(activeModal && modalByName[activeModal]?.classList.contains("player-side-modal")));
   root.classList.toggle("source-visible", Boolean(!showError && !isPlaying && !state.isLoading && (state.streamTitle || state.providerName)));
   syncHiddenCursor();
   const showOpening = renderOpeningOverlay(showError);
@@ -3444,6 +3682,26 @@ sourceList.addEventListener("scroll", () => {
     requestSourceVirtualRender();
   }
 }, { passive: true });
+sourceList.addEventListener("click", event => {
+  const button = event.target.closest(".source-row");
+  const wrapper = button && !button.disabled ? button.closest(".source-virtual-row") : null;
+  const row = wrapper ? sourceVirtualItems[Number(wrapper.dataset.index)] : null;
+  if (!row || !row.item) return;
+  event.stopPropagation();
+  send("selectSource", Number(row.item.index) || 0);
+  window.setTimeout(closePlayerModal, 120);
+});
+sourceList.addEventListener("focusin", event => {
+  const wrapper = event.target.closest(".source-virtual-row");
+  const row = wrapper ? sourceVirtualItems[Number(wrapper.dataset.index)] : null;
+  sourceFocusKey = row ? row.key : "";
+});
+sourceList.addEventListener("focusout", event => {
+  if (!event.relatedTarget || !sourceList.contains(event.relatedTarget)) sourceFocusKey = "";
+});
+window.addEventListener("resize", () => {
+  if (activeModal === "sources") requestSourceVirtualRender();
+});
 episodesCloseButton.addEventListener("click", event => {
   event.stopPropagation();
   closePlayerModal();
@@ -4162,6 +4420,9 @@ document.addEventListener("keydown", event => {
   if (isTextEntryTarget(event.target)) {
     return;
   }
+
+  if (activeModal === "sources" && handleSourceListKey(event)) return;
+  if (activeModal === "episodes" && moveListFocus(state.episodeStreamsVisible ? episodeStreamList : episodeList, event)) return;
 
   if ((activeModal === "episodes" || activeModal === "sources") && (event.code === "ArrowLeft" || event.code === "ArrowRight")) {
     const chips = Array.from(document.querySelectorAll('.filter-chip:not([hidden])')).filter(el => el.offsetWidth > 0 || el.offsetHeight > 0);

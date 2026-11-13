@@ -1443,4 +1443,19 @@ button.action:focus-visible,
   padding: 12px 6px 6px; font-size: 10.5px; line-height: 13px; font-weight: 700;
   letter-spacing: .12em; text-transform: uppercase; color: rgba(255, 255, 255, .56);
 }
-.source-virtual-row:first-child .source-section-head, .track-list > .source-section-head:first-child { padding-top: 2px; }
+/* Only the list's very first heading sits tight to the top. In the windowed list the first rendered
+   row is rarely the first row, so this is a class, not :first-child (a heading's height must not
+   depend on how far the list is scrolled). */
+.source-section-head.is-first, .track-list > .source-section-head:first-child { padding-top: 2px; }
+
+/* List rows sit flush with the list's left edge, where an outside focus ring would be cut off. */
+.track-list .track-row:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+
+/* An open panel covers the prompts (its scrim takes their clicks), and a side panel's glass would let
+   the bar underneath show through: both step back until the panel closes. */
+.player.modal-open .skip-prompt,
+.player.modal-open .next-episode-card,
+.player.side-panel-open .progress {
+  opacity: 0;
+  pointer-events: none;
+}
