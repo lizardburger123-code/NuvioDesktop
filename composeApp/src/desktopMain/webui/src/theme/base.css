@@ -257,6 +257,8 @@ select.field option { background: #16181d; color: var(--ink); }
    glass keeps blurring the real backdrop), the new screen glides in underneath (motion.js), the
    nav pill stays live on top, and the opened card launches toward the viewer. */
 .screen-host { position: relative; }
+/* Where focus lands when a screen opens (App.jsx): announced, not outlined. */
+.screen-host:focus, [data-nav-focus]:focus { outline: none; }
 .screen-host.is-parked {
   position: absolute;
   inset: 0 0 auto 0;
