@@ -360,6 +360,9 @@ internal class ShellRpc(private val host: ShellHost) {
         }
         "addons.configure" -> {
             val manifestUrl = params.string("id") ?: error("Missing addon.")
+            // Installed addons are stored as web links; anything else would be opened by whatever
+            // program the system has for it.
+            require(manifestUrl.startsWith("https://") || manifestUrl.startsWith("http://")) { "Only web links can be opened." }
             host.openUrl(manifestUrl.replace("/manifest.json", "/configure"))
             JsonPrimitive(true)
         }
@@ -881,6 +884,8 @@ internal class ShellRpc(private val host: ShellHost) {
             val videos = meta?.videos.orEmpty().filter { (it.season ?: 0) > 0 }
                 .sortedWith(compareBy({ it.season ?: 0 }, { it.episode ?: 0 }))
             val index = videos.indexOfFirst { it.id == videoId || (it.season == season && it.episode == episode) }
+            // Not in the list (another catalog's numbering): the first episode is not "the next one".
+            if (index < 0) error("Couldn't find that episode in the title's episode list.")
             val next = videos.getOrNull(index + 1) ?: error("That was the last episode.")
             videoId = next.id
             season = next.season
