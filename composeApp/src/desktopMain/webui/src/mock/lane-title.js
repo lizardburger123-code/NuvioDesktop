@@ -13,6 +13,8 @@
 //   movie:tt-long       a film with a very long name and story, without a logo
 // Person page: "Nobody Listed" has no works; "Offline Person" fails once, then loads.
 // window.__mockFailWatched(n) makes the next n watched.episode / watched.season calls fail.
+// window.__mockRepushDetails({ blank }) sends the open title's topic again, as the app does when its
+// data changes; with blank, first without its data, as during a reload.
 import { still } from "./art.js";
 
 const DAY = 864e5;
@@ -118,6 +120,12 @@ export default ctx => {
     if (failNext > 0) { failNext -= 1; reject(new Error("Your library couldn't be saved.")); return; }
     try { resolve(work()); } catch (error) { reject(error); }
   }, ms));
+
+  window.__mockRepushDetails = ({ blank = false } = {}) => {
+    if (!current) return;
+    if (blank) push("details", { key: `${current.type}:${current.id}`, loading: true, meta: null });
+    send(current.type, current.id, blank ? 250 : 0);
+  };
 
   const openMeta = id => {
     const meta = current && build(current.type, current.id).meta;
