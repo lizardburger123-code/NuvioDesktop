@@ -3,6 +3,7 @@ import { LuLoaderCircle, LuRotateCw, LuSearch, LuSlidersHorizontal, LuX } from "
 import { call } from "../bridge.js";
 import { useApp } from "../AppContext.jsx";
 import { PosterCard, SkeletonPosters } from "./Cards.jsx";
+import { useToggleLater } from "./RowActions.jsx";
 import { EASE, reduceMotion } from "../lib/motion.js";
 import { useScreenActive } from "../lib/screen.js";
 import "./Discover.css";
@@ -17,7 +18,8 @@ export const recall = key => { try { return JSON.parse(localStorage.getItem(key)
  * the catalog can search, and the next page loading as the end comes into view.
  */
 export function CatalogGrid({ source, filters, onFilters, emptyText }) {
-  const { laterIds, toggleLater, openDetails } = useApp();
+  const { laterIds, openDetails } = useApp();
+  const toggleLater = useToggleLater();
   const active = useScreenActive();
   const [items, setItems] = useState([]);
   const [next, setNext] = useState(0);

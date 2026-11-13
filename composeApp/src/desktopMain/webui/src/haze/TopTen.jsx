@@ -1,5 +1,6 @@
 import { memo } from "react";
 import Row from "../components/Row.jsx";
+import RowActions, { openCatalog } from "../components/RowActions.jsx";
 import "./TopTen.css";
 
 const Rank = memo(function Rank({ item, place, onOpen }) {
@@ -15,11 +16,17 @@ const Rank = memo(function Rank({ item, place, onOpen }) {
 });
 
 /** The first ten of a catalog, counted: a hollow numeral lit in the accent beside each poster. */
-export default function TopTen({ section, onOpen, onMore, action }) {
+export default memo(function TopTen({ section, onOpen }) {
   const items = section.items.slice(0, 10);
   return (
-    <Row title="Top 10" subtitle={[section.title, section.addonName].filter(Boolean).join(" · ")} className="hz-top10" onMore={onMore} action={action}>
+    <Row
+      title="Top 10"
+      subtitle={[section.title, section.addonName].filter(Boolean).join(" · ")}
+      className="hz-top10"
+      onMore={section.source ? () => openCatalog(section) : undefined}
+      action={<RowActions section={section} />}
+    >
       {items.map((item, i) => <Rank key={`${item.type}:${item.id}`} item={item} place={i + 1} onOpen={onOpen} />)}
     </Row>
   );
-}
+});

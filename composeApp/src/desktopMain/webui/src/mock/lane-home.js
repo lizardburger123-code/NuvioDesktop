@@ -17,6 +17,7 @@ export default ctx => {
   const state = { failPages: false, pages: [] };
   window.__homeMock = {
     push: (topic, data, delay = 0) => ctx.push(topic, data, delay),
+    data: ctx.data,
     get failPages() { return state.failPages; },
     set failPages(value) { state.failPages = value === "all" ? "all" : Boolean(value); },
     // The offsets of every Discover page asked for (to catch a list that asks twice or keeps asking).

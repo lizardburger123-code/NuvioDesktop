@@ -7,7 +7,7 @@ import Showcase from "../components/Showcase.jsx";
 import Reach from "../components/Reach.jsx";
 import Row from "../components/Row.jsx";
 import { ContinueCard, PosterCard, SkeletonPosters } from "../components/Cards.jsx";
-import RowActions, { openCatalog } from "../components/RowActions.jsx";
+import { CatalogRow, useToggleLater } from "../components/RowActions.jsx";
 import AddonShelf from "../components/AddonShelf.jsx";
 import { navigate } from "../lib/router.js";
 import { EASE, reduceMotion } from "../lib/motion.js";
@@ -16,7 +16,8 @@ import TopTen from "../haze/TopTen.jsx";
 import "./Home.css";
 
 export default function Home() {
-  const { watchLater, laterIds, toggleLater, openDetails, resume, removeContinue, appearance } = useApp();
+  const { watchLater, laterIds, openDetails, resume, removeContinue, appearance } = useApp();
+  const toggleLater = useToggleLater();
   const haze = lookOf(appearance) === "haze";
   const home = useTopic("home", { loading: true, hero: [], sections: [] });
   const continueWatching = useTopic("continue", []);
@@ -51,12 +52,6 @@ export default function Home() {
   }, []);
 
   const playFromSpotlight = item => navigate("details", { type: item.type, id: item.id, name: item.name, autoplay: true });
-  const cardProps = item => ({
-    item,
-    onOpen: openDetails,
-    onToggleLater: toggleLater,
-    saved: laterIds.has(`${item.type}:${item.id}`),
-  });
 
   // Haze: the first full catalog row is counted down as a top ten.
   const topTen = haze ? sections.find(section => section.items.length >= 10) || null : null;
@@ -98,15 +93,13 @@ export default function Home() {
         )
       ) : null}
 
-      {topTen ? (
-        <TopTen section={topTen} onOpen={openDetails} action={<RowActions section={topTen} />} onMore={topTen.source ? () => openCatalog(topTen) : undefined} />
-      ) : null}
+      {topTen ? <TopTen section={topTen} onOpen={openDetails} /> : null}
 
       <Reach />
 
       {watchLater.length ? (
         <Row title="My list" onMore={() => navigate("library", { tab: "later" })}>
-          {watchLater.map(item => <PosterCard key={`${item.type}:${item.id}`} {...cardProps(item)} />)}
+          {watchLater.map(item => <PosterCard key={`${item.type}:${item.id}`} item={item} onOpen={openDetails} onToggleLater={toggleLater} saved />)}
         </Row>
       ) : null}
 
@@ -116,17 +109,9 @@ export default function Home() {
         <Row title="Loading your catalogs"><SkeletonPosters /></Row>
       ) : null}
 
-      {sections.filter(section => section !== topTen).map(section => (
-        <Row
-          key={section.key}
-          title={section.title}
-          subtitle={section.addonName}
-          action={<RowActions section={section} />}
-          onMore={section.source ? () => openCatalog(section) : undefined}
-        >
-          {section.items.map(item => <PosterCard key={`${item.type}:${item.id}`} {...cardProps(item)} />)}
-        </Row>
-      ))}
+      {sections.map(section => (section === topTen ? null : (
+        <CatalogRow key={section.key} section={section} laterIds={laterIds} onOpen={openDetails} onToggleLater={toggleLater} />
+      )))}
 
       <div className="screen-end" />
     </main>
