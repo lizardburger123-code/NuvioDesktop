@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { LuLoaderCircle, LuSearch, LuSlidersHorizontal, LuX } from "react-icons/lu";
+import { LuLoaderCircle, LuRotateCw, LuSearch, LuSlidersHorizontal, LuX } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useApp } from "../AppContext.jsx";
 import { PosterCard, SkeletonPosters } from "./Cards.jsx";
@@ -17,7 +17,7 @@ export const recall = key => { try { return JSON.parse(localStorage.getItem(key)
  * the catalog can search, and the next page loading as the end comes into view.
  */
 export function CatalogGrid({ source, filters, onFilters, emptyText }) {
-  const { laterIds, toggleLater, openDetails, toast } = useApp();
+  const { laterIds, toggleLater, openDetails } = useApp();
   const active = useScreenActive();
   const [items, setItems] = useState([]);
   const [next, setNext] = useState(0);
@@ -25,6 +25,10 @@ export function CatalogGrid({ source, filters, onFilters, emptyText }) {
   const [error, setError] = useState(null);
   const [text, setText] = useState(filters?.search || "");
   const run = useRef(0);
+  // Set as a page is asked for, before React re-renders: the end of the grid can come into
+  // view twice in that gap, and the same page must not be fetched twice.
+  const busy = useRef(false);
+  const seen = useRef(new Set());
   const sentinel = useRef(null);
   const gridRef = useRef(null);
 
@@ -50,28 +54,45 @@ export function CatalogGrid({ source, filters, onFilters, emptyText }) {
 
   const load = reset => {
     if (!source || waitingForQuery) return;
+    if (!reset && busy.current) return;
     const id = ++run.current;
     const skip = reset ? 0 : next;
     if (skip < 0) return;
+    busy.current = true;
     setLoading(true);
     setError(null);
     call("discover.page", { source: source.id, filters: effective, skip }, { timeoutMs: 30000 })
       .then(page => {
         if (id !== run.current) return;
-        const incoming = page?.items || [];
-        setItems(prev => {
-          const base = reset ? [] : prev;
-          const seen = new Set(base.map(i => `${i.type}:${i.id}`));
-          return [...base, ...incoming.filter(i => !seen.has(`${i.type}:${i.id}`))];
+        if (reset) seen.current = new Set();
+        const fresh = (page?.items || []).filter(item => {
+          const key = `${item.type}:${item.id}`;
+          if (seen.current.has(key)) return false;
+          seen.current.add(key);
+          return true;
         });
-        setNext(source.paged && incoming.length ? page.next : -1);
+        setItems(prev => (reset ? fresh : [...prev, ...fresh]));
+        // A page with nothing new is the end, even when the catalog offers another: some addons
+        // ignore the offset and send their first page again, which would otherwise never stop.
+        const after = Number(page?.next);
+        setNext(source.paged && fresh.length && after > skip ? after : -1);
       })
-      .catch(err => { if (id === run.current) { setError(err.message); if (!reset) toast(err.message, { tone: "error" }); } })
-      .finally(() => { if (id === run.current) setLoading(false); });
+      .catch(err => {
+        if (id !== run.current) return;
+        // The bridge's own timeout names the method; say it in words.
+        setError(!err?.message || / timed out$/.test(err.message) ? "It took too long to answer." : err.message);
+      })
+      .finally(() => {
+        if (id !== run.current) return;
+        busy.current = false;
+        setLoading(false);
+      });
   };
 
   useEffect(() => {
     run.current += 1;
+    busy.current = false;
+    seen.current = new Set();
     setItems([]);
     setNext(0);
     setLoading(false);
@@ -80,16 +101,17 @@ export function CatalogGrid({ source, filters, onFilters, emptyText }) {
   }, [source?.id, JSON.stringify(effective)]);
 
   // Endless grid: the next page loads as the bottom comes near (only while this screen is shown).
+  // After a failed page it waits for "Try again" instead of asking again by itself.
   useEffect(() => {
     const node = sentinel.current;
-    if (!node || !active) return undefined;
+    if (!node || !active || loading || error || next <= 0) return undefined;
     const observer = new IntersectionObserver(entries => {
-      if (entries.some(e => e.isIntersecting) && !loading && next > 0) load(false);
+      if (entries.some(e => e.isIntersecting)) load(false);
     }, { rootMargin: "900px 0px" });
     observer.observe(node);
     return () => observer.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, loading, next, source?.id]);
+  }, [active, loading, error, next, source?.id]);
 
   // New results settle in; only the first screenful staggers.
   const shown = useRef(0);
@@ -148,10 +170,22 @@ export function CatalogGrid({ source, filters, onFilters, emptyText }) {
       {loading && !items.length ? <div className="discover-grid"><SkeletonPosters count={12} /></div> : null}
       {waitingForQuery ? <p className="discover-note">This catalog only answers searches. Type what you're looking for above.</p> : null}
       {!loading && !items.length && source && !waitingForQuery ? (
-        <p className="discover-note">{error || emptyText || "Nothing matches these filters. Try another genre or year."}</p>
+        error ? (
+          <div className="discover-note discover-failed" role="alert">
+            <p>Couldn't load this catalog. {error}</p>
+            <button className="btn btn-glass btn-sm" onClick={() => load(true)}><LuRotateCw aria-hidden="true" /> Try again</button>
+          </div>
+        ) : <p className="discover-note">{emptyText || "Nothing matches these filters. Try another genre or year."}</p>
       ) : null}
-      <div ref={sentinel} className="discover-more" aria-hidden={!loading}>
-        {loading && items.length ? <><LuLoaderCircle className="spin" /> Loading more</> : null}
+      <div ref={sentinel} className="discover-more">
+        {loading && items.length ? <span className="discover-more-line" role="status"><LuLoaderCircle className="spin" aria-hidden="true" /> Loading more</span> : null}
+        {!loading && error && items.length ? (
+          <span className="discover-more-line" role="alert" title={error}>
+            Couldn't load more titles.
+            <button className="btn btn-glass btn-sm" onClick={() => load(false)}><LuRotateCw aria-hidden="true" /> Try again</button>
+          </span>
+        ) : null}
+        {!loading && !error && next < 0 && items.length > 12 ? <span className="discover-more-line discover-end">That's everything in {source?.name || "this catalog"}.</span> : null}
       </div>
     </>
   );
