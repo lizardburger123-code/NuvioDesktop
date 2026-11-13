@@ -192,15 +192,16 @@ export default function Sources({ meta, video, onClose }) {
   }, []);
 
   // Focus goes back to whatever opened the sheet (the Sources or Play button), when it is still there.
-  // A sheet that opened by itself (Resume, a spotlight's Play) hands it to the title's Play button.
+  // A sheet that opened by itself (Resume, a spotlight's Play), or whose button went with a switch
+  // of look, hands it to the title's Play button, while the title is still the page on display.
   const opener = useRef(undefined);
-  if (opener.current === undefined) {
-    const at = document.activeElement;
-    opener.current = !shown.current ? null : at && at !== document.body ? at : document.querySelector(".screen-host:not(.is-parked) .details-play");
-  }
+  if (opener.current === undefined) opener.current = shown.current ? document.activeElement : null;
+  const onDisplay = useRef(screenActive);
+  onDisplay.current = screenActive;
   useEffect(() => () => {
-    const node = opener.current;
-    if (node && node !== document.body && node.isConnected && !node.closest("[inert], .is-parked")) node.focus({ preventScroll: true });
+    const usable = node => node && node !== document.body && node.isConnected && !node.closest("[inert], .is-parked");
+    const node = usable(opener.current) ? opener.current : onDisplay.current ? document.querySelector(".screen-host:not(.is-parked) .details-play") : null;
+    if (usable(node)) node.focus({ preventScroll: true });
   }, []);
   // The sheet belongs to its title page: if anything navigates away underneath, it goes too.
   useEffect(() => { if (!screenActive) onCloseRef.current(); }, [screenActive]);

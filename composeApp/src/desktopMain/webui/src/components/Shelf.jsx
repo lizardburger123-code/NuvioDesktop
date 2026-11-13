@@ -141,6 +141,7 @@ function Lifted({ lift, onClose, onPlay, onDetails, onRemove }) {
   const stageRef = useRef(null);
   const caseRef = useRef(null);
   const primaryRef = useRef(null);
+  const liftRef = useRef(null);
   const [phase, setPhase] = useState("up");
   const [layout] = useState(() => {
     const vw = window.innerWidth;
@@ -193,8 +194,16 @@ function Lifted({ lift, onClose, onPlay, onDetails, onRemove }) {
   }, [phase, slot, rect, onClose]);
 
   useEffect(() => {
-    // Esc puts the case back (and nothing else: the app's own Esc would leave the page).
+    // Esc puts the case back (and nothing else: the app's own Esc would leave the page). Tab
+    // stays on the case and its buttons: the page under the dim can't be reached.
     const key = event => {
+      if (event.key === "Tab") {
+        const items = [...(liftRef.current?.querySelectorAll("button") || [])];
+        const at = items.indexOf(document.activeElement);
+        const next = event.shiftKey ? items[at <= 0 ? items.length - 1 : at - 1] : items[(at + 1) % items.length];
+        if (next) { event.preventDefault(); next.focus(); }
+        return;
+      }
       if (event.key !== "Escape") return;
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -249,7 +258,8 @@ function Lifted({ lift, onClose, onPlay, onDetails, onRemove }) {
     : { left: 24, right: 24, top: layout.cy + (rect.height * layout.sc) / 2 + 40 };
 
   return createPortal(
-    <div className={`bd-lift${phase === "down" ? " is-down" : ""}`} role="dialog" aria-modal="true" aria-label={item.name}>
+    // data-modal-open: while a case is in hand the app's keys (Back, search, the mouse's back button) leave the page alone.
+    <div ref={liftRef} className={`bd-lift${phase === "down" ? " is-down" : ""}`} role="dialog" aria-modal="true" aria-label={item.name} data-modal-open>
       <div className="bd-lift-dim" onClick={putBack} onWheel={putBack} />
       <div className="bd-lift-pool" style={{ left: layout.cx, top: layout.cy + (rect.height * layout.sc) / 2 + 14, width: rect.width * layout.sc * 1.9 }} />
       <div className="bd-stage" ref={stageRef} style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height, "--w": `${rect.width}px`, "--h": `${rect.height}px`, "--d": "13px" }}>
