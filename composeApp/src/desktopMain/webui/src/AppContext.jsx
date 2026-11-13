@@ -2,36 +2,61 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { call } from "./bridge.js";
 import { useTopic } from "./store.js";
 import { navigate } from "./lib/router.js";
+import { applyAppearance } from "./theme/appearance.js";
 
 const AppContext = createContext(null);
 export const useApp = () => useContext(AppContext);
 // Toasts live in their own context: showing one must not re-render every screen.
 const ToastContext = createContext([]);
 export const useToasts = () => useContext(ToastContext);
+const ToastControlContext = createContext(null);
+/** { dismiss(id) } for the toast stack. */
+export const useToastControl = () => useContext(ToastControlContext);
+
+const MAX_TOASTS = 3;
 
 export function AppProvider({ boot, children }) {
   const [appearance, setAppearanceState] = useState(boot.appearance);
   const [art, setArt] = useState(null);
   const [profile, setProfile] = useState(boot.profile);
   const [toasts, setToasts] = useState([]);
+  const toastList = useRef([]);
   const toastId = useRef(0);
   const watchLater = useTopic("watchLater", []);
   const laterIds = useMemo(() => new Set(watchLater.map(item => `${item.type}:${item.id}`)), [watchLater]);
 
-  /** A short note at the bottom. action: { label, run } adds a button (Undo...). */
+  // The list is kept in a ref as well, so toast() can see what is on screen right now.
+  const publishToasts = useCallback(next => { toastList.current = next; setToasts(next); }, []);
+  /** Lets a toast animate out, then drops it. */
+  const dismissToast = useCallback(id => {
+    if (!toastList.current.some(t => t.id === id && !t.leaving)) return;
+    publishToasts(toastList.current.map(t => (t.id === id ? { ...t, leaving: true } : t)));
+    window.setTimeout(() => publishToasts(toastList.current.filter(t => t.id !== id)), 240);
+  }, [publishToasts]);
+
+  /**
+   * A short note at the bottom; returns its id. action: { label, run } adds a button (Undo...).
+   * The same note again while it is still up refreshes that one instead of stacking a copy.
+   * Toasts wait while the pointer or keyboard focus is on them (see Toasts.jsx).
+   */
   const toast = useCallback((message, { icon, tone, action, duration } = {}) => {
+    const text = String(message ?? "");
+    const stay = duration || (action ? 5200 : 3200);
+    const live = toastList.current.filter(t => !t.leaving);
+    const twin = live.find(t => t.message === text && t.tone === tone);
+    const wrap = id => (action ? { label: action.label, run: () => { dismissToast(id); action.run(); } } : null);
+    if (twin) {
+      publishToasts(toastList.current.map(t => (t === twin ? { ...t, action: wrap(t.id) || t.action, duration: stay, bump: t.bump + 1 } : t)));
+      return twin.id;
+    }
     toastId.current += 1;
     const id = toastId.current;
-    const stay = duration || (action ? 5200 : 3000);
-    const dismiss = () => {
-      setToasts(list => list.map(t => (t.id === id ? { ...t, leaving: true } : t)));
-      window.setTimeout(() => setToasts(list => list.filter(t => t.id !== id)), 240);
-    };
-    const wrapped = action ? { label: action.label, run: () => { action.run(); dismiss(); } } : null;
-    setToasts(list => [...list.slice(-2), { id, message, icon, tone, action: wrapped }]);
-    // Mark it leaving first so it can animate out, then drop it.
-    window.setTimeout(dismiss, stay);
-  }, []);
+    // A fourth note sends the oldest one on its way rather than piling up.
+    live.slice(0, Math.max(0, live.length - (MAX_TOASTS - 1))).forEach(old => dismissToast(old.id));
+    publishToasts([...toastList.current, { id, message: text, icon, tone, action: wrap(id), duration: stay, bump: 0 }]);
+    return id;
+  }, [dismissToast, publishToasts]);
+  const toastControl = useMemo(() => ({ dismiss: dismissToast }), [dismissToast]);
 
   // A request nobody waited for that failed (opening a link, a classic page...) would otherwise
   // fail in silence. Say so once: the same failure is not repeated for half a minute, and
@@ -52,9 +77,27 @@ export function AppProvider({ boot, children }) {
     return () => window.removeEventListener("unhandledrejection", onRejection);
   }, [toast]);
 
+  /**
+   * Changes appearance settings at once and saves them. If the save fails, what this change set
+   * goes back (unless a newer change replaced it) and a note says so. Resolves to whether it was
+   * saved; never rejects.
+   */
+  const appearanceNow = useRef(boot.appearance);
   const setAppearance = useCallback(patch => {
-    setAppearanceState(prev => ({ ...prev, ...patch }));
-    call("settings.appearance.set", patch).catch(error => toast(`Couldn't save: ${error.message}`, { tone: "error" }));
+    const before = appearanceNow.current;
+    appearanceNow.current = { ...before, ...patch };
+    setAppearanceState(appearanceNow.current);
+    return call("settings.appearance.set", patch).then(() => true, error => {
+      const now = appearanceNow.current;
+      const keys = Object.keys(patch).filter(key => now[key] === patch[key]);
+      if (keys.length) {
+        appearanceNow.current = { ...now, ...Object.fromEntries(keys.map(key => [key, before[key]])) };
+        setAppearanceState(appearanceNow.current);
+        applyAppearance(appearanceNow.current);
+      }
+      toast(`Couldn't save that change, so it was put back. ${error.message}`, { tone: "error" });
+      return false;
+    });
   }, [toast]);
 
   const toggleLater = useCallback(item => {
@@ -110,7 +153,9 @@ export function AppProvider({ boot, children }) {
 
   return (
     <AppContext.Provider value={value}>
-      <ToastContext.Provider value={toasts}>{children}</ToastContext.Provider>
+      <ToastControlContext.Provider value={toastControl}>
+        <ToastContext.Provider value={toasts}>{children}</ToastContext.Provider>
+      </ToastControlContext.Provider>
     </AppContext.Provider>
   );
 }
