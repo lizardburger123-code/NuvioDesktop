@@ -22,6 +22,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.net.URLEncoder
 import java.nio.file.Files
 import java.nio.file.Path
@@ -66,9 +68,15 @@ internal object SubtitleSearchService {
         OkHttpClient.Builder()
             .connectTimeout(12, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)
+            // The whole request: a coroutine timeout can't stop a blocking call, so without this one
+            // stalled site would hold the search (and the "which subtitles?" window) for minutes.
+            .callTimeout(15, TimeUnit.SECONDS)
             .followRedirects(true)
             .build()
     }
+    /** Downloads (a season's zip can be a few megabytes) get longer than searches. */
+    private val downloadHttp by lazy { http.newBuilder().callTimeout(90, TimeUnit.SECONDS).build() }
+    private const val MaxFileBytes = 20 * 1024 * 1024
     // Kept with the app data (not the cache) so a subtitle chosen for a title is still there on resume.
     private val cacheDir: Path by lazy { DesktopStorage.rootDir.resolve("subtitles").also { Files.createDirectories(it) } }
 
@@ -202,9 +210,10 @@ internal object SubtitleSearchService {
         }
     }
 
-    private fun openSubtitlesDownload(result: SubtitleResult, keys: SubtitleProviderKeys): ByteArray {
+    private fun openSubtitlesDownload(result: SubtitleResult, keys: SubtitleProviderKeys, retry: Boolean = true): ByteArray {
         val headers = mutableMapOf("Api-Key" to keys.opensubtitlesApiKey)
         var base = "https://api.opensubtitles.com/api/v1"
+        var signedIn = false
         if (keys.opensubtitlesUsername.isNotBlank() && keys.opensubtitlesPassword.isNotBlank()) {
             val session = openSubtitlesToken ?: runCatching {
                 val login = postJson(
@@ -220,9 +229,19 @@ internal object SubtitleSearchService {
             if (session != null) {
                 headers["Authorization"] = "Bearer ${session.first}"
                 base = session.second
+                signedIn = true
             }
         }
-        val response = postJson("$base/download", """{"file_id":${result.id}}""", headers)
+        val fileId = result.id.toLongOrNull() ?: error("OpenSubtitles didn't say which file it is.")
+        val response = try {
+            postJson("$base/download", """{"file_id":$fileId}""", headers)
+        } catch (failure: Exception) {
+            // A sign-in lasts a day and is kept for the session: when a download made with one is
+            // refused, sign in afresh and try once more.
+            if (!signedIn || !retry) throw failure
+            openSubtitlesToken = null
+            return openSubtitlesDownload(result, keys, retry = false)
+        }
         val link = json.parseToJsonElement(response).obj().str("link")
             ?: error(json.parseToJsonElement(response).obj().str("message") ?: "OpenSubtitles didn't return a download link.")
         return get(link)
@@ -365,12 +384,25 @@ internal object SubtitleSearchService {
         }
 
     private fun get(url: String, headers: Map<String, String> = emptyMap()): ByteArray =
-        http.newCall(request(url, headers).get().build()).execute().use { response ->
+        downloadHttp.newCall(request(url, headers).get().build()).execute().use { response ->
             if (!response.isSuccessful) error(describeHttp(response.code, response.body?.string().orEmpty()))
-            val bytes = response.body?.bytes() ?: error("Empty download.")
-            require(bytes.size < 20 * 1024 * 1024) { "That subtitle file is unexpectedly large." }
-            bytes
+            val body = response.body ?: error("Empty download.")
+            // Read no more than a subtitle can weigh, whatever the link turns out to be.
+            body.byteStream().use { readAtMost(it, MaxFileBytes) } ?: error("That subtitle file is unexpectedly large.")
         }
+
+    /** All of [input] when it is at most [limit] bytes, else null (having read just past the limit). */
+    private fun readAtMost(input: InputStream, limit: Int): ByteArray? {
+        val out = ByteArrayOutputStream()
+        val buffer = ByteArray(64 * 1024)
+        var read = input.read(buffer)
+        while (read >= 0) {
+            out.write(buffer, 0, read)
+            if (out.size() > limit) return null
+            read = input.read(buffer)
+        }
+        return out.toByteArray()
+    }
 
     private fun postJson(url: String, body: String, headers: Map<String, String>): String =
         http.newCall(request(url, headers).header("Accept", "application/json").post(body.toRequestBody("application/json".toMediaType())).build())
@@ -395,12 +427,17 @@ internal object SubtitleSearchService {
         if (!isZip) return "subtitle.srt" to bytes
         val candidates = mutableListOf<Pair<String, ByteArray>>()
         ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+            var total = 0
             while (true) {
                 val entry = zip.nextEntry ?: break
                 val name = entry.name
                 val ext = name.substringAfterLast('.', "").lowercase(Locale.ROOT)
                 if (!entry.isDirectory && ext in setOf("srt", "ass", "ssa", "vtt", "sub")) {
-                    candidates += name to zip.readBytes()
+                    // A zip can unpack to far more than it weighs: each file and the lot are capped.
+                    val data = readAtMost(zip, MaxFileBytes) ?: continue
+                    total += data.size
+                    if (total > 3 * MaxFileBytes) break
+                    candidates += name to data
                 }
             }
         }
