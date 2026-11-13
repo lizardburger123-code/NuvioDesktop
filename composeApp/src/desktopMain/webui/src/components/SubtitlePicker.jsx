@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { LuCaptions, LuCaptionsOff, LuDisc3, LuFileVideo, LuLoaderCircle, LuSearch, LuSparkles, LuX } from "react-icons/lu";
+import { LuCaptions, LuCaptionsOff, LuDisc3, LuFileVideo, LuLoaderCircle, LuRefreshCw, LuSearch, LuSparkles, LuX } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useApp } from "../AppContext.jsx";
 import { EASE, reduceMotion, useSegmentPill } from "../lib/motion.js";
@@ -22,6 +22,9 @@ export default function SubtitlePicker({ request, onPlay, onClose }) {
   const [query, setQuery] = useState("");
   const [lang, setLang] = useState("all");
   const [busy, setBusy] = useState(null);
+  // Guards against a second play while the first is starting (a double click, Ctrl+Enter held).
+  const busyRef = useRef(null);
+  const layerRef = useRef(null);
   const dialogRef = useRef(null);
   const listRef = useRef(null);
   const langRef = useRef(null);
@@ -33,7 +36,12 @@ export default function SubtitlePicker({ request, onPlay, onClose }) {
     const id = ++run.current;
     setLoading(true);
     call("subtitles.match", { ...request, query: text || null }, { timeoutMs: 40000 })
-      .then(result => { if (id === run.current) setData(result); })
+      .then(result => {
+        if (id !== run.current) return;
+        setData(result);
+        // A language tab with nothing in the new results would read as "no subtitles at all".
+        setLang(current => (current === "all" || (result?.results || []).some(item => item.language === current) ? current : "all"));
+      })
       .catch(error => { if (id === run.current) { setData({ results: [], error: error.message }); } })
       .finally(() => { if (id === run.current) setLoading(false); });
   };
@@ -51,18 +59,30 @@ export default function SubtitlePicker({ request, onPlay, onClose }) {
   };
 
   const choose = async key => {
-    if (busy) return;
+    if (busyRef.current) return;
+    busyRef.current = key;
     setBusy(key);
     try {
       await onPlay(key);
       close();
     } catch (error) {
       toast(error.message, { tone: "error" });
+      busyRef.current = null;
       setBusy(null);
     }
   };
 
+  // Focus moves into the window (so the keys below work at once) and goes back to the source row
+  // that opened it.
+  const opener = useRef(undefined);
+  if (opener.current === undefined) opener.current = document.activeElement;
+  useEffect(() => () => {
+    const node = opener.current;
+    if (node && node !== document.body && node.isConnected && !node.closest("[inert], .is-parked")) node.focus({ preventScroll: true });
+  }, []);
+
   useLayoutEffect(() => {
+    dialogRef.current?.focus({ preventScroll: true });
     if (!dialogRef.current || reduceMotion()) return;
     dialogRef.current.animate(
       [{ opacity: 0, transform: "translate3d(0, 14px, 0) scale(.97)" }, { opacity: 1, transform: "none" }],
@@ -84,8 +104,30 @@ export default function SubtitlePicker({ request, onPlay, onClose }) {
 
   useEffect(() => {
     const onKey = event => {
-      if (event.key === "Escape") { event.stopPropagation(); close(); return; }
-      const rows = listRef.current ? [...listRef.current.querySelectorAll(".sp-row:not(:disabled)")] : [];
+      const layers = document.querySelectorAll("[data-modal-open]");
+      if (layers[layers.length - 1] !== layerRef.current) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        // A typed search is cleared first; the next Escape closes.
+        if (queryRef.current) { setQuery(""); search(""); return; }
+        close();
+        return;
+      }
+      if (event.key === "Tab") {
+        const items = [...dialogRef.current.querySelectorAll("button:not([disabled]), input")];
+        const first = items[0];
+        const last = items[items.length - 1];
+        const at = document.activeElement;
+        if (!dialogRef.current.contains(at) || at === dialogRef.current) { event.preventDefault(); (event.shiftKey ? last : first)?.focus(); }
+        else if (!event.shiftKey && at === last) { event.preventDefault(); first.focus(); }
+        else if (event.shiftKey && at === first) { event.preventDefault(); last.focus(); }
+        return;
+      }
+      // Backspace and the other app keys (back, search) never act on the page under the window.
+      if (event.key === "Backspace" && !/INPUT|TEXTAREA/.test(event.target?.tagName || "")) { event.preventDefault(); event.stopPropagation(); return; }
+      if (event.key === "/" && event.target?.tagName !== "INPUT") { event.preventDefault(); event.stopPropagation(); return; }
+      const rows = listRef.current ? [...listRef.current.querySelectorAll(".sp-row")] : [];
       const at = rows.indexOf(document.activeElement);
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         if (!rows.length) return;
@@ -100,12 +142,14 @@ export default function SubtitlePicker({ request, onPlay, onClose }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [best, busy]);
 
+  const queryRef = useRef(query);
+  queryRef.current = query;
   const languages = data?.languages || [];
   const counts = Object.fromEntries(languages.map(l => [l.code, (data?.results || []).filter(r => r.language === l.code).length]));
 
   return createPortal(
-    <div className="sp-layer" data-modal-open onClick={close}>
-      <div ref={dialogRef} className="sp" role="dialog" aria-label="Choose subtitles" onClick={event => event.stopPropagation()}>
+    <div ref={layerRef} className="sp-layer" data-modal-open onClick={() => { if (!busyRef.current) close(); }}>
+      <div ref={dialogRef} className="sp" role="dialog" aria-modal="true" aria-label="Choose subtitles" tabIndex={-1} onClick={event => event.stopPropagation()}>
         <header className="sp-head">
           <div className="sp-titles">
             <h2><LuCaptions aria-hidden="true" /> Subtitles for this file</h2>
@@ -151,8 +195,8 @@ export default function SubtitlePicker({ request, onPlay, onClose }) {
               key={item.key}
               className={`sp-row${item.best ? " is-best" : ""}${item.embedded ? ` is-inside${item.disc ? " is-disc" : ""}` : ""}`}
               onClick={() => choose(item.key)}
-              disabled={Boolean(busy)}
-              aria-busy={busy === item.key}
+              aria-disabled={Boolean(busy) || undefined}
+              aria-busy={busy === item.key || undefined}
             >
               {item.embedded ? (
                 <span className="sp-match sp-inside" aria-label={item.disc ? "From the Blu-ray disc" : "Built into this file"}>
@@ -185,7 +229,7 @@ export default function SubtitlePicker({ request, onPlay, onClose }) {
               <span className="sp-go" aria-hidden="true">{busy === item.key ? <LuLoaderCircle className="spin" /> : null}</span>
             </button>
           )) : (
-            <div className="sp-empty">
+            <div className="sp-empty" role={data?.error ? "alert" : undefined}>
               <h3>{data?.error ? "The search didn't work" : "No subtitles found"}</h3>
               <p>
                 {data?.error
@@ -194,20 +238,21 @@ export default function SubtitlePicker({ request, onPlay, onClose }) {
                       ? "Only Podnapisi and your subtitle addons were searched. Add an OpenSubtitles, SubDL or SubSource key in Settings › Subtitles for many more."
                       : "Try searching by the title or the release name.")}
               </p>
+              {data?.error ? <button className="btn btn-glass btn-sm" onClick={() => search(query.trim())}><LuRefreshCw /> Try again</button> : null}
             </div>
           )}
         </div>
 
         <footer className="sp-foot">
-          <button className="btn btn-ghost btn-sm" onClick={() => choose("none")} disabled={Boolean(busy)}>
+          <button className="btn btn-ghost btn-sm" onClick={() => choose("none")} aria-disabled={Boolean(busy) || undefined}>
             {busy === "none" ? <LuLoaderCircle className="spin" /> : <LuCaptionsOff />} No subtitles
           </button>
           <span className="sp-hint">{best && !loading ? <><kbd>Ctrl</kbd> <kbd>Enter</kbd> plays the best match</> : null}</span>
-          <button className="btn btn-glass btn-sm" onClick={() => choose("auto")} disabled={Boolean(busy)} title="Play now; the player picks subtitles the way it usually does">
+          <button className="btn btn-glass btn-sm" onClick={() => choose("auto")} aria-disabled={Boolean(busy) || undefined} title="Play now; the player picks subtitles the way it usually does">
             {busy === "auto" ? <LuLoaderCircle className="spin" /> : null} Let the player choose
           </button>
           {best && !loading ? (
-            <button className="btn btn-primary btn-sm" onClick={() => choose(best.key)} disabled={Boolean(busy)} title={best.release}>
+            <button className="btn btn-primary btn-sm" onClick={() => choose(best.key)} aria-disabled={Boolean(busy) || undefined} title={best.release}>
               {busy === best.key ? <LuLoaderCircle className="spin" /> : best.disc ? <LuDisc3 /> : <LuSparkles />} {best.disc ? "Play with disc subtitles" : "Play best match"}
             </button>
           ) : null}

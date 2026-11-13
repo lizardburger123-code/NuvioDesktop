@@ -91,7 +91,17 @@ export default ctx => {
 
   // Like the app, a new request drops the answers still on their way for the previous one.
   let generation = 0;
+  const fail = message => new Promise((resolve, reject) => window.setTimeout(() => reject(new Error(message)), 500));
   return {
+    // Subtitle window and TorBox dialogs, failing on request:
+    //   { subsFail: true }   the subtitle search fails
+    //   { signedOut: true }  caching on TorBox asks to connect TorBox first
+    //   { torboxDown: true } TorBox can't be reached
+    //   { codeFail: true }   TorBox gives no sign-in code
+    "subtitles.match": params => (scenario().subsFail ? fail("The subtitle sites didn't answer in time.") : ctx.base["subtitles.match"](params)),
+    "torbox.cache": params => (scenario().signedOut ? fail("Connect TorBox first to cache sources.") : ctx.base["torbox.cache"](params)),
+    "torbox.summary": params => (scenario().torboxDown ? fail("Unable to resolve host api.torbox.app") : ctx.base["torbox.summary"](params)),
+    "torbox.connect.start": params => (scenario().codeFail ? fail("TorBox is busy. Try again in a minute.") : ctx.base["torbox.connect.start"](params)),
     "streams.load": ({ type, videoId, parentMetaId, season, episode }) => {
       generation += 1;
       const run = generation;
