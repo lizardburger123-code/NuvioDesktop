@@ -9,15 +9,17 @@
   const bridge = window.chrome && window.chrome.webview;
   if (!bridge) return;
 
-  // Most important first: only MAX_RECTS are frosted at once.
+  // Most important first: only MAX_RECTS are frosted at once. Each selector matches its surface only
+  // while the page shows it (by class or hidden), so the poll reads no styles or layout when nothing
+  // is up, which is most of the time spent watching.
   const SURFACES = [
     ".player-rail-modal:not([hidden]) .track-panel",
     ".player-side-modal:not([hidden]) .player-side-panel",
     ".shortcuts-modal:not([hidden]) .shortcuts-panel",
-    ".opening-actions",
-    ".next-episode-card",
-    ".skip-prompt",
-    ".player-toast",
+    ".opening-overlay.visible .opening-actions",
+    ".next-episode-card.visible",
+    ".skip-prompt.visible",
+    ".player-toast.visible",
   ];
   const POLL_MS = 90;
   const MAX_RECTS = 6;
