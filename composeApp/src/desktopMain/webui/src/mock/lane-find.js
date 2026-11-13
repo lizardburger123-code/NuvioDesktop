@@ -50,7 +50,57 @@ export default ctx => {
       .map((item, i) => ({ id: item.id, type: item.type, name: item.name, poster: item.poster, releaseInfo: String(2026 - i), role: i === 3 ? "Director" : "" }));
   };
 
+  // Downloads, kept here so every state can be shown: window.__mockDownloads() fills the list with
+  // one downloading, one paused, one failed and one finished file.
+  let downloads = [{ id: "d1", type: "movie", metaId: "tt9004", videoId: "tt9004", title: "Project Hail Mary", poster: data.library[3].poster, fileName: "Project Hail Mary_2026.mkv", source: "SELection", status: "completed", done: 8.4e9, total: 8.4e9, speed: 0, createdAt: Date.now() - 864e5 }];
+  let ticker = 0;
+  const publish = () => push("downloads", downloads);
+  const tick = () => {
+    window.clearInterval(ticker);
+    ticker = window.setInterval(() => {
+      let live = false;
+      downloads = downloads.map(d => {
+        if (d.status !== "downloading") return d;
+        live = true;
+        const speed = (d.rate || 4.2e7) * (0.85 + Math.random() * 0.3);
+        const done = Math.min(d.total, d.done + speed / 2);
+        return { ...d, done, speed: done >= d.total ? 0 : speed, status: done >= d.total ? "completed" : "downloading" };
+      });
+      publish();
+      if (!live) window.clearInterval(ticker);
+    }, 500);
+  };
+  const setStatus = (id, status) => { downloads = downloads.map(d => (d.id === id ? { ...d, status, speed: 0, error: status === "downloading" ? undefined : d.error } : d)); publish(); if (status === "downloading") tick(); };
+  const later = (value, ms = 350) => new Promise(resolve => setTimeout(() => resolve(value), ms));
+  // Every download action the interface sent, for tests that check a double click sends one.
+  window.__mockDownloadCalls = [];
+  const logged = (name, fn) => params => { window.__mockDownloadCalls.push(`${name}:${params.id || ""}`); return fn(params); };
+  window.__mockDownloads = () => {
+    const ep = data.trendingSeries[4];
+    downloads = [
+      { id: "d2", type: "series", metaId: ep.id, videoId: `${ep.id}:4:2`, title: ep.name, poster: ep.poster, season: 4, episode: 2, fileName: "Slow.Horses.S04E02.1080p.ATVP.WEB-DL.DDP5.1.H.264-FLUX.mkv", source: "SELection", status: "downloading", done: 1.1e9, total: 3.1e9, speed: 4.2e7, rate: 4.2e7, createdAt: Date.now() - 6e4 },
+      { id: "d3", type: "movie", metaId: "tt0010", videoId: "tt0010", title: "Avengers: Doomsday", poster: data.trendingMovies[9].poster, fileName: "Avengers.Doomsday.2026.2160p.WEB-DL.mkv", source: "SELection", status: "paused", done: 6.2e9, total: 22e9, speed: 0, createdAt: Date.now() - 36e5 },
+      { id: "d4", type: "series", metaId: "kitsu:46474", videoId: "kitsu:46474:1:3", title: "Frieren: Beyond Journey's End", poster: data.anime[5].poster, season: 1, episode: 3, fileName: "Frieren.S01E03.1080p.mkv", source: "SELection", status: "failed", done: 2.1e8, total: 1.4e9, speed: 0, error: "The link expired before the download finished.", createdAt: Date.now() - 72e5 },
+      ...downloads.filter(d => d.id === "d1"),
+    ];
+    publish();
+    tick();
+  };
+
   return {
+    "downloads.subscribe": () => { publish(); return true; },
+    "downloads.start": ({ streamKey, title, season, episode }) => {
+      downloads = [{ id: `d${Date.now()}`, type: "series", metaId: "x", videoId: streamKey, title: title || "Download", season, episode, fileName: `${title || "Download"}.mkv`, source: "SELection", status: "downloading", done: 0, total: 2.4e9, speed: 0, rate: 3.2e8, createdAt: Date.now() }, ...downloads];
+      publish();
+      tick();
+      return { result: "started", folder: "C:\\Users\\you\\Downloads\\Nuvio" };
+    },
+    "downloads.pause": logged("pause", ({ id }) => later(true).then(value => { setStatus(id, "paused"); return value; })),
+    "downloads.resume": logged("resume", ({ id }) => later(true).then(value => { setStatus(id, "downloading"); return value; })),
+    "downloads.remove": logged("remove", ({ id }) => later(true).then(value => { downloads = downloads.filter(d => d.id !== id); publish(); return value; })),
+    "downloads.reveal": logged("reveal", () => later(true)),
+    "downloads.play": logged("play", () => later(true, 500)),
+
     "search.history": () => history,
     "search.history.remove": ({ query }) => { history = history.filter(item => item !== query); return history; },
     "search.history.clear": () => { history = []; return history; },
