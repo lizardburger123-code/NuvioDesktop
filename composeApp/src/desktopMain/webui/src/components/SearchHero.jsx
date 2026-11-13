@@ -1,16 +1,31 @@
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { LuArrowRight, LuHistory, LuSearch, LuX } from "react-icons/lu";
-import { navigate } from "../lib/router.js";
 import { EASE, reduceMotion } from "../lib/motion.js";
 import { clearHistory, removeHistory, useSearchHistory } from "../lib/searchHistory.js";
 import "./SearchHero.css";
 
-/** Search is typed straight into the page, in title type, with the recent searches under it. */
-export default function SearchHero({ autoFocus = false, initial = "", onSubmit }) {
-  const [query, setQuery] = useState(initial);
+/**
+ * Search is typed straight into the page, in title type, with the recent searches under an empty
+ * field. What is typed stays in here, so a keystroke never re-renders the results: the screen
+ * hears about it through onType and decides when to search.
+ */
+const SearchHero = forwardRef(function SearchHero({ autoFocus = false, initial = "", onType, onSubmit, onClear, onDown }, ref) {
+  const [text, setText] = useState(initial);
   const history = useSearchHistory().slice(0, 6);
   const inputRef = useRef(null);
   const recentRef = useRef(null);
+
+  useImperativeHandle(ref, () => ({
+    focus: ({ select = false } = {}) => {
+      const input = inputRef.current;
+      if (!input) return;
+      input.focus({ preventScroll: true });
+      if (select) input.select();
+      else input.setSelectionRange(input.value.length, input.value.length);
+    },
+    set: value => setText(value),
+    text: () => inputRef.current?.value ?? "",
+  }), []);
 
   // A removed search folds away before the list closes the gap.
   const forget = (event, item) => {
@@ -37,13 +52,19 @@ export default function SearchHero({ autoFocus = false, initial = "", onSubmit }
     if (!autoFocus || window.scrollY > 160) return;
     inputRef.current?.focus({ preventScroll: true });
   }, [autoFocus]);
-  useEffect(() => { setQuery(initial); }, [initial]);
 
-  const submit = text => {
-    const q = String(text ?? query).trim();
-    if (!q) return;
-    if (onSubmit) onSubmit(q);
-    else navigate("search", { q });
+  const change = value => {
+    setText(value);
+    onType(value);
+  };
+  const clear = () => {
+    setText("");
+    onClear();
+    inputRef.current?.focus({ preventScroll: true });
+  };
+  const submit = value => {
+    const q = String(value ?? text).trim();
+    if (q) onSubmit(q);
   };
 
   return (
@@ -53,10 +74,17 @@ export default function SearchHero({ autoFocus = false, initial = "", onSubmit }
         <input
           ref={inputRef}
           className="search-input"
-          value={query}
-          onChange={event => {
-            setQuery(event.target.value);
-            if (onSubmit && event.target.value.trim().length > 1) onSubmit(event.target.value.trim(), { live: true });
+          value={text}
+          onChange={event => change(event.target.value)}
+          onKeyDown={event => {
+            if (event.key === "Escape" && text) {
+              // Esc empties the field first; on an empty field it does what it does everywhere.
+              event.preventDefault();
+              event.stopPropagation();
+              clear();
+            } else if (event.key === "ArrowDown" && onDown?.()) {
+              event.preventDefault();
+            }
           }}
           placeholder="Search films, series and anime"
           aria-label="Search"
@@ -64,18 +92,18 @@ export default function SearchHero({ autoFocus = false, initial = "", onSubmit }
           autoComplete="off"
           dir="auto"
         />
-        {query ? (
+        {text ? (
           <>
-            <button className="search-tool" type="button" aria-label="Clear the search" title="Clear" onClick={() => { setQuery(""); inputRef.current?.focus(); }}><LuX /></button>
+            <button className="search-tool" type="button" aria-label="Clear the search" title="Clear (Esc)" onClick={clear}><LuX /></button>
             <button className="search-go" type="submit" aria-label="Search" title="Search"><LuArrowRight /></button>
           </>
         ) : null}
       </form>
-      {history.length ? (
-        <div ref={recentRef} className="search-recent" aria-label="Recent searches">
+      {!text && history.length ? (
+        <div ref={recentRef} className="search-recent" role="group" aria-label="Recent searches">
           {history.map(item => (
             <span key={item} className="recent-chip">
-              <button className="chip recent-go" onClick={() => { setQuery(item); submit(item); }}>
+              <button className="chip recent-go" onClick={() => { setText(item); submit(item); }}>
                 <LuHistory aria-hidden="true" />
                 <span dir="auto">{item}</span>
               </button>
@@ -84,9 +112,11 @@ export default function SearchHero({ autoFocus = false, initial = "", onSubmit }
               </button>
             </span>
           ))}
-          <button className="recent-clear" onClick={forgetAll}>Clear</button>
+          <button className="recent-clear" onClick={forgetAll} aria-label="Clear recent searches">Clear</button>
         </div>
       ) : null}
     </div>
   );
-}
+});
+
+export default SearchHero;

@@ -1,12 +1,21 @@
 .search-top { padding: 28px var(--gutter) 0; display: flex; flex-direction: column; gap: 22px; }
-.search-group { padding: 40px var(--gutter) 0; }
-.search-group > h2 { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; }
-.search-from { font-size: var(--fs-13); font-weight: 500; color: var(--ink-3); letter-spacing: 0; }
-.search-grid { display: grid; grid-template-columns: repeat(auto-fill, 168px); gap: 32px 16px; }
 
-.search-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.search-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; min-height: 44px; }
 .search-addons { display: flex; flex-wrap: wrap; gap: 8px; }
 .search-chip-n { margin-left: 4px; font-size: var(--fs-12); font-weight: 600; opacity: .65; }
+.search-status { margin-left: auto; font-size: var(--fs-13); font-weight: 500; color: var(--ink-3); }
+
+/* Everything found: a row per kind. One kind: all of it in a grid. */
+.search-results > .row:first-child { margin-top: 26px; }
+.search-group { padding: 32px var(--gutter) 0; }
+.search-group > h2 { display: flex; align-items: baseline; gap: 10px; margin-bottom: 16px; }
+.search-count { font-size: var(--fs-13); font-weight: 500; color: var(--ink-3); letter-spacing: 0; }
+.search-grid { display: grid; grid-template-columns: repeat(auto-fill, 168px); gap: 32px 16px; }
+
+.search-skeleton { padding: 40px var(--gutter) 0; display: flex; flex-direction: column; gap: 22px; overflow: hidden; }
+.search-skeleton-title { width: 96px; height: 18px; border-radius: 6px; }
+.search-skeleton-cards { display: flex; gap: 16px; }
+.search-skeleton-cards > * { flex: none; }
 
 /* What search doesn't reach, said once at the end of the results. */
 .search-more {
