@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
-  LuCheck, LuCheckCheck, LuChevronDown, LuChevronUp, LuClapperboard, LuLayoutGrid, LuList, LuListVideo, LuPlay, LuPlus, LuRotateCcw, LuSearch, LuTrophy,
+  LuCalendarClock, LuCheck, LuCheckCheck, LuChevronDown, LuChevronUp, LuClapperboard, LuLayoutGrid, LuList, LuListVideo, LuPlay, LuPlus, LuRotateCcw, LuSearch, LuTrophy,
 } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useApp } from "../AppContext.jsx";
@@ -20,8 +20,42 @@ export const seasonName = s => (s === 0 ? "Specials" : `Season ${s}`);
 export const airDate = released => (released ? new Date(released).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" }) : "");
 export const asVideo = video => ({ videoId: video.id, season: video.season, episode: video.episode, title: video.title, thumbnail: video.thumbnail });
 /** The topic is pushed again often with the same episodes: compare what is drawn, not identity. */
-export const sameEpisode = (a, b) => a === b || ["id", "episode", "title", "thumbnail", "overview", "released", "runtime", "rating", "progress", "watched", "upcoming"].every(field => a[field] === b[field]);
+export const sameEpisode = (a, b) => a === b || ["id", "episode", "title", "thumbnail", "overview", "released", "runtime", "rating", "progress", "watched", "upcoming", "airsAt"].every(field => a[field] === b[field]);
 const sameRow = (a, b) => a.fallback === b.fallback && a.next === b.next && a.nextLabel === b.nextLabel && a.onPlay === b.onPlay && a.onMark === b.onMark && sameEpisode(a.video, b.video);
+/** The day an episode comes out, as the addon gave it: a bare date is that calendar day wherever you are. */
+const airsOn = video => {
+  const plain = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(video.released || "").trim());
+  return plain ? new Date(+plain[1], plain[2] - 1, +plain[3]) : video.airsAt != null ? new Date(video.airsAt) : null;
+};
+export const airDay = video => airsOn(video)?.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" }) || "";
+/** How long until it is out, in words: "in 5 hours" (when the time is known), "tomorrow", "in 3 days". */
+export const untilAir = video => {
+  const day = airsOn(video);
+  if (!day) return "";
+  const now = new Date();
+  if (video.airsAt != null && !/^\d{4}-\d{2}-\d{2}$/.test(String(video.released).trim())) {
+    const hours = (video.airsAt - now.getTime()) / 3600e3;
+    if (hours < 1) return "in under an hour";
+    if (hours < 20) { const h = Math.round(hours); return `in ${h} ${h === 1 ? "hour" : "hours"}`; }
+  }
+  const days = Math.round((new Date(day).setHours(0, 0, 0, 0) - new Date(now).setHours(0, 0, 0, 0)) / 864e5);
+  return days <= 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`;
+};
+/** A series still airing: which episode is next and when. */
+export function NextEpisode({ video }) {
+  if (!video) return null;
+  const when = airDay(video);
+  return (
+    <p className="details-next num" data-rise>
+      <LuCalendarClock aria-hidden="true" />
+      <b>Next episode</b>
+      <span>{`S${video.season} E${video.episode}`}</span>
+      {when ? <span>{when}</span> : <span>date not announced</span>}
+      {when ? <span className="details-next-when">{untilAir(video)}</span> : null}
+    </p>
+  );
+}
+const upcomingTag = video => (video.airsAt != null ? `Airs ${airDay(video)}` : "Not out yet");
 const seasonDone = entry => Boolean(entry) && entry.aired > 0 && entry.watched >= entry.aired;
 
 /** A score out of ten as a colour: data, not decoration, so it keeps its own scale in every accent. */
@@ -58,7 +92,7 @@ const Episode = memo(function Episode({ video, fallback, next, nextLabel, onPlay
           <span className="hz-ep-line">
             <span className="hz-ep-title" dir="auto">{video.title || `Episode ${video.episode}`}</span>
             {next ? <span className="hz-tag is-haze">{nextLabel}</span> : null}
-            {video.upcoming ? <span className="hz-tag">Upcoming</span> : null}
+            {video.upcoming ? <span className="hz-tag">{upcomingTag(video)}</span> : null}
           </span>
           {video.overview ? <span className="hz-ep-desc" dir="auto">{video.overview}</span> : null}
           <span className="hz-ep-meta num">
@@ -84,6 +118,7 @@ const EpisodeTile = memo(function EpisodeTile({ video, fallback, next, onPlay, o
           {video.progress > 0 ? <span className="wide-progress"><span style={{ width: `${Math.min(100, Math.round(video.progress * 100))}%` }} /></span> : null}
         </span>
         <span className="hz-tile-title" dir="auto"><b className="num">{video.episode}</b>{video.title || `Episode ${video.episode}`}</span>
+        {video.upcoming ? <span className="hz-tag hz-tile-tag">{upcomingTag(video)}</span> : null}
         <span className="hz-ep-meta num">
           {airDate(video.released) ? <span>{airDate(video.released)}</span> : null}
           <EpisodeScore value={video.rating} />
@@ -163,7 +198,7 @@ function RatingsSheet({ meta, seasons, onPlay }) {
 }
 
 /** A title's page in the Haze look. The data and the play logic come from Details; this is the furniture. */
-export default function HazeDetails({ meta, topic, seasons, season, setSeason, episodes, target, similar, stats, onMark, onMarkSeason, play, openSources, saved, heroRef, children }) {
+export default function HazeDetails({ meta, topic, seasons, season, setSeason, episodes, target, nextAir, similar, stats, onMark, onMarkSeason, play, openSources, saved, heroRef, children }) {
   const { appearance, laterIds, toggleLater, openDetails, toast } = useApp();
   const color = useArtColor([meta.background, meta.banner, meta.poster], appearance?.hazeArt !== false);
   const series = seasons.length > 0;
@@ -237,9 +272,10 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
           {meta.runtime ? <span>{meta.runtime}</span> : null}
           {(meta.genres || []).slice(0, 3).map(genre => <span key={genre} className="hz-genre">{genre}</span>)}
         </div>
+        <NextEpisode video={nextAir} />
         {meta.description ? <p className="details-desc" data-rise dir="auto">{meta.description}</p> : null}
         <div className="details-actions">
-          <button data-rise className="btn btn-primary details-play" onClick={() => target && play(target)}>
+          <button data-rise className="btn btn-primary details-play" onClick={() => target && play(target)} disabled={target?.disabled}>
             <LuPlay className="fill" />
             <span>{target?.label}</span>
             {target?.sub ? <span className="details-play-sub num">{target.sub}</span> : null}
@@ -310,7 +346,9 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
             onClick={() => (expanded ? fold() : setOpen(true))}
           >
             <span className="hz-ep-toggle-name">{seasonName(season)}</span>
-            <span className="hz-ep-toggle-count num">{episodes.length} {episodes.length === 1 ? "episode" : "episodes"}</span>
+            <span className="hz-ep-toggle-count num">
+              {episodes.length} {episodes.length === 1 ? "episode" : "episodes"}{progress.total > progress.aired ? ` · ${progress.total - progress.aired} to come` : ""}
+            </span>
             {progress.watched ? (
               <span className="hz-ep-toggle-seen num">
                 <span className="hz-meter" aria-hidden="true"><i style={{ transform: `scaleX(${Math.min(1, progress.watched / Math.max(1, progress.aired))})` }} /></span>

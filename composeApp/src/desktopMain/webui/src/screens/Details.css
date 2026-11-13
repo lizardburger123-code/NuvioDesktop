@@ -39,6 +39,16 @@
   overflow: hidden;
 }
 
+/* A series still airing: the next episode and when it comes out. */
+.details-next { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: var(--fs-15); font-weight: 600; color: var(--ink-2); }
+.details-next svg { width: 18px; height: 18px; flex: none; color: var(--accent); }
+.details-next b { font-weight: 700; color: #fff; }
+.details-next > span + span::before { content: "·"; margin-right: 10px; color: var(--ink-3); }
+.details-next-when { color: #fff; }
+[data-layout="haze"] .details-next svg { color: rgb(var(--haze-rgb)); }
+.details-play:disabled { opacity: .5; cursor: default; }
+.details-play:disabled:active { transform: none; }
+
 .details-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 8px; }
 .details-actions .btn { height: 52px; font-size: var(--fs-16); }
 .details-play { height: 52px; padding: 0 28px 0 22px; font-size: var(--fs-16); }

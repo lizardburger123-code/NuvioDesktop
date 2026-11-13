@@ -15,7 +15,7 @@ import TitleMark from "../components/TitleMark.jsx";
 import Ratings from "../components/Ratings.jsx";
 import Person from "../components/Person.jsx";
 import { useSimilar } from "../lib/similar.js";
-import HazeDetails, { airDate, asVideo, sameEpisode, seasonName } from "../haze/Details.jsx";
+import HazeDetails, { NextEpisode, airDate, airDay, asVideo, sameEpisode, seasonName } from "../haze/Details.jsx";
 import { lookOf } from "../lib/look.js";
 import { episodeCode, minutesLeft, year } from "../lib/format.js";
 import "./Details.css";
@@ -144,7 +144,7 @@ const EpisodeCard = memo(function EpisodeCard({ video, fallback, onPlay, onMark 
       <button className="card-face" data-hero style={{ height: 169 }} onClick={() => onPlay(asVideo(video))} disabled={video.upcoming} aria-label={`Episode ${video.episode}: ${name}`}>
         {image ? <img src={image} data-alt={fallback && fallback !== image ? fallback : undefined} alt="" loading="lazy" decoding="async" /> : null}
         <span className="wide-scrim" />
-        {video.upcoming ? <span className="wide-badge">Upcoming</span> : null}
+        {video.upcoming ? <span className="wide-badge">{video.airsAt != null ? `Airs ${airDay(video)}` : "Not out yet"}</span> : null}
         <span className="wide-play" aria-hidden="true"><LuPlay /></span>
         {video.progress > 0 ? <span className="wide-progress"><span style={{ width: `${Math.min(100, Math.round(video.progress * 100))}%` }} /></span> : null}
       </button>
@@ -210,10 +210,13 @@ const TitlePage = memo(function TitlePage({ state, params }) {
     const now = Date.now();
     return (meta.videos || []).map(video => {
       const mark = marks.get(video.id);
-      // Not out yet: the addon says so, or its air date is still ahead.
-      const upcoming = video.available === false || Date.parse(video.released || "") > now;
+      // Not out yet: the addon says so, or its air date is still ahead (a bare date counts from
+      // midnight UTC, as the app counts it).
+      const at = Date.parse(video.released || "");
+      const upcoming = video.available === false || at > now;
+      const airsAt = upcoming && Number.isFinite(at) ? at : null;
       // Marking either way clears an episode's progress, as the app does.
-      return mark ? { ...video, watched: mark.on, progress: 0, upcoming } : { ...video, upcoming };
+      return mark ? { ...video, watched: mark.on, progress: 0, upcoming, airsAt } : { ...video, upcoming, airsAt };
     });
   }, [meta.videos, marks]);
   const listRef = useRef(videos);
@@ -238,18 +241,35 @@ const TitlePage = memo(function TitlePage({ state, params }) {
     return map;
   }, [videos]);
 
-  // The main button: resume where the user left off, else the first episode / the movie.
+  // The main button: resume where the user left off; else the next episode out after the last one
+  // seen (or the first one skipped); else, all seen, the first again. Never one not out yet.
   const target = useMemo(() => {
     if (meta.type === "movie" || !videos.length) {
       return { videoId: meta.defaultVideoId || meta.id, label: meta.resume ? "Resume" : "Play", sub: meta.resume ? minutesLeft(meta.resume.positionMs, meta.resume.durationMs) : meta.runtime };
     }
-    const resumeVideo = meta.resume && !marks.has(meta.resume.videoId) && videos.find(video => video.id === meta.resume.videoId);
-    const video = resumeVideo || videos.find(v => (v.season || 0) > 0 && !v.watched && !v.upcoming) || videos[0];
-    return {
+    const pick = (video, label) => ({
       videoId: video.id, season: video.season, episode: video.episode, title: video.title, thumbnail: video.thumbnail,
-      label: resumeVideo ? "Resume" : "Play", sub: episodeCode(video.season, video.episode),
-    };
+      label, sub: episodeCode(video.season, video.episode), disabled: video.upcoming,
+    });
+    const resumeVideo = meta.resume && !marks.has(meta.resume.videoId) && videos.find(video => video.id === meta.resume.videoId && !video.upcoming);
+    if (resumeVideo) return pick(resumeVideo, "Resume");
+    const order = videos.filter(video => (video.season || 0) > 0).sort((a, b) => a.season - b.season || (a.episode ?? 0) - (b.episode ?? 0));
+    let last = -1;
+    order.forEach((video, i) => { if (video.watched) last = i; });
+    const ready = video => !video.watched && !video.upcoming;
+    const next = order.slice(last + 1).find(ready) || order.find(ready);
+    if (next) return pick(next, "Play");
+    const first = order.find(video => !video.upcoming);
+    if (first) return pick(first, last >= 0 ? "Watch again" : "Play");
+    return pick(videos[0], "Play");
   }, [meta, videos, marks]);
+
+  // Still airing: the next episode not out yet, the soonest first.
+  const nextAir = useMemo(() => {
+    const coming = videos.filter(video => (video.season || 0) > 0 && video.upcoming);
+    if (!coming.length) return null;
+    return coming.reduce((best, video) => ((video.airsAt ?? Infinity) < (best.airsAt ?? Infinity) ? video : best));
+  }, [videos]);
 
   // The season on show: the one picked, else the one the main button plays from.
   const season = seasons.includes(chosen) ? chosen
@@ -341,7 +361,7 @@ const TitlePage = memo(function TitlePage({ state, params }) {
     return (
       <HazeDetails
         meta={meta} topic={state} seasons={seasons} season={season} setSeason={setSeason} episodes={episodes}
-        target={target} similar={similar} stats={stats} onMark={toggleWatched} onMarkSeason={markSeason}
+        target={target} nextAir={nextAir} similar={similar} stats={stats} onMark={toggleWatched} onMarkSeason={markSeason}
         play={play} openSources={setSources} saved={saved} heroRef={heroRef}
       >
         {sources ? <Sources meta={meta} video={sources} onClose={() => setSources(null)} /> : null}
@@ -369,9 +389,10 @@ const TitlePage = memo(function TitlePage({ state, params }) {
           <Ratings meta={meta} />
           {metaLine.slice(1).map(item => <span key={item}>{item}</span>)}
         </div>
+        <NextEpisode video={nextAir} />
         {meta.description ? <p className="details-desc" data-rise dir="auto">{meta.description}</p> : null}
         <div className="details-actions">
-          <button data-rise className="btn btn-primary details-play" onClick={() => target && play(target)}>
+          <button data-rise className="btn btn-primary details-play" onClick={() => target && play(target)} disabled={target?.disabled}>
             <LuPlay className="fill" />
             <span>{target?.label}</span>
             {target?.sub ? <span className="details-play-sub num">{target.sub}</span> : null}
@@ -419,7 +440,7 @@ const TitlePage = memo(function TitlePage({ state, params }) {
           </div>
           <Row
             title="Episodes"
-            subtitle={`${seasonName(season)} · ${episodes.length} ${episodes.length === 1 ? "episode" : "episodes"}${current.watched ? ` · ${seasonDone ? "all watched" : `${current.watched} watched`}` : ""}`}
+            subtitle={`${seasonName(season)} · ${episodes.length} ${episodes.length === 1 ? "episode" : "episodes"}${current.total > current.aired ? ` · ${current.total - current.aired} to come` : ""}${current.watched ? ` · ${seasonDone ? "all watched" : `${current.watched} watched`}` : ""}`}
             key={season}
             action={current.aired ? (
               <button className="btn btn-sm btn-line details-season-mark" onClick={() => markSeason(season, !seasonDone)} aria-label={`Mark all of ${seasonName(season)} as ${seasonDone ? "unwatched" : "watched"}`}>

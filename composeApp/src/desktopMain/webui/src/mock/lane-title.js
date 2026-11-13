@@ -7,7 +7,30 @@
 // The title page's `details` topic is built here, so it can carry what the page marks:
 //   series:tt-missing   no addon has it ("title not found")
 //   series:tt-flaky     fails the first time, loads on "Try again"
+//   Slow Horses         still airing: Season 5 has one episode out, the next in a few hours
 // window.__mockFailWatched(n) makes the next n watched.episode / watched.season calls fail.
+import { still } from "./art.js";
+
+const DAY = 864e5;
+/** Slow Horses' fifth season, airing: one episode out, the next tonight, then one a week. */
+const airing = meta => {
+  if (meta.id !== "tt5875444") return meta;
+  const now = Date.now();
+  const titles = ["Missing Persons", "Bad Actors", "Quiet Hours", "Old Habits", "Clean Sweep", "Last Orders"];
+  const fifth = titles.map((title, i) => {
+    const at = i === 0 ? now - 6.5 * DAY : now + 5.5 * 3600e3 + (i - 1) * 7 * DAY;
+    return {
+      id: `tt5875444:5:${i + 1}`, title, season: 5, episode: i + 1, runtime: 47, thumbnail: still(meta.name, 50 + i),
+      // The next one has its exact time; later ones only a date, as addons often give.
+      released: i <= 1 ? new Date(at).toISOString() : new Date(at).toISOString().slice(0, 10),
+      ...(i === 1 ? { available: false } : {}),
+      ...(i === 0 ? { rating: 8.2, overview: "Lamb finds a missing agent in the last place anyone looked." } : {}),
+      progress: 0, watched: false,
+    };
+  });
+  return { ...meta, videos: [...meta.videos, ...fifth] };
+};
+
 export default ctx => {
   const { push, base, data } = ctx;
   let current = null;
@@ -32,7 +55,7 @@ export default ctx => {
     if (id === "tt-missing") return { error: "No addon provides meta for this content." };
     if (failOnce.delete(id)) return { error: "Could not load details from any addon." };
     if (id === "tt-flaky") return { meta: { ...data.detailsFor("movie", "tt0002"), id, name: "The Cycle" } };
-    return { meta: withMarks(data.detailsFor(type, id)) };
+    return { meta: withMarks(airing(data.detailsFor(type, id))) };
   };
 
   const send = (type, id, delay) => {
