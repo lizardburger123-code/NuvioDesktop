@@ -13,9 +13,12 @@
   background: rgb(14 16 19 / .86); -webkit-backdrop-filter: blur(22px) saturate(1.3); backdrop-filter: blur(22px) saturate(1.3);
   box-shadow: inset 0 0 0 1px var(--line-strong), 0 2px 6px rgb(0 0 0 / .4), 0 20px 50px rgb(0 0 0 / .5);
   opacity: 0; scale: .25; filter: blur(4px); transform-origin: 46px 50%; pointer-events: none;
-  transition: opacity .3s var(--ease-soft), scale .42s var(--ease-out), filter .3s var(--ease-soft), background-color var(--t-fast) ease;
+  transition: opacity .3s var(--ease-soft), scale .42s var(--ease-out), filter .3s var(--ease-soft), translate .3s var(--ease-out), background-color var(--t-fast) ease;
 }
 .tpop.is-in { opacity: 1; scale: 1; filter: blur(0); pointer-events: auto; }
+/* Notes stack upward from below the card (one note fits under it): it rises above a second and a third. */
+body:has(.toasts > .toast + .toast) .tpop { translate: 0 -56px; }
+body:has(.toasts > .toast + .toast + .toast) .tpop { translate: 0 -112px; }
 .tpop:hover { background: rgb(26 29 34 / .92); }
 .tpop:active { scale: .96; }
 .tpop:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
