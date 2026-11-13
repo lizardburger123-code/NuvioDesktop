@@ -16,6 +16,12 @@ const listeners = new Map();
 const latest = new Map();
 let nextId = 1;
 
+/**
+ * An error the app answered with (or a request it never answered). Its message is a sentence
+ * written for people, so it can be shown as it is; `method` says which request it was.
+ */
+const bridgeError = (message, method, extra = {}) => Object.assign(new Error(message), { bridge: true, method }, extra);
+
 const deliver = message => {
   if (!message || typeof message !== "object") return;
   if (message.topic) {
@@ -30,7 +36,7 @@ const deliver = message => {
   if (!entry) return;
   pending.delete(message.id);
   window.clearTimeout(entry.timer);
-  if (message.error) entry.reject(new Error(String(message.error)));
+  if (message.error) entry.reject(bridgeError(String(message.error), entry.method));
   else entry.resolve(message.result);
 };
 
@@ -47,14 +53,18 @@ if (isNative) {
   mock = createMockBackend(deliver);
 }
 
+// Every request gets an answer, even one the app never sends: after timeoutMs it fails, so no
+// spinner waits forever. 45 s covers ordinary requests on a slow connection; the ones that
+// legitimately take longer (installing an addon, matching subtitles, clearing TorBox, starting
+// playback) pass their own limit where they are made.
 export const call = (method, params = {}, { timeoutMs = 45000 } = {}) =>
   new Promise((resolve, reject) => {
     const id = nextId++;
     const timer = window.setTimeout(() => {
       pending.delete(id);
-      reject(new Error(`${method} timed out`));
+      reject(bridgeError("Nuvio didn't answer in time. Try again.", method, { timeout: true }));
     }, timeoutMs);
-    pending.set(id, { resolve, reject, timer });
+    pending.set(id, { resolve, reject, timer, method });
     const message = { id, method, params };
     if (isNative) webview.postMessage(JSON.stringify(message));
     else mock.handle(message);

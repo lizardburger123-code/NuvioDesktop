@@ -1,6 +1,7 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Component, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { LuArrowLeft, LuHouse, LuRotateCcw } from "react-icons/lu";
 import { gsap } from "gsap";
-import { call, on } from "./bridge.js";
+import { call, notify, on } from "./bridge.js";
 import { useTopic } from "./store.js";
 import { AppProvider, useApp } from "./AppContext.jsx";
 import { applyAppearance } from "./theme/appearance.js";
@@ -28,6 +29,80 @@ import Addons from "./screens/Addons.jsx";
 if (typeof window !== "undefined" && /[?&]mock\b/.test(window.location.search)) window.__nav = { navigate, goSection, back };
 
 const SCREENS = { home: Home, browse: Browse, search: Search, details: Details, person: Person, library: Library, settings: Settings, addons: Addons };
+
+const describe = error => String(error?.message || error || "Unknown error").slice(0, 400);
+
+/**
+ * Keeps a crash in one part of the interface from blanking the whole window: that part is
+ * replaced by `fallback(error, retry)` (or by nothing) and the error goes to the app's log.
+ * A new `resetKey` (the same screen opened with other params) clears it on its own.
+ */
+class Guard extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null, resetKey: props.resetKey };
+    this.retry = () => this.setState({ error: null });
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  static getDerivedStateFromProps(props, state) {
+    return props.resetKey !== state.resetKey ? { error: null, resetKey: props.resetKey } : null;
+  }
+
+  componentDidCatch(error, info) {
+    const where = String(info?.componentStack || "").trim().split("\n")[0].trim();
+    notify("app.log", { level: "error", message: `${this.props.name}: ${describe(error)}`, source: where });
+    this.props.onError?.(error);
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return this.props.fallback ? this.props.fallback(this.state.error, this.retry) : null;
+  }
+}
+
+/** A screen that failed to draw: what happened, and two ways on. */
+function ScreenError({ name, error, retry }) {
+  return (
+    <main className="screen screen-error">
+      <div className="screen-error-body" role="alert">
+        <h1 className="t-page">This page couldn't be shown</h1>
+        <p>Something on it failed. Your library, progress and settings are not affected.</p>
+        <p className="screen-error-detail" dir="auto">{describe(error)}</p>
+        <div className="screen-error-actions">
+          <button className="btn btn-primary" onClick={retry}><LuRotateCcw aria-hidden="true" /> Try again</button>
+          {name === "home"
+            ? <button className="btn btn-glass" onClick={reloadApp}>Reload Nuvio</button>
+            : <button className="btn btn-glass" onClick={() => goSection("home")}><LuHouse aria-hidden="true" /> Go home</button>}
+        </div>
+      </div>
+    </main>
+  );
+}
+
+/** Stands in for a top bar or rail that failed to draw, so there is always a way back. */
+function ChromeFallback() {
+  return (
+    <nav className="chrome-fallback" aria-label="Navigation">
+      <button className="btn btn-glass btn-sm" onClick={back}><LuArrowLeft aria-hidden="true" /> Back</button>
+      <button className="btn btn-glass btn-sm" onClick={() => goSection("home")}><LuHouse aria-hidden="true" /> Home</button>
+    </nav>
+  );
+}
+
+/** The whole interface failed (or never started): say so, and offer a fresh start. */
+function BootError({ title, error }) {
+  return (
+    <div className="boot-error" role="alert">
+      <h1 className="t-page">{title}</h1>
+      <p className="t-meta">{describe(error)}</p>
+      <button className="btn btn-primary" onClick={reloadApp}>Try again</button>
+    </div>
+  );
+}
 
 /**
  * One kept-alive screen. Parked screens stay mounted (state, scroll, decoded images) but are
@@ -73,7 +148,11 @@ const ScreenLayer = memo(function ScreenLayer({ entry, active, nav }) {
   }, [active]);
 
   // Parking/unparking must not re-render the whole screen; only what reads the active flag does.
-  const content = useMemo(() => <Component params={entry.params} />, [Component, entry.params]);
+  const content = useMemo(() => (
+    <Guard name={`screen ${entry.name}`} resetKey={entry.params} fallback={(error, retry) => <ScreenError name={entry.name} error={error} retry={retry} />}>
+      <Component params={entry.params} />
+    </Guard>
+  ), [Component, entry.name, entry.params]);
 
   return (
     <ScreenActiveContext.Provider value={active}>
@@ -179,16 +258,20 @@ function Shell() {
   const compact = top.name !== "home" || scrolled;
   const sceneArt = top.name === "details" ? art : null;
 
+  // Each piece of the frame fails on its own: a broken backdrop or toast never takes the
+  // screens with it, a broken bar leaves a way back, and a broken "Who's watching?" lets you in.
   return (
     <>
-      <Background appearance={appearance} featured={NO_FEATURED} art={sceneArt} scrolled={scrolled} />
-      <TopBar route={top} stack={router.stack} profile={useApp().profile} compact={compact} />
+      <Guard name="backdrop"><Background appearance={appearance} featured={NO_FEATURED} art={sceneArt} scrolled={scrolled} /></Guard>
+      <Guard name="chrome" fallback={() => <ChromeFallback />}>
+        <TopBar route={top} stack={router.stack} profile={useApp().profile} compact={compact} />
+      </Guard>
       <div className={gate ? "app-stage is-gated" : "app-stage"}>
         <Screens />
       </div>
-      {gate ? <ProfileGate onDone={() => setGate(false)} /> : null}
-      <Toasts />
-      <TrophyToast />
+      {gate ? <Guard name="profile gate" onError={() => setGate(false)}><ProfileGate onDone={() => setGate(false)} /></Guard> : null}
+      <Guard name="toasts"><Toasts /></Guard>
+      <Guard name="trophy toast"><TrophyToast /></Guard>
     </>
   );
 }
@@ -253,23 +336,17 @@ export default function App() {
     return () => { alive = false; off(); };
   }, []);
 
-  if (error) {
-    return (
-      <div className="boot-error">
-        <h1 className="t-page">Nuvio couldn't start its interface</h1>
-        <p className="t-meta">{String(error.message || error)}</p>
-        <button className="btn btn-primary" onClick={reloadApp}>Try again</button>
-      </div>
-    );
-  }
+  if (error) return <BootError title="Nuvio couldn't start its interface" error={error} />;
   return (
     <>
       {boot ? (
-        <AppProvider boot={boot}>
-          <Shell />
-        </AppProvider>
+        <Guard name="interface" fallback={failure => <BootError title="Nuvio's interface stopped working" error={failure} />}>
+          <AppProvider boot={boot}>
+            <Shell />
+          </AppProvider>
+        </Guard>
       ) : <div className="boot" aria-busy="true" />}
-      <Intro ready={Boolean(boot)} />
+      <Guard name="intro"><Intro ready={Boolean(boot)} /></Guard>
     </>
   );
 }
