@@ -64,6 +64,80 @@ export function Title({ item }) {
   return <h2 className="showcase-name" dir="auto">{item.name}</h2>;
 }
 
+// Pictures asked for ahead of time, so the next title's backdrop and logo are ready to show.
+// The image itself is kept with its promise: while it is held, the page reuses it at once.
+const warmed = new Map();
+const warm = url => {
+  if (!warmed.has(url)) {
+    const img = new Image();
+    img.decoding = "async";
+    img.src = url;
+    warmed.set(url, { img, ready: (img.decode ? img.decode() : Promise.resolve()).catch(() => {}) });
+  }
+  return warmed.get(url).ready;
+};
+const warmTitle = item => Promise.all([item?.banner || item?.poster, item?.logo].filter(Boolean).map(warm));
+
+const ROTATE_MS = 12000;
+
+/**
+ * Which featured title shows, moving on every 12 seconds. It holds while the pointer or the
+ * keyboard is on the hero, while the window is hidden and while the screen is parked. The next
+ * title's picture and logo load while this one shows, and the move waits for them (a few
+ * seconds at most), so the words and the picture change together and the logo never pops in.
+ */
+export function useFeatured(items) {
+  const active = useScreenActive();
+  const [index, setIndex] = useState(0);
+  const [hover, setHover] = useState(false);
+  const [focus, setFocus] = useState(false);
+  const [shown, setShown] = useState(() => document.visibilityState !== "hidden");
+  useEffect(() => {
+    const onVisibility = () => setShown(document.visibilityState !== "hidden");
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
+  const count = items.length;
+  const current = count ? index % count : 0;
+  const held = hover || focus || !shown || !active;
+
+  useEffect(() => {
+    if (count > 1 && active) warmTitle(items[(current + 1) % count]);
+  }, [items, count, current, active]);
+
+  useEffect(() => {
+    if (count < 2 || held) return undefined;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      const next = (current + 1) % count;
+      const ready = Promise.race([warmTitle(items[next]), new Promise(resolve => window.setTimeout(resolve, 4000))]);
+      ready.then(() => { if (!cancelled) setIndex(next); });
+    }, ROTATE_MS);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [items, count, current, held]);
+
+  const bind = {
+    onMouseEnter: () => setHover(true),
+    onMouseLeave: () => setHover(false),
+    onFocus: () => setFocus(true),
+    // Moving between the hero's own buttons is still being on the hero.
+    onBlur: event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocus(false); },
+  };
+  return { index: current, show: setIndex, held, bind };
+}
+
+/** Dashes for the featured titles: each one shows its title; the current one is marked. */
+export function FeaturedPicker({ items, index, onPick, className }) {
+  if (items.length < 2) return null;
+  return (
+    <div className={className} role="group" aria-label="Featured titles">
+      {items.map((entry, i) => (
+        <button key={`${entry.type}:${entry.id}`} aria-label={`Show ${entry.name}`} aria-current={i === index ? "true" : undefined} onClick={() => onPick(i)} />
+      ))}
+    </div>
+  );
+}
+
 /** "Episode 1181 in 3 days": when an airing anime's next episode comes out. */
 export const nextEpisodeLabel = item => {
   if (!item?.nextEpisode || !item.nextAt) return null;
@@ -82,18 +156,10 @@ export default function Showcase(props) {
 }
 
 function CinemaShowcase({ items = [], strip = false, short = false, onPlay, onToggleLater, laterIds }) {
-  const [index, setIndex] = useState(0);
-  const [held, setHeld] = useState(false);
+  const { index, show, held, bind } = useFeatured(items);
   const bodyRef = useRef(null);
   const first = useRef(true);
-  const active = useScreenActive();
-  const item = items[index % Math.max(1, items.length)];
-
-  useEffect(() => {
-    if (items.length < 2 || !active || held) return undefined;
-    const timer = window.setInterval(() => setIndex(i => (i + 1) % items.length), 12000);
-    return () => window.clearInterval(timer);
-  }, [items.length, active, held]);
+  const item = items[index];
 
   useLayoutEffect(() => {
     if (first.current) { first.current = false; return undefined; }
@@ -118,25 +184,26 @@ function CinemaShowcase({ items = [], strip = false, short = false, onPlay, onTo
     : (item.type === "series" ? "Featured series" : "Featured film");
 
   return (
-    <section className={`showcase${shape}`} aria-label="Featured" onMouseEnter={() => setHeld(true)} onMouseLeave={() => setHeld(false)}>
+    <section className={`showcase${shape}`} aria-roledescription="carousel" aria-label="Featured" {...bind}>
       <Art src={item.banner || item.poster} fallback={item.bannerAlt || item.poster} />
       <div className="showcase-scrim" />
-      <div className="showcase-body" ref={bodyRef}>
+      <div
+        className="showcase-body"
+        ref={bodyRef}
+        role="group"
+        aria-roledescription="slide"
+        aria-label={`${index + 1} of ${items.length}: ${item.name}`}
+        aria-live={held ? "polite" : "off"}
+      >
         <span className="showcase-kicker">{kicker}</span>
         <Title key={`${item.type}:${item.id}`} item={item} />
         <p className="showcase-meta num">{meta.map((part, i) => <span key={i}>{part}</span>)}</p>
         {item.description ? <p className="showcase-desc" dir="auto">{item.description}</p> : null}
         <div className="showcase-actions">
-          <button className="btn btn-primary" onClick={() => onPlay?.(item)}><LuPlay /> Play</button>
-          <button className={`btn btn-glass${saved ? " is-on" : ""}`} aria-pressed={saved} onClick={() => onToggleLater?.(item)}>{saved ? "In my list" : "Add to list"}</button>
-          <button className="btn btn-line" onClick={() => openDetails(item)}>Details</button>
-          {items.length > 1 ? (
-            <div className="showcase-dots" role="tablist" aria-label="Featured titles">
-              {items.map((entry, i) => (
-                <button key={`${entry.type}:${entry.id}`} role="tab" aria-selected={i === index % items.length} aria-label={entry.name} onClick={() => setIndex(i)} />
-              ))}
-            </div>
-          ) : null}
+          <button className="btn btn-primary" onClick={() => onPlay?.(item)} aria-label={`Play ${item.name}`}><LuPlay /> Play</button>
+          <button className={`btn btn-glass${saved ? " is-on" : ""}`} onClick={() => onToggleLater?.(item)} aria-label={saved ? `Remove ${item.name} from My list` : `Add ${item.name} to My list`}>{saved ? "In my list" : "Add to list"}</button>
+          <button className="btn btn-line" onClick={() => openDetails(item)} aria-label={`About ${item.name}`}>Details</button>
+          <FeaturedPicker className="showcase-dots" items={items} index={index} onPick={show} />
         </div>
       </div>
     </section>

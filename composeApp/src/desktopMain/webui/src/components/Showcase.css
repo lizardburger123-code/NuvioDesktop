@@ -48,7 +48,7 @@
 .showcase-dots button { position: relative; width: 18px; height: 44px; padding: 0; }
 .showcase-dots button::after { content: ""; position: absolute; left: 0; right: 0; top: 21px; height: 2px; border-radius: 2px; background: rgb(255 255 255 / .32); transition: background-color 200ms ease; }
 .showcase-dots button:hover::after { background: rgb(255 255 255 / .6); }
-.showcase-dots button[aria-selected="true"]::after { background: #fff; }
+.showcase-dots button[aria-current="true"]::after { background: #fff; }
 
 @container (max-height: 700px) {
   .showcase-desc { display: none; }
