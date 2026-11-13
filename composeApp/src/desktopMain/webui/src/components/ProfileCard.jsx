@@ -11,6 +11,9 @@ import { holdAmbient } from "../lib/hold.js";
 import { reloadApp } from "../lib/session.js";
 import "./ProfileCard.css";
 
+// What Tab can reach inside the card (the hidden file input and disabled buttons are skipped).
+const FOCUSABLE = "button:not(:disabled), input:not([type='file']):not(:disabled), [href]";
+
 export const initials = name => String(name || "?").trim().split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase();
 
 export function Avatar({ profile, size = 32, className = "" }) {
@@ -255,16 +258,32 @@ export default function ProfileCard({ anchorRef, onClose, closeRequest = 0, init
     );
   }, [pop]);
 
+  // Keyboard focus comes into the card as it opens (and into each view), stays inside while
+  // it is open, and Esc gives it back to the profile button.
+  useEffect(() => {
+    const card = cardRef.current;
+    if (!place || !card || card.contains(document.activeElement)) return;
+    card.querySelector(FOCUSABLE)?.focus({ preventScroll: true });
+  }, [place, view]);
+
   useEffect(() => {
     const onDown = event => {
       if (cardRef.current?.contains(event.target) || anchorRef.current?.contains(event.target)) return;
       close();
     };
     const onKey = event => {
+      if (event.key === "Tab") {
+        const items = [...(cardRef.current?.querySelectorAll(FOCUSABLE) || [])];
+        if (!items.length) return;
+        const at = items.indexOf(document.activeElement);
+        const next = at < 0 ? items[0] : event.shiftKey ? (at === 0 ? items[items.length - 1] : null) : (at === items.length - 1 ? items[0] : null);
+        if (next) { event.preventDefault(); next.focus(); }
+        return;
+      }
       if (event.key !== "Escape") return;
       event.stopPropagation();
       if (view === "picture") showMain();
-      else close();
+      else { close(); anchorRef.current?.focus({ preventScroll: true }); }
     };
     window.addEventListener("pointerdown", onDown, true);
     window.addEventListener("keydown", onKey, true);

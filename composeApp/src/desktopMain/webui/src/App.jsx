@@ -468,13 +468,38 @@ export default function App() {
   );
 }
 
-/** Launch intro: the wordmark draws in over the gradient, then lifts away once data is ready. */
+/**
+ * Launch intro: the wordmark draws in over the gradient, then lifts away once data is ready.
+ * A click or a key skips the rest: it lifts as soon as the app's data is there.
+ */
 function Intro({ ready }) {
   const ref = useRef(null);
   // No intro over a page that only replaces one lost to a crash.
   const [done, setDone] = useState(() => recovered || window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const [skipped, setSkipped] = useState(false);
   const shown = useRef(performance.now());
   const timeline = useRef(null);
+  const lift = useRef(null);
+
+  useEffect(() => {
+    if (done) return undefined;
+    const skip = event => {
+      if (event.type === "keydown") {
+        // A lone modifier (the start of Alt+Tab, say) is not a wish to skip.
+        if (/^(Shift|Control|Alt|Meta|CapsLock|OS)$/.test(event.key || "") || event.altKey || event.metaKey) return;
+        // The key only skips; it doesn't also act on the page behind.
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      setSkipped(true);
+    };
+    window.addEventListener("keydown", skip, true);
+    window.addEventListener("pointerdown", skip, true);
+    return () => {
+      window.removeEventListener("keydown", skip, true);
+      window.removeEventListener("pointerdown", skip, true);
+    };
+  }, [done]);
 
   useLayoutEffect(() => {
     const node = ref.current;
@@ -490,17 +515,23 @@ function Intro({ ready }) {
 
   useEffect(() => {
     if (!ready || done) return undefined;
-    const wait = Math.max(0, 1300 - (performance.now() - shown.current));
+    // Already lifting: a skip only hurries it along.
+    if (lift.current) {
+      if (skipped) lift.current.timeScale(3);
+      return undefined;
+    }
+    const wait = skipped ? 0 : Math.max(0, 1300 - (performance.now() - shown.current));
     const timer = window.setTimeout(() => {
+      if (skipped) timeline.current?.progress(1);
       // Hand off to the first screen: it rises into place as the wordmark lifts away.
       window.dispatchEvent(new Event("nuvio:intro-out"));
-      gsap.to(ref.current, {
-        opacity: 0, scale: 1.04, filter: "blur(8px)", duration: 0.7, ease: "power2.inOut",
+      lift.current = gsap.to(ref.current, {
+        opacity: 0, scale: 1.04, filter: "blur(8px)", duration: skipped ? 0.28 : 0.7, ease: "power2.inOut",
         onComplete: () => setDone(true),
       });
     }, wait);
     return () => window.clearTimeout(timer);
-  }, [ready, done]);
+  }, [ready, done, skipped]);
 
   if (done) return null;
   return (

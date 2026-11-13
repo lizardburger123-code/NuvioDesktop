@@ -5,7 +5,8 @@
   background: var(--ground);
 }
 /* Home waits behind the page (hidden, not unmounted) and rises in once a profile is picked. */
-.app-stage.is-gated, body:has(.gate) .topbar { visibility: hidden; }
+/* The bar, the rail and the screens wait behind it, out of reach of Tab too. */
+.app-stage.is-gated, body:has(.gate) :is(.topbar, .hz-rail, .hz-top) { visibility: hidden; }
 .gate-title { font-size: clamp(40px, 5.6vw, 80px); font-weight: 800; letter-spacing: -.045em; line-height: .94; text-align: center; }
 .gate-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 36px; max-width: 1100px; }
 
