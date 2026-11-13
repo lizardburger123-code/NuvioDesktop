@@ -32,8 +32,22 @@ export const applyLook = (id, artColor = true) => {
 
 /** Change look with a dissolve (the whole page is the old picture, the new one shows through). */
 export const switchLook = (id, commit) => {
+  const before = document.activeElement;
   // The page must be in its new look before the transition takes its picture of it.
-  const run = () => { applyLook(id); flushSync(() => commit(valid(id))); };
+  const run = () => {
+    applyLook(id);
+    flushSync(() => commit(valid(id)));
+    // What had focus can go with the old look (its bar, a title page's buttons): the keyboard
+    // then lands on the screen's heading, as after a move, instead of the body.
+    if (!before || before === document.body || before.isConnected || document.activeElement !== document.body) return;
+    const heading = document.querySelector(".screen-host:not(.is-parked) h1");
+    if (!heading) return;
+    if (!heading.hasAttribute("tabindex")) {
+      heading.setAttribute("tabindex", "-1");
+      heading.setAttribute("data-nav-focus", "");
+    }
+    heading.focus({ preventScroll: true });
+  };
   if (typeof document.startViewTransition !== "function" || reduceMotion() || softwareRender()) { run(); return; }
   const root = document.documentElement;
   root.dataset.nav = "look";
