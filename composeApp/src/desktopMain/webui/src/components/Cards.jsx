@@ -1,12 +1,24 @@
-import { memo } from "react";
+import { memo, useLayoutEffect, useRef } from "react";
 import { LuBookmark, LuBookmarkCheck, LuCheck, LuPlay, LuX } from "react-icons/lu";
 import { episodeCode, minutesLeft, year } from "../lib/format.js";
 import "./Cards.css";
 
 /** A poster: the picture, its name, its year. It lifts a little and takes a white edge on hover. */
 export const PosterCard = memo(function PosterCard({ item, onOpen, onToggleLater, saved, width = 168 }) {
+  // A card that leaves with the keyboard on it (its bookmark took it off My list) hands the
+  // keyboard to the same button on the card beside it, rather than dropping it to the page.
+  const ref = useRef(null);
+  useLayoutEffect(() => {
+    const node = ref.current;
+    return () => {
+      const at = document.activeElement;
+      if (!node?.contains(at)) return;
+      const next = [node.nextElementSibling, node.previousElementSibling].find(el => el?.matches("[data-card]"));
+      next?.querySelector(at.classList.contains("poster-save") ? ".poster-save" : ".card-face")?.focus({ preventScroll: true });
+    };
+  }, []);
   return (
-    <div className="poster" data-card style={{ width }}>
+    <div ref={ref} className="poster" data-card style={{ width }}>
       <button className="card-face" data-hero style={{ height: Math.round(width * 1.5) }} onClick={() => onOpen(item)} aria-label={item.name}>
         {item.poster ? <img src={item.poster} alt="" loading="lazy" decoding="async" /> : <span className="poster-fallback" dir="auto">{item.name}</span>}
       </button>

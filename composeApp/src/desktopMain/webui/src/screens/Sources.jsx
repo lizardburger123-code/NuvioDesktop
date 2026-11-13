@@ -576,7 +576,8 @@ export default function Sources({ meta, video, onClose }) {
           <p>{none
             ? "Sources come from stream addons such as AIOStreams or Torrentio. Add one, then come back here."
             : `None of your installed addons offer sources for this ${kindOf}. A stream addon such as AIOStreams or Torrentio does.`}</p>
-          <button className="btn btn-glass btn-sm" onClick={() => { close(); navigate("addons"); }}>Open addons</button>
+          {/* Addons are added and turned on in Settings › Addons (the "Your addons" screen only browses catalogs). */}
+          <button className="btn btn-glass btn-sm" onClick={() => { close(); navigate("settings", { section: "addons" }); }}>Open addons</button>
         </div>
       );
     }
