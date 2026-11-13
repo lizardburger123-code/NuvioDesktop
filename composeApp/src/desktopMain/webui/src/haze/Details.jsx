@@ -449,7 +449,7 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
       {tab === "ratings" ? <section className="hz-d-panel"><RatingsSheet meta={meta} seasons={seasons} onPlay={play} /></section> : null}
 
       {tab === "cast" ? (
-        <section className="hz-d-panel"><div className="hz-cast">{meta.cast.slice(0, 40).map(person => <Person key={`${person.name}:${person.role || ""}`} person={person} />)}</div></section>
+        <section className="hz-d-panel"><div className="hz-cast">{meta.cast.slice(0, 40).map(person => <Person key={`${person.name}:${person.role || ""}`} person={person} titleId={meta.id} />)}</div></section>
       ) : null}
 
       {tab === "about" ? (

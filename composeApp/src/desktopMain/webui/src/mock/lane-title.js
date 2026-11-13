@@ -11,6 +11,7 @@
 //   One Piece           1,151 episodes in one season, seen up to 1,042, the last not out yet
 //   series:tt-ar        an Arabic series without a logo: right-to-left name, story and episodes
 //   movie:tt-long       a film with a very long name and story, without a logo
+// Person page: "Nobody Listed" has no works; "Offline Person" fails once, then loads.
 // window.__mockFailWatched(n) makes the next n watched.episode / watched.season calls fail.
 import { still } from "./art.js";
 
@@ -82,7 +83,7 @@ export default ctx => {
   const { push, base, data } = ctx;
   let current = null;
   const films = new Map();
-  const failOnce = new Set(["tt-flaky"]);
+  const failOnce = new Set(["tt-flaky", "person:Offline Person"]);
   // Episodes marked from the page, per title: videoId -> watched.
   const marks = new Map();
   let failNext = 0;
@@ -130,6 +131,16 @@ export default ctx => {
   };
 
   return {
+    // Works arrive after a moment, so the page's loading state shows.
+    // titleId (the title the name was picked from) tells namesakes apart in the app; here it is only noted.
+    "people.works": ({ name, titleId }) => new Promise((resolve, reject) => window.setTimeout(() => {
+      window.__mockPeopleAsked = { name, titleId };
+      if (failOnce.delete(`person:${name}`)) { reject(new Error("Wikidata didn't answer.")); return; }
+      if (/^nobody/i.test(name)) { resolve({ name, items: [] }); return; }
+      const found = base["people.works"]({ name });
+      // Some works have no year: they go last whichever way the list is sorted.
+      resolve({ ...found, items: found.items.map((item, i) => (i === 5 ? { ...item, releaseInfo: "" } : i === 2 ? { ...item, releaseInfo: "2019–2023" } : item)) });
+    }, 600)),
     "details.load": ({ type, id }) => {
       current = { type, id };
       push("details", { key: `${type}:${id}`, loading: true, meta: null });

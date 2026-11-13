@@ -4,8 +4,10 @@
 .person-face img { width: 100%; height: 100%; object-fit: cover; }
 .person-id { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .person-kicker { font-size: var(--fs-13); font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); }
-.person-kinds { margin: 20px var(--gutter) 0; }
+.person-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; margin: 20px var(--gutter) 0; }
 .person-kinds button span { margin-left: 6px; font-weight: 500; opacity: .7; }
+.person-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+.person-actions .btn { margin-top: 0; }
 .person-grid { display: grid; grid-template-columns: repeat(auto-fill, 168px); gap: 28px 18px; padding: 26px var(--gutter) 0; justify-content: start; }
 
 /* In a cast list a person is a button now. */

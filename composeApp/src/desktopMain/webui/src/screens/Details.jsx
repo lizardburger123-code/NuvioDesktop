@@ -462,7 +462,7 @@ const TitlePage = memo(function TitlePage({ state, params }) {
 
       {meta.cast?.length ? (
         <Row title="Cast">
-          {meta.cast.slice(0, 20).map(person => <Person key={`${person.name}:${person.role || ""}`} person={person} />)}
+          {meta.cast.slice(0, 20).map(person => <Person key={`${person.name}:${person.role || ""}`} person={person} titleId={meta.id} />)}
         </Row>
       ) : null}
 
