@@ -93,7 +93,7 @@
 }
 .ep-card-mark span {
   width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: rgb(7 8 10 / .72);
-  transition: background-color var(--t-fast) ease, color var(--t-fast) ease;
+  transition: background-color var(--t-fast) ease, color var(--t-fast) ease, transform var(--t-fast) var(--ease-soft);
 }
 .ep-card-mark svg { width: 16px; height: 16px; }
 .ep-card:hover .ep-card-mark, .ep-card-mark:focus-visible, .ep-card-mark[aria-pressed="true"] { opacity: 1; }
