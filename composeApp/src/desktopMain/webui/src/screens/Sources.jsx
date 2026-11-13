@@ -145,7 +145,11 @@ export default function Sources({ meta, video, onClose }) {
       season: video.season ?? null, episode: video.episode ?? null,
     }).catch(error => setLoadError(error.message || "The sources couldn't be loaded."));
   };
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [video.videoId]);
+  // A parked page of the same title can be told to open its sheet again (when the title's data is
+  // pushed anew); that sheet closes at once and must not take the sources over from this one.
+  const screenActive = useScreenActive();
+  const shown = useRef(screenActive);
+  useEffect(() => { if (shown.current) load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [video.videoId]);
   const [slow, setSlow] = useState(false);
   useEffect(() => {
     setSlow(false);
@@ -155,7 +159,7 @@ export default function Sources({ meta, video, onClose }) {
   }, [state.loading, run]);
 
   // A full-screen glass sheet: ambient motion behind it would make it re-blur every frame.
-  useEffect(() => holdAmbient(), []);
+  useEffect(() => (shown.current ? holdAmbient() : undefined), []);
 
   // The sheet slides in from the edge it belongs to. Opacity sits on the sheet itself (never on an
   // ancestor), so its frosted glass keeps blurring the page behind it.
@@ -166,6 +170,7 @@ export default function Sources({ meta, video, onClose }) {
   const qualityRef = useRef(null);
   useSegmentPill(qualityRef);
   useLayoutEffect(() => {
+    if (!panelRef.current) return;
     panelRef.current.focus({ preventScroll: true });
     if (reduceMotion()) return;
     panelRef.current.animate(
@@ -188,13 +193,12 @@ export default function Sources({ meta, video, onClose }) {
 
   // Focus goes back to whatever opened the sheet (the Sources or Play button), when it is still there.
   const opener = useRef(undefined);
-  if (opener.current === undefined) opener.current = typeof document === "undefined" ? null : document.activeElement;
+  if (opener.current === undefined) opener.current = shown.current ? document.activeElement : null;
   useEffect(() => () => {
     const node = opener.current;
     if (node && node !== document.body && node.isConnected && !node.closest("[inert], .is-parked")) node.focus({ preventScroll: true });
   }, []);
   // The sheet belongs to its title page: if anything navigates away underneath, it goes too.
-  const screenActive = useScreenActive();
   useEffect(() => { if (!screenActive) onCloseRef.current(); }, [screenActive]);
 
   // ---- Every file, read once (and kept as the same object while it stays the same) ----
@@ -206,6 +210,7 @@ export default function Sources({ meta, video, onClose }) {
     const entries = [];
     let imax = 0;
     let removed = 0;
+    const removedIn = new Map();
     groupsIn.forEach(group => (group.streams || []).forEach(stream => {
       const old = before.get(stream.key);
       let entry = old && sameStream(old.stream, stream) ? old : null;
@@ -221,11 +226,14 @@ export default function Sources({ meta, video, onClose }) {
       kept.set(stream.key, entry);
       entries.push(entry);
       if (entry.info.fullFrame) imax += 1;
-      if (entry.info.removed) removed += 1;
+      if (entry.info.removed) {
+        removed += 1;
+        removedIn.set(group.addonId, (removedIn.get(group.addonId) || 0) + 1);
+      }
     }));
     previous.current = kept;
     const withFiles = groupsIn.filter(group => group.streams?.length);
-    return { entries, imax, removed, withFiles };
+    return { entries, imax, removed, removedIn, withFiles };
   }, [groupsIn]);
   const allCount = data.entries.length;
   // An addon chosen earlier applies while that addon is in the list (even while it is loading).
@@ -568,17 +576,19 @@ export default function Sources({ meta, video, onClose }) {
       );
     }
     const allFailed = state.empty === "StreamFetchFailed" || (groupsIn.length > 0 && failed.length === groupsIn.length);
+    const names = listNames(failed.map(group => group.addonName));
     return (
       <div className="sources-empty">
         <h3>{allFailed ? "Your addons didn't answer" : "No sources found"}</h3>
         <p>{allFailed
-          ? "None of them could be reached. Check your connection (and that TorBox is reachable), then try again."
-          : `None of your addons returned a source for this ${kindOf}. Check your stream addon (AIOStreams) is installed and TorBox is reachable, then reload.`}</p>
+          ? `No answer from ${names}. Check your connection (and that TorBox is reachable), then try again.`
+          : `None of your addons returned a source for this ${kindOf}.${failed.length ? ` ${names} didn't answer.` : ""} Check your stream addon (AIOStreams) is installed and TorBox is reachable, then reload.`}</p>
         <button className="btn btn-glass btn-sm" onClick={load}><LuRefreshCw /> {allFailed ? "Try again" : "Reload"}</button>
       </div>
     );
   };
 
+  if (!shown.current) return null;
   return createPortal(
     <>
     <div ref={layerRef} className={`sources-layer${closing ? " is-closing" : ""}`} data-modal-open onClick={close}>
@@ -612,7 +622,7 @@ export default function Sources({ meta, video, onClose }) {
               ref={searchRef}
               value={query}
               onChange={event => setQuery(event.target.value)}
-              placeholder="Filter by name, release group or addon"
+              placeholder="Filter by name or group"
               aria-label="Filter sources"
               spellCheck={false}
               autoComplete="off"
@@ -654,11 +664,6 @@ export default function Sources({ meta, video, onClose }) {
           >
             <LuMaximize /> IMAX first{data.imax ? <span className="num">{` (${data.imax})`}</span> : null}
           </button>
-          {data.removed ? (
-            <button className="chip" aria-pressed={showRemoved} onClick={() => setShowRemoved(v => !v)} title="Streams AIOStreams filtered out, listed with the reason">
-              Filtered out <span className="num">({data.removed})</span>
-            </button>
-          ) : null}
         </div>
 
         <div className="sources-list" ref={listRef} aria-busy={state.loading || undefined}>
@@ -694,7 +699,7 @@ export default function Sources({ meta, video, onClose }) {
               <button className="btn btn-glass btn-sm" onClick={clearFilters}>Clear filters</button>
             </div>
           ) : null}
-          {view.sections.map(({ group, rows }) => (
+          {nothing ? null : view.sections.map(({ group, rows }) => (
             <section key={group.addonId} className="sources-group" aria-label={group.addonName}>
               <header className="sources-group-head">
                 <span>{group.addonName}</span>
@@ -715,8 +720,18 @@ export default function Sources({ meta, video, onClose }) {
                 Array.from({ length: allCount ? 1 : 3 }, (_, i) => <div key={i} className="source-row source-skel" aria-hidden="true"><div className="skel" /><div className="skel" /></div>)
               ) : null}
               {rows.map(entry => renderEntry(entry))}
+              {data.removedIn.get(group.addonId) && !group.loading ? (
+                <button className="sources-more" onClick={() => setShowRemoved(v => !v)} title="Files this addon's own filters dropped, listed with the reason">
+                  {showRemoved
+                    ? "Hide the files this addon filtered out"
+                    : `Show ${data.removedIn.get(group.addonId)} ${data.removedIn.get(group.addonId) === 1 ? "file" : "files"} ${group.addonName} filtered out`}
+                </button>
+              ) : null}
             </section>
           ))}
+          {state === LOADING && !loadError ? (
+            Array.from({ length: 4 }, (_, i) => <div key={i} className="source-row source-skel" aria-hidden="true"><div className="skel" /><div className="skel" /></div>)
+          ) : null}
           {nothing || (loadError && !allCount) ? emptyState() : null}
         </div>
       </aside>

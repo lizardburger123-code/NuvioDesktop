@@ -102,6 +102,14 @@
 .sources-note { padding: 2px 12px 12px; font-size: var(--fs-14); color: var(--ink-3); }
 .sources-note.is-error { display: flex; align-items: center; gap: 12px; color: #ffb4ad; }
 .sources-note.is-error > span { flex: 1; min-width: 0; }
+/* Files the addon itself filtered out: one quiet line under its list that shows or hides them. */
+.sources-more {
+  display: block; margin: 4px 0 0; padding: 0 12px; height: 40px; border-radius: var(--r-s); text-align: left;
+  font-size: var(--fs-13); font-weight: 600; color: var(--ink-3);
+  transition: background-color var(--t-fast) ease, color var(--t-fast) ease;
+}
+.sources-more:hover { color: var(--ink); background: rgb(255 255 255 / .06); }
+.sources-more:focus-visible { outline-offset: -2px; }
 
 /* Rows are cheap off screen: the browser skips drawing the ones out of view (lists run to 300+).
    Containment clips what a row paints outside itself, so its focus ring and hairline sit inside. */
