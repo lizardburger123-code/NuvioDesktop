@@ -33,12 +33,14 @@ private val NotAGroup = setOf(
     "1080p", "720p", "2160p", "480p", "4k", "imax", "proper", "repack", "mkv", "mp4",
     "rd", "tb", "ad", "pm", "oc", "dl", "ed", "p2p", "cached", "uncached", "torbox", "realdebrid", "instant",
 )
+/** Tags in a group's place that name no group: an episode version ("05v2"), a site, a debrid tag, "Dual Audio". */
+private val NotAGroupPattern = Regex("""^\d{0,4}v\d$|^www\.|\.(com|org|net|to|io|me|cc|dev|xyz|info|club|site)$|\bdownload$|^(dual|multi)[ ._-]?(audio|subs?)$""")
 
 private fun groupIn(line: String): String? {
     val text = line.trim().dropWhile { !it.isLetterOrDigit() && it != '[' }.replace(VideoExtension, "").trim()
     if (text.isEmpty()) return null
     fun String.asGroup(): String? = trim().lowercase()
-        .takeIf { GroupName.matches(it) && it.any(Char::isLetter) && it !in NotAGroup }
+        .takeIf { GroupName.matches(it) && it.any(Char::isLetter) && it !in NotAGroup && !NotAGroupPattern.containsMatchIn(it) }
     LeadingGroup.find(text)?.groupValues?.get(1)?.asGroup()?.let { return it }
     return TrailingGroup.find(text)?.groupValues?.get(1)?.asGroup()
 }
