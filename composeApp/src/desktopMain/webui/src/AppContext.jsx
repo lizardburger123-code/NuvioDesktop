@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { call } from "./bridge.js";
 import { useTopic } from "./store.js";
 import { navigate } from "./lib/router.js";
+import { applyAppearance } from "./theme/appearance.js";
 
 const AppContext = createContext(null);
 export const useApp = () => useContext(AppContext);
@@ -76,9 +77,27 @@ export function AppProvider({ boot, children }) {
     return () => window.removeEventListener("unhandledrejection", onRejection);
   }, [toast]);
 
+  /**
+   * Changes appearance settings at once and saves them. If the save fails, what this change set
+   * goes back (unless a newer change replaced it) and a note says so. Resolves to whether it was
+   * saved; never rejects.
+   */
+  const appearanceNow = useRef(boot.appearance);
   const setAppearance = useCallback(patch => {
-    setAppearanceState(prev => ({ ...prev, ...patch }));
-    call("settings.appearance.set", patch).catch(error => toast(`Couldn't save: ${error.message}`, { tone: "error" }));
+    const before = appearanceNow.current;
+    appearanceNow.current = { ...before, ...patch };
+    setAppearanceState(appearanceNow.current);
+    return call("settings.appearance.set", patch).then(() => true, error => {
+      const now = appearanceNow.current;
+      const keys = Object.keys(patch).filter(key => now[key] === patch[key]);
+      if (keys.length) {
+        appearanceNow.current = { ...now, ...Object.fromEntries(keys.map(key => [key, before[key]])) };
+        setAppearanceState(appearanceNow.current);
+        applyAppearance(appearanceNow.current);
+      }
+      toast(`Couldn't save that change, so it was put back. ${error.message}`, { tone: "error" });
+      return false;
+    });
   }, [toast]);
 
   const toggleLater = useCallback(item => {

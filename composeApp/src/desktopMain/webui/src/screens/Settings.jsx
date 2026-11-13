@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   LuCaptions, LuExternalLink, LuImage, LuKeyRound, LuLoaderCircle, LuPalette, LuPlay, LuPuzzle,
-  LuTrash2, LuUser, LuInfo, LuCheck, LuRefreshCw, LuMonitorPlay, LuCamera, LuGlobe, LuShieldCheck, LuCloud, LuPlug, LuPower,
+  LuTrash2, LuUser, LuInfo, LuCheck, LuRefreshCw, LuMonitorPlay, LuCamera, LuGlobe, LuShieldCheck, LuCloud, LuPlug, LuPower, LuLock,
 } from "react-icons/lu";
 import { call } from "../bridge.js";
 import AddonStore from "../components/AddonStore.jsx";
@@ -54,12 +54,14 @@ export default function Settings({ params }) {
   );
 }
 
-function Panel({ title, description, children, aside }) {
+/** saved: whether this panel's last change was just saved (undefined: the panel saves nothing itself). */
+function Panel({ title, description, children, aside, saved }) {
   return (
     <section className="panel">
       <div className="panel-label">
         <h3>{title}</h3>
         {description ? <p>{description}</p> : null}
+        {saved !== undefined ? <Saved show={saved} /> : null}
         {aside}
       </div>
       <div className="panel-body">{children}</div>
@@ -72,14 +74,40 @@ function Toggle({ checked, onChange, label }) {
 }
 
 function Saved({ show }) {
-  return <span className={`saved-stamp${show ? " on" : ""}`} aria-live="polite">{show ? <><LuCheck /> Saved</> : null}</span>;
+  return <span className={`saved-stamp${show ? " on" : ""}`} aria-live="polite">{show ? <><LuCheck aria-hidden="true" /> Saved</> : null}</span>;
 }
 
-const useSavedStamp = () => {
-  const [on, setOn] = useState(false);
+/** [panel that just saved, stamp(panel)]: "Saved" shows beside that panel, once the app has confirmed it. */
+const useSaved = () => {
+  const [panel, setPanel] = useState(null);
   const timer = useRef(0);
-  return [on, () => { setOn(true); window.clearTimeout(timer.current); timer.current = window.setTimeout(() => setOn(false), 1600); }];
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const stamp = useCallback(key => {
+    setPanel(key);
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setPanel(null), 1600);
+  }, []);
+  return [panel, stamp];
 };
+
+/** After a failed save: what that change set goes back, unless something newer replaced it. */
+const revert = (now, patch, before) => {
+  if (!now) return now;
+  const next = { ...now };
+  Object.keys(patch).forEach(key => { if (now[key] === patch[key]) next[key] = before?.[key]; });
+  return next;
+};
+const putBack = (toast, error) => toast(`Couldn't save that change, so it was put back. ${error.message}`, { tone: "error" });
+
+/** A section whose settings didn't arrive: why, and a way to ask again. */
+function LoadFailed({ error, retry }) {
+  return (
+    <div className="panel-failed" role="alert">
+      <p>These settings didn't load. {error?.message}</p>
+      <button className="btn btn-glass btn-sm" onClick={retry}><LuRefreshCw aria-hidden="true" /> Try again</button>
+    </div>
+  );
+}
 
 /* ---------------------------------------------------------------- Appearance */
 
@@ -107,14 +135,12 @@ function Appearance() {
   const wallSeg = useRef(null);
   useSegmentPill(wallSeg);
   const colors = appearance.colors || PRESETS[0].colors;
-  const [saved, stamp] = useSavedStamp();
+  const [saved, stamp] = useSaved();
   const fileRef = useRef(null);
 
-  const update = patch => {
-    const next = { ...appearance, ...patch };
-    applyAppearance(next);
-    setAppearance(patch);
-    stamp();
+  const update = (patch, panel) => {
+    applyAppearance({ ...appearance, ...patch });
+    setAppearance(patch).then(ok => { if (ok) stamp(panel); });
   };
 
   const onFile = async event => {
@@ -123,7 +149,7 @@ function Appearance() {
     if (!file) return;
     try {
       const image = await resizeImage(file);
-      update({ wallpaper: { mode: "custom", image } });
+      update({ wallpaper: { mode: "custom", image } }, "backdrop");
     } catch (error) {
       toast(error.message, { tone: "error" });
     }
@@ -133,7 +159,7 @@ function Appearance() {
   const look = lookOf(appearance);
   return (
     <>
-      <Panel title="Look" description="Two interfaces over the same library. Switch whenever you like (Ctrl+Shift+L does it from anywhere); nothing else changes." aside={<Saved show={saved} />}>
+      <Panel title="Look" description="Two interfaces over the same library. Switch whenever you like (Ctrl+Shift+L does it from anywhere); nothing else changes." saved={saved === "look"}>
         <div className="look-row" role="radiogroup" aria-label="Look">
           {LOOKS.map(item => (
             <button
@@ -141,7 +167,7 @@ function Appearance() {
               className="look-card"
               role="radio"
               aria-checked={look === item.id}
-              onClick={() => { if (look !== item.id) { switchLook(item.id, layout => setAppearance({ layout })); stamp(); } }}
+              onClick={() => { if (look !== item.id) switchLook(item.id, layout => setAppearance({ layout }).then(ok => { if (ok) stamp("look"); })); }}
             >
               <span className={`look-mini look-mini-${item.id}`} aria-hidden="true">
                 {item.id === "haze" ? (
@@ -171,15 +197,15 @@ function Appearance() {
               <strong>Colour from the artwork</strong>
               <p>Each title's page and the featured title on Home take their accent from the picture. Off, everything uses your accent below.</p>
             </div>
-            <Toggle checked={appearance.hazeArt !== false} onChange={value => update({ hazeArt: value })} label="Colour from the artwork" />
+            <Toggle checked={appearance.hazeArt !== false} onChange={value => update({ hazeArt: value }, "look")} label="Colour from the artwork" />
           </div>
         ) : null}
       </Panel>
 
-      <Panel title="Accent" description="The room is black and the type is white. One colour marks what is switched on, focused or selected.">
+      <Panel title="Accent" description="The room is black and the type is white. One colour marks what is switched on, focused or selected." saved={saved === "accent"}>
         <div className="preset-row">
           {PRESETS.map(preset => (
-            <button key={preset.name} className="preset" aria-pressed={accentOf(colors).toLowerCase() === preset.colors[0]} onClick={() => update({ colors: preset.colors })} title={preset.name}>
+            <button key={preset.name} className="preset" aria-pressed={accentOf(colors).toLowerCase() === preset.colors[0]} onClick={() => update({ colors: preset.colors }, "accent")} title={preset.name}>
               <span style={{ background: preset.colors[0] }} />
               {preset.name}
             </button>
@@ -187,10 +213,10 @@ function Appearance() {
         </div>
       </Panel>
 
-      <Panel title="Backdrop" description="Home and every title show their own artwork. Other pages are black, or a dimmed picture of yours.">
+      <Panel title="Backdrop" description="Home and every title show their own artwork. Other pages are black, or a dimmed picture of yours." saved={saved === "backdrop"}>
         <div ref={wallSeg} className="seg" role="group" aria-label="Backdrop">
           {[["none", "Black"], ["custom", "My image"]].map(([id, label]) => (
-            <button key={id} aria-pressed={(mode === "custom") === (id === "custom")} onClick={() => (id === "custom" && !appearance.wallpaper?.image ? fileRef.current?.click() : update({ wallpaper: { ...appearance.wallpaper, mode: id } }))}>{label}</button>
+            <button key={id} aria-pressed={(mode === "custom") === (id === "custom")} onClick={() => (id === "custom" && !appearance.wallpaper?.image ? fileRef.current?.click() : update({ wallpaper: { ...appearance.wallpaper, mode: id } }, "backdrop"))}>{label}</button>
           ))}
         </div>
         <div className="wall-row">
@@ -200,14 +226,14 @@ function Appearance() {
           <div className="wall-actions">
             <button className="btn btn-glass btn-sm" onClick={() => fileRef.current?.click()}><LuImage /> Choose image…</button>
             {appearance.wallpaper?.image ? (
-              <button className="btn btn-ghost btn-sm" onClick={() => update({ wallpaper: { mode: "none", image: null } })}><LuTrash2 /> Remove</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => update({ wallpaper: { mode: "none", image: null } }, "backdrop")}><LuTrash2 /> Remove</button>
             ) : null}
             <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} />
           </div>
         </div>
         <label className="slider-row">
           <span>Blur</span>
-          <input className="range" type="range" min="0" max="40" step="1" value={appearance.blur ?? 0} onChange={event => update({ blur: Number(event.target.value) })} />
+          <input className="range" type="range" min="0" max="40" step="1" value={appearance.blur ?? 0} onChange={event => update({ blur: Number(event.target.value) }, "backdrop")} />
           <span className="num slider-value">{appearance.blur ?? 0}px</span>
         </label>
         <div className="toggle-row">
@@ -215,7 +241,7 @@ function Appearance() {
             Blur title artwork too
             <small>Off keeps a movie or series page sharp, the way the artwork was made.</small>
           </span>
-          <Toggle checked={appearance.blurArt === true} onChange={value => update({ blurArt: value })} label="Blur title artwork too" />
+          <Toggle checked={appearance.blurArt === true} onChange={value => update({ blurArt: value }, "backdrop")} label="Blur title artwork too" />
         </div>
       </Panel>
 
@@ -274,16 +300,23 @@ function SiteRatings() {
 function HomeRows() {
   const { toast } = useApp();
   const [rows, setRows] = useState(null);
+  const [saved, stamp] = useSaved();
   useEffect(() => { call("home.rows").then(setRows, () => setRows([])); }, []);
   const set = (row, enabled) => {
     setRows(list => list.map(r => (r.key === row.key ? { ...r, enabled } : r)));
-    call("home.rows.set", { key: row.key, enabled }).then(setRows, error => toast(error.message, { tone: "error" }));
+    call("home.rows.set", { key: row.key, enabled }).then(
+      list => { if (Array.isArray(list)) setRows(list); stamp("rows"); },
+      error => {
+        setRows(list => list.map(r => (r.key === row.key && r.enabled === enabled ? { ...r, enabled: !enabled } : r)));
+        putBack(toast, error);
+      },
+    );
   };
   const [filter, setFilter] = useState("");
   const shown = (rows || []).filter(row => !filter.trim() || `${row.title} ${row.addon}`.toLowerCase().includes(filter.trim().toLowerCase()));
   const hiddenCount = (rows || []).filter(row => !row.enabled).length;
   return (
-    <Panel title="Rows" description="Catalog rows on Home and the section pages. Hide one from its row with the eye button, bring it back here.">
+    <Panel title="Rows" description="Catalog rows on Home and the section pages. Hide one from its row with the eye button, bring it back here." saved={saved === "rows"}>
       {!rows ? <div className="skel" style={{ height: 120 }} /> : null}
       {rows && !rows.length ? <p className="t-meta">No catalog rows yet.</p> : null}
       {rows && rows.length > 8 ? (
@@ -356,16 +389,28 @@ function Subtitles() {
   const alignSeg = useRef(null);
   useSegmentPill(alignSeg);
   const [value, setValue] = useState(null);
-  const [saved, stamp] = useSavedStamp();
+  const [failed, setFailed] = useState(null);
+  const [saved, stamp] = useSaved();
   const [testing, setTesting] = useState(null);
+  const latest = useRef(null);
+  latest.current = value;
 
-  useEffect(() => { call("settings.subtitles.get").then(setValue, error => toast(error.message, { tone: "error" })); }, [toast]);
+  const load = () => {
+    setFailed(null);
+    call("settings.subtitles.get").then(setValue, setFailed);
+  };
+  useEffect(load, []);
 
-  const update = patch => {
+  const update = (patch, panel) => {
+    const before = latest.current;
     setValue(prev => ({ ...prev, ...patch }));
-    call("settings.subtitles.set", patch).then(stamp, error => toast(error.message, { tone: "error" }));
+    call("settings.subtitles.set", patch).then(() => stamp(panel), error => {
+      setValue(now => revert(now, patch, before));
+      putBack(toast, error);
+    });
   };
 
+  if (failed) return <LoadFailed error={failed} retry={load} />;
   if (!value) return <div className="panel skel" style={{ height: 320 }} />;
   const providers = value.providers || {};
 
@@ -383,11 +428,11 @@ function Subtitles() {
 
   return (
     <>
-      <Panel title="Look" description="Applies to text subtitles (SRT, VTT, ASS). Picture-based tracks (PGS) keep their own look." aside={<Saved show={saved} />}>
+      <Panel title="Look" description="Applies to text subtitles (SRT, VTT, ASS). Picture-based tracks (PGS) keep their own look." saved={saved === "look"}>
         <SubtitlePreview style={value} />
         <div className="font-grid" role="radiogroup" aria-label="Font">
           {SUBTITLE_FONTS.map(font => (
-            <button key={font.id} role="radio" aria-checked={value.font === font.id} className="font-card" onClick={() => update({ font: font.id })}>
+            <button key={font.id} role="radio" aria-checked={value.font === font.id} className="font-card" onClick={() => update({ font: font.id }, "look")}>
               <span className="font-sample" dir="rtl" style={{ fontFamily: `"${font.id}", sans-serif` }}>ماذا تريد؟</span>
               <span className="font-name">{font.id}</span>
               <span className="font-note">{font.note}</span>
@@ -396,25 +441,25 @@ function Subtitles() {
         </div>
         <label className="slider-row">
           <span>Size</span>
-          <input className="range" type="range" min="10" max="36" step="1" value={value.size || 18} onChange={event => update({ size: Number(event.target.value) })} />
+          <input className="range" type="range" min="10" max="36" step="1" value={value.size || 18} onChange={event => update({ size: Number(event.target.value) }, "look")} />
           <span className="num slider-value">{value.size || 18}</span>
         </label>
-        <div className="toggle-row"><span>Bold</span><Toggle checked={value.bold} onChange={bold => update({ bold })} label="Bold" /></div>
-        <div className="toggle-row"><span>Outline</span><Toggle checked={value.outline !== false} onChange={outline => update({ outline })} label="Outline" /></div>
+        <div className="toggle-row"><span>Bold</span><Toggle checked={value.bold} onChange={bold => update({ bold }, "look")} label="Bold" /></div>
+        <div className="toggle-row"><span>Outline</span><Toggle checked={value.outline !== false} onChange={outline => update({ outline }, "look")} label="Outline" /></div>
         <div className="toggle-row">
           <span>Text colour</span>
           <span className="colour-inline">
             {["#FFFFFF", "#FFF3B0", "#FFE066", "#B8F2E6"].map(c => (
-              <button key={c} className="dot" style={{ background: c }} aria-pressed={(value.color || "#FFFFFF").toUpperCase() === c} aria-label={c} onClick={() => update({ color: c })} />
+              <button key={c} className="dot" style={{ background: c }} aria-pressed={(value.color || "#FFFFFF").toUpperCase() === c} aria-label={c} onClick={() => update({ color: c }, "look")} />
             ))}
           </span>
         </div>
       </Panel>
 
-      <Panel title="Placement" description="MBC 2 keeps every line flush right near the bottom right of the picture. Each line of the subtitle stays on its own line.">
+      <Panel title="Placement" description="MBC 2 keeps every line flush right near the bottom right of the picture. Each line of the subtitle stays on its own line." saved={saved === "placement"}>
         <div ref={alignSeg} className="seg" role="group" aria-label="Alignment">
           {[["right", "MBC 2 (right-aligned)"], ["center", "Center"], ["left", "Left"]].map(([id, label]) => (
-            <button key={id} aria-pressed={(value.align || "right") === id} onClick={() => update({ align: id })}>{label}</button>
+            <button key={id} aria-pressed={(value.align || "right") === id} onClick={() => update({ align: id }, "placement")}>{label}</button>
           ))}
         </div>
         <div className="toggle-row">
@@ -422,25 +467,25 @@ function Subtitles() {
             Split sentences onto their own lines
             <small>When a line holds two sentences or two speakers (“...”, “؟”, “ - ”), show them as separate lines, the way MBC does.</small>
           </span>
-          <Toggle checked={value.splitLines !== false} onChange={splitLines => update({ splitLines })} label="Split sentences" />
+          <Toggle checked={value.splitLines !== false} onChange={splitLines => update({ splitLines }, "placement")} label="Split sentences" />
         </div>
         <div className="toggle-row">
           <span>
             Sync automatically
             <small>Lines addon subtitles up with the video's own subtitle timing when a subtitle starts.</small>
           </span>
-          <Toggle checked={value.autoSync !== false} onChange={autoSync => update({ autoSync })} label="Sync automatically" />
+          <Toggle checked={value.autoSync !== false} onChange={autoSync => update({ autoSync }, "placement")} label="Sync automatically" />
         </div>
         <div className="toggle-row">
           <span>
             Choose subtitles before playing
             <small>After you pick a source, a window lists subtitles ranked by how well they fit that file. Your pick (and its delay) comes back when you continue watching.</small>
           </span>
-          <Toggle checked={value.askBeforePlay !== false} onChange={askBeforePlay => update({ askBeforePlay })} label="Choose subtitles before playing" />
+          <Toggle checked={value.askBeforePlay !== false} onChange={askBeforePlay => update({ askBeforePlay }, "placement")} label="Choose subtitles before playing" />
         </div>
       </Panel>
 
-      <Panel title="Search sources" description="The subtitle window before playing and the player's Subtitles › Search look through these sites. Each needs your own free API key; keys stay on this PC.">
+      <Panel title="Search sources" description="The subtitle window before playing and the player's Subtitles › Search look through these sites. Each needs your own free API key; keys stay on this PC." saved={saved === "sources"}>
         <div className="providers">
           {PROVIDERS.map(provider => (
             <div key={provider.id} className="provider">
@@ -459,12 +504,16 @@ function Subtitles() {
                   <label key={field} className="provider-field">
                     <span>{label}</span>
                     <input
+                      // Keyed by the saved text, so a save that is put back shows the old text again.
+                      key={providers[provider.id]?.[field] || ""}
                       className="field"
                       type={secret ? "password" : "text"}
                       defaultValue={providers[provider.id]?.[field] || ""}
                       onBlur={event => {
-                        const next = { ...providers, [provider.id]: { ...(providers[provider.id] || {}), [field]: event.target.value.trim() } };
-                        update({ providers: next });
+                        const text = event.target.value.trim();
+                        if (text === (providers[provider.id]?.[field] || "")) return;
+                        const next = { ...providers, [provider.id]: { ...(providers[provider.id] || {}), [field]: text } };
+                        update({ providers: next }, "sources");
                       }}
                       autoComplete="off"
                       spellCheck={false}
@@ -482,7 +531,7 @@ function Subtitles() {
             {[["ar", "Arabic"], ["en", "English"], ["fr", "French"], ["tr", "Turkish"]].map(([code, label]) => {
               const on = (value.languages || []).includes(code);
               return (
-                <button key={code} className="chip" aria-pressed={on} onClick={() => update({ languages: on ? value.languages.filter(l => l !== code) : [...(value.languages || []), code] })}>{label}</button>
+                <button key={code} className="chip" aria-pressed={on} onClick={() => update({ languages: on ? value.languages.filter(l => l !== code) : [...(value.languages || []), code] }, "sources")}>{label}</button>
               );
             })}
           </span>
@@ -497,22 +546,32 @@ function Subtitles() {
 function Playback() {
   const { toast } = useApp();
   const [items, setItems] = useState(null);
-  const [saved, stamp] = useSavedStamp();
-  useEffect(() => { call("settings.playback.get").then(setItems, error => { setItems([]); toast(error.message, { tone: "error" }); }); }, [toast]);
-  const set = (key, value) => {
-    setItems(list => list.map(item => (item.key === key ? { ...item, value } : item)));
-    call("settings.playback.set", { key, value }).then(stamp, error => toast(error.message, { tone: "error" }));
+  const [failed, setFailed] = useState(null);
+  const [saved, stamp] = useSaved();
+  const load = () => {
+    setFailed(null);
+    call("settings.playback.get").then(setItems, setFailed);
   };
+  useEffect(load, []);
+  const set = (key, value) => {
+    const before = items.find(item => item.key === key)?.value;
+    setItems(list => list.map(item => (item.key === key ? { ...item, value } : item)));
+    call("settings.playback.set", { key, value }).then(() => stamp("player"), error => {
+      setItems(list => list.map(item => (item.key === key && item.value === value ? { ...item, value: before } : item)));
+      putBack(toast, error);
+    });
+  };
+  if (failed) return <LoadFailed error={failed} retry={load} />;
   if (!items) return <div className="panel skel" style={{ height: 240 }} />;
   return (
     <>
-    <Panel title="Player" description="How sources are picked and how playback starts." aside={<Saved show={saved} />}>
+    <Panel title="Player" description="How sources are picked and how playback starts." saved={saved === "player"}>
       {items.map(item => (
         <div key={item.key} className="toggle-row">
           <span>{item.label}{item.description ? <small>{item.description}</small> : null}</span>
           {item.type === "toggle" ? <Toggle checked={item.value} onChange={value => set(item.key, value)} label={item.label} /> : null}
           {item.type === "select" ? (
-            <select className="field select-inline" value={item.value} onChange={event => set(item.key, event.target.value)}>
+            <select className="field select-inline" value={item.value} onChange={event => set(item.key, event.target.value)} aria-label={item.label}>
               {item.options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           ) : null}
@@ -529,11 +588,11 @@ function Playback() {
 function DownloadsFolder() {
   const { toast } = useApp();
   const [path, setPath] = useState("");
-  const [saved, stamp] = useSavedStamp();
+  const [saved, stamp] = useSaved();
   useEffect(() => { call("downloads.folder").then(r => setPath(r?.path || ""), () => {}); }, []);
-  const save = value => call("downloads.setFolder", { path: value }).then(r => { setPath(r.path); stamp(); }, error => toast(error.message, { tone: "error" }));
+  const save = value => call("downloads.setFolder", { path: value }).then(r => { setPath(r.path); stamp("downloads"); }, error => toast(error.message, { tone: "error" }));
   return (
-    <Panel title="Downloads" description="Where downloaded movies and episodes are saved. Big files download over several connections at once and pick up where they stopped." aside={<Saved show={saved} />}>
+    <Panel title="Downloads" description="Where downloaded movies and episodes are saved. Big files download over several connections at once and pick up where they stopped." saved={saved === "downloads"}>
       <form className="install-row" onSubmit={event => { event.preventDefault(); save(path); }}>
         <input className="field" value={path} onChange={event => setPath(event.target.value)} spellCheck={false} aria-label="Downloads folder" />
         <button className="btn btn-glass">Use this folder</button>
@@ -575,23 +634,34 @@ function Addons() {
     }
   };
 
+  // Removing takes two presses: the bin turns into "Remove" for a few seconds (and while it
+  // has focus). The browser's confirm box doesn't exist on every system this app runs on.
+  const [arming, setArming] = useState(null);
+  useEffect(() => {
+    if (!arming) return undefined;
+    const timer = window.setTimeout(() => setArming(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [arming]);
   const remove = async addon => {
-    if (!window.confirm(`Remove ${addon.name}? Its catalogs and sources disappear until you install it again.`)) return;
+    setArming(null);
     try {
       await call("addons.remove", { id: addon.id });
-      toast(`${addon.name} removed`);
+      toast(`${addon.name} removed. Its catalogs and sources are gone until you install it again.`);
       load();
     } catch (error) {
       toast(error.message, { tone: "error" });
     }
   };
 
+  // The switch moves at once; if the app can't do it, it moves back and says so.
   const setEnabled = async (addon, enabled) => {
+    setAddons(list => list?.map(a => (a.id === addon.id ? { ...a, enabled } : a)));
     try {
       await call("addons.setEnabled", { id: addon.id, enabled });
       load();
     } catch (error) {
-      toast(error.message, { tone: "error" });
+      setAddons(list => list?.map(a => (a.id === addon.id && a.enabled === enabled ? { ...a, enabled: !enabled } : a)));
+      putBack(toast, error);
     }
   };
 
@@ -621,7 +691,13 @@ function Addons() {
               </span>
               <span className="addon-tools">
                 {addon.configurable ? <button className="btn btn-ghost btn-sm" onClick={() => call("addons.configure", { id: addon.id })}><LuExternalLink /> Configure</button> : null}
-                <button className="btn btn-ghost btn-sm" onClick={() => remove(addon)} aria-label={`Remove ${addon.name}`}><LuTrash2 /></button>
+                {arming === addon.id ? (
+                  <button className="btn btn-sm addon-remove-confirm" ref={node => node?.focus()} onClick={() => remove(addon)} onBlur={() => setArming(null)} aria-label={`Remove ${addon.name}: press again to confirm`}>
+                    <LuTrash2 aria-hidden="true" /> Remove
+                  </button>
+                ) : (
+                  <button className="btn btn-ghost btn-sm btn-icon" onClick={() => setArming(addon.id)} aria-label={`Remove ${addon.name}`} title="Remove"><LuTrash2 /></button>
+                )}
                 <Toggle checked={addon.enabled !== false} onChange={value => setEnabled(addon, value)} label={`${addon.name} on or off`} />
               </span>
             </li>
@@ -648,9 +724,10 @@ function Network() {
   const [busy, setBusy] = useState(false);
   const [testUrl, setTestUrl] = useState("");
   const [test, setTest] = useState(null);
-  const [saved, stamp] = useSavedStamp();
+  const [failed, setFailed] = useState(null);
+  const [saved, stamp] = useSaved();
 
-  const load = () => call("net.get").then(value => { setNet(value); setProxy(p => p || value.proxy || ""); }, error => toast(error.message, { tone: "error" }));
+  const load = () => call("net.get").then(value => { setFailed(null); setNet(value); setProxy(p => p || value.proxy || ""); }, setFailed);
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
   // WARP takes a few seconds to come up: follow it.
   useEffect(() => {
@@ -666,7 +743,7 @@ function Network() {
       const value = await call("net.set", { mode, proxy: proxyValue }, { timeoutMs: 20000 });
       setNet(value);
       setTest(null);
-      stamp();
+      stamp("unblock");
     } catch (error) {
       toast(error.message, { tone: "error" });
     } finally {
@@ -683,6 +760,7 @@ function Network() {
     }
   };
 
+  if (failed && !net) return <LoadFailed error={failed} retry={load} />;
   if (!net) return <div className="panel skel" style={{ height: 300 }} />;
   const warpState = net.mode === "warp" ? net.warp?.state : null;
   return (
@@ -690,7 +768,7 @@ function Network() {
       <Panel
         title="Unblock sites"
         description="For addons, posters or streams that won't load where you are. It applies to the whole app, the player included."
-        aside={<Saved show={saved} />}
+        saved={saved === "unblock"}
       >
         <div className="net-modes" role="radiogroup" aria-label="Unblock mode">
           {NET_MODES.map(mode => {
@@ -755,7 +833,15 @@ function Network() {
 function Profile() {
   const { boot, profile: me, toast, appearance, setAppearance } = useApp();
   const appearanceGate = appearance?.profileGate;
+  const [saved, stamp] = useSaved();
+  const [switching, setSwitching] = useState(null);
   const profiles = (boot.profiles || []).map(p => (p.id === me?.id ? { ...p, avatar: me.avatar, color: me.color || p.color } : p));
+  const switchTo = profile => {
+    if (switching || profile.pin || profile.id === boot.profile?.id) return;
+    setSwitching(profile.id);
+    call("profiles.switch", { id: profile.id }).then(reloadApp, error => { setSwitching(null); toast(error.message, { tone: "error" }); });
+  };
+  const save = (patch, panel) => setAppearance(patch).then(ok => { if (ok) stamp(panel); });
   return (
     <>
       <Panel
@@ -765,25 +851,37 @@ function Profile() {
       >
         <div className="profiles">
           {profiles.map(profile => (
-            <button key={profile.id} className="profile-card" aria-pressed={profile.id === boot.profile?.id} onClick={() => profile.id !== boot.profile?.id && call("profiles.switch", { id: profile.id }).then(reloadApp, error => toast(error.message, { tone: "error" }))}>
-              {profile.avatar
-                ? <img className="avatar avatar-lg avatar-img" src={profile.avatar} alt="" />
-                : <span className="avatar avatar-lg" style={profile.color ? { background: profile.color } : undefined}>{initials(profile.name)}</span>}
-              <span>{profile.name}</span>
+            <button
+              key={profile.id}
+              className="profile-card"
+              aria-pressed={profile.id === boot.profile?.id}
+              aria-busy={switching === profile.id || undefined}
+              disabled={Boolean(profile.pin) && profile.id !== boot.profile?.id}
+              title={profile.pin && profile.id !== boot.profile?.id ? "This profile has a PIN: switch to it from the classic profile picker" : undefined}
+              onClick={() => switchTo(profile)}
+            >
+              <span className="profile-card-face">
+                {profile.avatar
+                  ? <img className="avatar avatar-lg avatar-img" src={profile.avatar} alt="" />
+                  : <span className="avatar avatar-lg" style={profile.color ? { background: profile.color } : undefined}>{initials(profile.name)}</span>}
+                {profile.pin ? <span className="profile-card-lock"><LuLock aria-hidden="true" /></span> : null}
+                {switching === profile.id ? <span className="profile-card-lock"><LuLoaderCircle className="spin" aria-hidden="true" /></span> : null}
+              </span>
+              <span dir="auto">{profile.name}{profile.pin ? <span className="sr-only"> (has a PIN)</span> : null}</span>
             </button>
           ))}
         </div>
       </Panel>
-      <Panel title="At launch" description="Nuvio opens on a Who's watching? page after the intro.">
+      <Panel title="At launch" description="Nuvio opens on a Who's watching? page after the intro." saved={saved === "launch"}>
         <div className="toggle-row">
           <span>Ask who's watching<small>Off opens straight to Home with the last profile.</small></span>
-          <Toggle checked={appearanceGate !== false} onChange={value => setAppearance({ profileGate: value })} label="Ask who's watching" />
+          <Toggle checked={appearanceGate !== false} onChange={value => save({ profileGate: value }, "launch")} label="Ask who's watching" />
         </div>
       </Panel>
-      <Panel title="Trophies" description="A pop-up in the corner when you finish a film, a season or earn a badge, over the video if it's still playing.">
+      <Panel title="Trophies" description="A pop-up in the corner when you finish a film, a season or earn a badge, over the video if it's still playing." saved={saved === "trophies"}>
         <div className="toggle-row">
           <span>Play a sound<small>A short chime as the trophy lands.</small></span>
-          <Toggle checked={appearance.trophySound !== false} onChange={value => setAppearance({ trophySound: value })} label="Trophy sound" />
+          <Toggle checked={appearance.trophySound !== false} onChange={value => save({ trophySound: value }, "trophies")} label="Trophy sound" />
         </div>
       </Panel>
       <Panel title="Classic interface" description="Every older settings page (integrations, collections, layout, accounts) is still there.">

@@ -11,7 +11,11 @@
 .store-adult strong { font-size: var(--fs-15); font-weight: 600; }
 .store-adult small { font-size: var(--fs-13); color: var(--ink-3); line-height: 1.5; }
 
-.store-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.store-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+/* Many categories scroll sideways inside their own pill instead of running past the column. */
+.store-bar .seg { min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.store-bar .seg::-webkit-scrollbar { display: none; }
+.store-bar .seg button { flex: none; }
 
 .store-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
 .store-card {
