@@ -130,6 +130,12 @@
 .hz-ep-meta > * + *::before { content: "·"; margin: 0 8px; color: var(--ink-3); font-weight: 500; }
 .hz-ep-meta .ep-score::before { margin-right: 6px; }
 
+/* Scores keep their own scale (green is high) whatever the accent. */
+.hz-ep-score { height: 30px; padding: 0 10px 0 8px; border-radius: 9px; display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-13); font-weight: 800; color: rgb(var(--tone)); background: rgb(var(--tone) / .14); }
+.hz-ep-score svg { width: 13px; height: 13px; fill: currentColor; }
+[data-tone="a"] { --tone: 52 194 123; } [data-tone="b"] { --tone: 98 207 134; } [data-tone="c"] { --tone: 151 214 122; }
+[data-tone="d"] { --tone: 205 214 106; } [data-tone="e"] { --tone: 236 199 90; } [data-tone="f"] { --tone: 237 162 87; } [data-tone="g"] { --tone: 232 121 95; }
+
 /* Watched or not: a ring that fills with the title's colour. In a row it sits at the end; on a
    tile it is a badge on the picture, shown on hover until the episode is seen. */
 .hz-ep-mark, .hz-tile-mark { position: absolute; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; transition: transform var(--t-fast) var(--ease-soft), opacity var(--t-fast) ease; }

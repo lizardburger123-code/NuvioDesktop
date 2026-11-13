@@ -1,4 +1,4 @@
-import { memo, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useDeferredValue, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   LuCalendarClock, LuCheck, LuCheckCheck, LuChevronDown, LuChevronUp, LuClapperboard, LuLayoutGrid, LuList, LuListVideo, LuPlay, LuPlus, LuRotateCcw, LuSearch, LuTrophy,
 } from "react-icons/lu";
@@ -87,6 +87,44 @@ export const findEpisodes = (episodes, text) => {
   return [...exact, ...episodes.filter(video => String(video.episode) !== q && (video.title || "").toLowerCase().includes(q))];
 };
 const seasonDone = entry => Boolean(entry) && entry.aired > 0 && entry.watched >= entry.aired;
+
+/** Tabs, the usual way: arrows (and Home, End) move to the next tab and pick it; Tab leaves the row. */
+export const onTabKeys = event => {
+  const moves = { ArrowRight: 1, ArrowLeft: -1, Home: "first", End: "last" };
+  const move = moves[event.key];
+  if (move === undefined) return;
+  const tabs = [...event.currentTarget.querySelectorAll('[role="tab"]')];
+  const at = tabs.indexOf(document.activeElement);
+  if (at < 0) return;
+  event.preventDefault();
+  const next = tabs[move === "first" ? 0 : move === "last" ? tabs.length - 1 : (at + move + tabs.length) % tabs.length];
+  next.focus();
+  next.click();
+};
+
+/** The ratings sheet is one stop for Tab; arrows walk its squares, skipping episodes a season lacks. */
+const onSheetKeys = event => {
+  const moves = { ArrowRight: [0, 1], ArrowLeft: [0, -1], ArrowDown: [1, 0], ArrowUp: [-1, 0] };
+  const move = moves[event.key];
+  const cell = event.target.closest?.("td");
+  if (!move || !cell) return;
+  const rows = [...event.currentTarget.querySelectorAll("tbody tr")];
+  let row = rows.indexOf(cell.parentElement);
+  let col = [...cell.parentElement.children].indexOf(cell);
+  for (;;) {
+    row += move[0];
+    col += move[1];
+    const target = rows[row]?.children[col];
+    if (!target || col < 1) return;
+    const button = target.querySelector("button");
+    if (button) {
+      event.preventDefault();
+      event.currentTarget.querySelectorAll("tbody button").forEach(other => { other.tabIndex = other === button ? 0 : -1; });
+      button.focus();
+      return;
+    }
+  }
+};
 
 /** The story, three lines at most in the hero; More shows all of it, wherever it was cut. */
 export function Description({ text }) {
@@ -206,6 +244,8 @@ function RatingsSheet({ meta, seasons, onPlay }) {
     return scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
   };
   const best = useMemo(() => [...(meta.videos || [])].filter(v => v.season > 0 && v.rating).sort((a, b) => b.rating - a.rating)[0], [meta.videos]);
+  // The square Tab lands on first: season 1's first episode.
+  const first = bySeason.get(real[0])?.get(Math.min(...(bySeason.get(real[0])?.keys() || [1])));
   return (
     <div className="hz-heat">
       <div className="hz-heat-head">
@@ -213,24 +253,29 @@ function RatingsSheet({ meta, seasons, onPlay }) {
         {best ? <p className="hz-heat-best">Highest rated: <b>S{best.season} E{best.episode}{best.title ? ` · ${best.title}` : ""}</b> <span className="num">({Number(best.rating).toFixed(1)})</span></p> : null}
       </div>
       <div className="hz-heat-scroll" data-keep-scroll>
-        <table className="hz-heat-grid num">
+        <table className="hz-heat-grid num" aria-label="Episode scores by season" onKeyDown={onSheetKeys}>
           <thead>
-            <tr><th />{real.map(s => <th key={s} scope="col">S{s}</th>)}</tr>
+            <tr><th scope="col"><span className="sr-only">Episode</span></th>{real.map(s => <th key={s} scope="col" aria-label={`Season ${s}`}>S{s}</th>)}</tr>
           </thead>
           <tbody>
             {Array.from({ length: most }, (_, i) => i + 1).map(episode => (
               <tr key={episode}>
-                <th scope="row">E{episode}</th>
+                <th scope="row" aria-label={`Episode ${episode}`}>E{episode}</th>
                 {real.map(s => {
                   const video = bySeason.get(s)?.get(episode);
                   if (!video) return <td key={s}><span className="hz-heat-cell is-none" /></td>;
+                  // Not out yet: nothing to score or play.
+                  if (video.available === false || Date.parse(video.released || "") > Date.now()) {
+                    return <td key={s}><span className="hz-heat-cell is-none" title={`S${s} E${episode} is not out yet`} /></td>;
+                  }
                   return (
                     <td key={s}>
                       <button
                         className="hz-heat-cell"
                         data-tone={video.rating ? scoreTone(video.rating) : "none"}
                         title={`S${s} E${episode}${video.title ? ` · ${video.title}` : ""}`}
-                        aria-label={`Season ${s} episode ${episode}${video.rating ? `, rated ${Number(video.rating).toFixed(1)}` : ""}. Play`}
+                        aria-label={`Play season ${s} episode ${episode}${video.title ? `, ${video.title}` : ""}${video.rating ? `, rated ${Number(video.rating).toFixed(1)}` : ", no score"}`}
+                        tabIndex={video.id === first?.id ? 0 : -1}
                         onClick={() => onPlay(asVideo(video))}
                       >
                         {video.rating ? Number(video.rating).toFixed(1) : "–"}
@@ -242,7 +287,7 @@ function RatingsSheet({ meta, seasons, onPlay }) {
             ))}
           </tbody>
           <tfoot>
-            <tr><th scope="row">Avg</th>{real.map(s => { const value = average(s); return <td key={s}><span className="hz-heat-avg">{value ? value.toFixed(1) : "–"}</span></td>; })}</tr>
+            <tr><th scope="row" aria-label="Season average">Avg</th>{real.map(s => { const value = average(s); return <td key={s}><span className="hz-heat-avg">{value ? value.toFixed(1) : "–"}</span></td>; })}</tr>
           </tfoot>
         </table>
       </div>
@@ -269,6 +314,10 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
   ].filter(Boolean);
   const [tab, setTab] = useState(tabs[0].id);
   useEffect(() => { if (!tabs.some(t => t.id === tab)) setTab(tabs[0].id); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [tabs.length]);
+  const ids = useId();
+  const tabId = id => `${ids}-tab-${id}`;
+  const panelId = id => `${ids}-panel-${id}`;
+  const listId = `${ids}-episodes`;
   const [view, setView] = useState(savedView);
   const [query, setQuery] = useState("");
   // The list follows the box a beat behind, so typing never waits for a long season to redraw.
@@ -363,19 +412,21 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
         </div>
       </section>
 
-      <div className="tabs hz-d-tabs" role="tablist" aria-label="About this title">
-        {tabs.map(t => <button key={t.id} role="tab" aria-selected={t.id === tab} onClick={() => setTab(t.id)}>{t.label}</button>)}
+      <div className="tabs hz-d-tabs" role="tablist" aria-label="About this title" onKeyDown={onTabKeys}>
+        {tabs.map(t => (
+          <button key={t.id} id={tabId(t.id)} role="tab" aria-selected={t.id === tab} aria-controls={panelId(t.id)} tabIndex={t.id === tab ? 0 : -1} onClick={() => setTab(t.id)}>{t.label}</button>
+        ))}
       </div>
 
       {tab === "episodes" ? (
-        <section className="hz-d-panel">
+        <section className="hz-d-panel" role="tabpanel" id={panelId("episodes")} aria-labelledby={tabId("episodes")}>
           <div className="hz-ep-tools">
-            <div className="hz-seasons" role="tablist" aria-label="Seasons" data-keep-scroll>
+            <div className="hz-seasons" role="tablist" aria-label="Seasons" data-keep-scroll onKeyDown={onTabKeys}>
               {seasons.map(s => {
                 const entry = stats.get(s);
                 const complete = seasonDone(entry);
                 return (
-                  <button key={s} role="tab" className={`chip${s === season ? " on" : ""}`} aria-selected={s === season} onClick={() => { setSeason(s); setOpen(true); }}>
+                  <button key={s} role="tab" className={`chip${s === season ? " on" : ""}`} aria-selected={s === season} aria-controls={listId} tabIndex={s === season ? 0 : -1} onClick={() => { setSeason(s); setOpen(true); }}>
                     {seasonName(s)}
                     {complete ? <LuCheck className="hz-chip-done" aria-hidden="true" /> : entry?.watched ? <span className="hz-chip-count num" aria-hidden="true">{entry.watched}/{entry.aired}</span> : null}
                     {entry?.watched ? <span className="sr-only">{complete ? ", watched" : `, ${entry.watched} of ${entry.aired} watched`}</span> : null}
@@ -403,7 +454,7 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
             ref={toggleRef}
             className="hz-ep-toggle"
             aria-expanded={expanded}
-            aria-controls="hz-ep-list"
+            aria-controls={listId}
             onClick={() => (expanded ? fold() : setOpen(true))}
           >
             <span className="hz-ep-toggle-name">{seasonName(season)}</span>
@@ -424,7 +475,7 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
               <Episode video={lead} fallback={meta.background} next={lead.id === target?.videoId} nextLabel={nextLabel} onPlay={play} onMark={onMark} />
             </div>
           ) : null}
-          <div id="hz-ep-list" className="hz-ep-fold" data-open={expanded} inert={expanded ? undefined : ""}>
+          <div id={listId} className="hz-ep-fold" data-open={expanded} inert={expanded ? undefined : ""}>
             <div className="hz-ep-fold-in">
               {listed && ranges && !searching ? <RangePicker ranges={ranges} value={rangeIndex} onChange={setRange} className="hz-ranges" /> : null}
               {listed && searching && found.length === 0 ? <p className="hz-none">No episode matches “{search.trim()}”.</p> : null}
@@ -446,14 +497,14 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
         </section>
       ) : null}
 
-      {tab === "ratings" ? <section className="hz-d-panel"><RatingsSheet meta={meta} seasons={seasons} onPlay={play} /></section> : null}
+      {tab === "ratings" ? <section className="hz-d-panel" role="tabpanel" id={panelId("ratings")} aria-labelledby={tabId("ratings")}><RatingsSheet meta={meta} seasons={seasons} onPlay={play} /></section> : null}
 
       {tab === "cast" ? (
-        <section className="hz-d-panel"><div className="hz-cast">{meta.cast.slice(0, 40).map(person => <Person key={`${person.name}:${person.role || ""}`} person={person} titleId={meta.id} />)}</div></section>
+        <section className="hz-d-panel" role="tabpanel" id={panelId("cast")} aria-labelledby={tabId("cast")}><div className="hz-cast">{meta.cast.slice(0, 40).map(person => <Person key={`${person.name}:${person.role || ""}`} person={person} titleId={meta.id} />)}</div></section>
       ) : null}
 
       {tab === "about" ? (
-        <section className="hz-d-panel">
+        <section className="hz-d-panel" role="tabpanel" id={panelId("about")} aria-labelledby={tabId("about")}>
           <div className="hz-about">
             {meta.description ? <p className="hz-about-text" dir="auto">{meta.description}</p> : null}
             <dl className="hz-facts">

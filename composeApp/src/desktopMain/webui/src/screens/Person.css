@@ -15,6 +15,8 @@ button.person { cursor: pointer; border-radius: 14px; padding: 6px 0; transition
 button.person img, button.person .person-mono { transition: outline-color var(--t-fast) ease, box-shadow var(--t-med) ease; }
 button.person:hover img, button.person:hover .person-mono, button.person:focus-visible img, button.person:focus-visible .person-mono { outline: 2px solid #fff; outline-offset: -2px; }
 button.person:active { transform: scale(.96); }
+/* The ring goes round the face, not round the whole button. */
+button.person:focus-visible { outline: none; }
 [data-layout="haze"] button.person:hover img, [data-layout="haze"] button.person:hover .person-mono,
 [data-layout="haze"] button.person:focus-visible img, [data-layout="haze"] button.person:focus-visible .person-mono { outline-color: rgb(var(--haze-rgb) / .9); box-shadow: 0 0 26px rgb(var(--haze-rgb) / .3); }
 button.person[data-broken-name]::before { top: 6px; }
