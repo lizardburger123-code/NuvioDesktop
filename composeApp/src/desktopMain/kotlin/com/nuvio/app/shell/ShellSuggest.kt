@@ -131,7 +131,8 @@ internal object ShellSimilar {
 /**
  * A person's work, for the page behind a clickable name in a cast list: every film and series
  * Wikidata lists them in (as cast, voice or director) that has an IMDb id, newest first. No key
- * needed. When several people share the name, the one with the most work is taken.
+ * needed. When several people share the name, the one in the title the name was picked from is
+ * taken (when the page says which title), else the one with the most work.
  */
 internal object ShellPeople {
     private val log = Logger.withTag("ShellPeople")
@@ -139,10 +140,13 @@ internal object ShellPeople {
 
     private data class Work(val imdb: String, var name: String, var year: Int? = null, val kinds: MutableSet<String> = HashSet(), val roles: MutableSet<String> = HashSet())
 
-    suspend fun works(name: String): JsonObject {
-        val wanted = name.trim()
+    suspend fun works(name: String, titleId: String? = null): JsonObject {
+        val wanted = name.trim().replace(Regex("\\s+"), " ")
         require(wanted.length in 2..120) { "No name." }
-        cache[wanted.lowercase()]?.let { return it }
+        // The title (IMDb id) the name was picked from, so a namesake isn't shown instead.
+        val from = titleId?.let { Regex("tt\\d{5,}").find(it)?.value }
+        val cacheKey = "${wanted.lowercase()}|${from.orEmpty()}"
+        cache[cacheKey]?.let { return it }
         val literal = wanted.replace("\\", "\\\\").replace("\"", "\\\"")
         val query = """
             SELECT ?person ?work ?workLabel ?imdb ?date ?start ?kindLabel ?role WHERE {
@@ -179,7 +183,8 @@ internal object ShellPeople {
             row.value("kindLabel")?.let { work.kinds += it.lowercase() }
             row.value("role")?.let { work.roles += it }
         }
-        val works = people.values.maxByOrNull { it.size }?.values.orEmpty()
+        val chosen = from?.let { id -> people.values.firstOrNull { id in it } } ?: people.values.maxByOrNull { it.size }
+        val works = chosen?.values.orEmpty()
             // A single episode or season is not a title of its own here.
             .filter { work -> work.name.isNotBlank() && work.kinds.none { "episode" in it || "season" in it } }
             .sortedWith(compareByDescending<Work> { it.year ?: 0 }.thenBy { it.name })
@@ -205,7 +210,7 @@ internal object ShellPeople {
                 }
             })
         }
-        if (works.isNotEmpty()) cache[wanted.lowercase()] = result
+        if (works.isNotEmpty()) cache[cacheKey] = result
         return result
     }
 }

@@ -205,7 +205,7 @@ internal class ShellRpc(private val host: ShellHost) {
             genres = params["genres"].asStringList(),
             releaseInfo = params.string("releaseInfo"),
         )
-        "people.works" -> ShellPeople.works(params.string("name").orEmpty())
+        "people.works" -> ShellPeople.works(params.string("name").orEmpty(), params.string("titleId"))
         "ratings.get" -> ratingsJson()
         "ratings.set" -> setRatings(params)
         "net.get" -> ShellNet.settings()
