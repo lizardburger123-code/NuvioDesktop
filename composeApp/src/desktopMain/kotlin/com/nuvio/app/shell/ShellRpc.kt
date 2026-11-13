@@ -56,6 +56,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -77,6 +78,9 @@ internal interface ShellHost {
     fun toggleFullscreen()
     fun openUrl(url: String)
 }
+
+/** How long unmarking an episode can still bring back the resume point that marking it cleared. */
+private const val KEEP_CLEARED_PROGRESS_MS = 10 * 60 * 1000L
 
 /**
  * Answers the page's requests from the app's repositories and pushes their state as topics.
@@ -612,6 +616,12 @@ internal class ShellRpc(private val host: ShellHost) {
      * does: a watched mark and a finished playback both count as watched, so both are set or
      * cleared together. The details topic follows by itself (it listens to both stores).
      */
+    /**
+     * Resume points that marking episodes watched cleared, kept for a while so that unmarking
+     * them again (the page's Undo, or a click taken back) puts them back instead of losing them.
+     */
+    private val clearedProgress = ConcurrentHashMap<String, Pair<Long, WatchProgressEntry>>()
+
     private fun markEpisodes(params: JsonObject, wholeList: Boolean): JsonElement {
         val id = params.string("id") ?: error("Missing title.")
         val meta = MetaDetailsRepository.uiState.value.meta?.takeIf { it.id == id || detailsKey?.second == id }
@@ -623,6 +633,32 @@ internal class ShellRpc(private val host: ShellHost) {
             val episode = entry.int("episode")
             return meta.videos.firstOrNull { videoId != null && it.id == videoId }
                 ?: meta.videos.firstOrNull { season != null && episode != null && it.season == season && it.episode == episode }
+        }
+
+        fun keyOf(video: MetaVideo): String = "${meta.id}|${meta.episodePlaybackId(video)}"
+
+        // Before marking watched: keep the resume points that marking clears.
+        fun keep(videos: List<MetaVideo>) {
+            val now = System.currentTimeMillis()
+            clearedProgress.filterValues { now - it.first > KEEP_CLEARED_PROGRESS_MS }.keys.forEach { clearedProgress.remove(it) }
+            videos.forEach { video ->
+                val entry = WatchProgressRepository.progressForVideo(
+                    videoId = meta.episodePlaybackId(video),
+                    parentMetaId = meta.id,
+                    seasonNumber = video.season,
+                    episodeNumber = video.episode,
+                ) ?: return@forEach
+                if (!entry.isCompleted && entry.lastPositionMs > 0L) clearedProgress[keyOf(video)] = now to entry
+            }
+        }
+
+        // After unmarking: put back what marking cleared a little earlier.
+        fun restore(videos: List<MetaVideo>) {
+            val now = System.currentTimeMillis()
+            val back = videos.mapNotNull { video ->
+                clearedProgress.remove(keyOf(video))?.takeIf { now - it.first <= KEEP_CLEARED_PROGRESS_MS }?.second
+            }
+            if (back.isNotEmpty()) WatchProgressRepository.applyExternalProgress(back.map { it.copy(lastUpdatedEpochMs = now) })
         }
 
         fun isWatched(video: MetaVideo): Boolean =
@@ -638,7 +674,11 @@ internal class ShellRpc(private val host: ShellHost) {
             val video = find(params) ?: error("That episode isn't part of this title.")
             val now = isWatched(video)
             val on = params.bool("on") ?: !now
-            if (on != now) WatchingActions.toggleEpisodeWatched(meta = meta, episode = video, isCurrentlyWatched = now)
+            if (on != now) {
+                if (on) keep(listOf(video))
+                WatchingActions.toggleEpisodeWatched(meta = meta, episode = video, isCurrentlyWatched = now)
+                if (!on) restore(listOf(video))
+            }
             return JsonPrimitive(on)
         }
 
@@ -655,7 +695,9 @@ internal class ShellRpc(private val host: ShellHost) {
             .filter { !on || isReleasedBy(today, it.released, it.available) }
             .filter { isWatched(it) != on }
         if (episodes.isNotEmpty()) {
+            if (on) keep(episodes)
             WatchingActions.toggleSeasonWatched(meta = meta, episodes = episodes, areCurrentlyWatched = !on)
+            if (!on) restore(episodes)
         }
         return JsonPrimitive(on)
     }
