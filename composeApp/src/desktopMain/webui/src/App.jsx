@@ -26,7 +26,8 @@ import Settings from "./screens/Settings.jsx";
 import Addons from "./screens/Addons.jsx";
 
 // The preview (a plain browser with ?mock) can be driven from a test script.
-if (typeof window !== "undefined" && /[?&]mock\b/.test(window.location.search)) window.__nav = { navigate, goSection, back };
+const PREVIEW = typeof window !== "undefined" && /[?&]mock\b/.test(window.location.search);
+if (PREVIEW) window.__nav = { navigate, goSection, back };
 
 const SCREENS = { home: Home, browse: Browse, search: Search, details: Details, person: Person, library: Library, settings: Settings, addons: Addons };
 
@@ -228,6 +229,7 @@ function Shell() {
 
   // Ctrl+Shift+L: the other look, from anywhere.
   const { setAppearance, toast } = useApp();
+  useEffect(() => { if (PREVIEW) window.__toast = toast; }, [toast]);
   // Said once, to someone still on Cinema: there is a second look now.
   useEffect(() => {
     if (gate) return undefined;
