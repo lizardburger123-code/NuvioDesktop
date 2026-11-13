@@ -34,6 +34,9 @@
   overflow-x: auto; overflow-y: visible;
   padding: 14px var(--gutter) 22px; margin: -14px 0 -22px;
   scroll-padding-inline: var(--gutter); scroll-snap-type: x proximity; scrollbar-width: none; overscroll-behavior-x: contain;
+  /* A row out of view costs nothing to lay out or paint; it keeps the height it last had, so
+     the page doesn't move when it comes back. (It already clips its cards, so nothing is cut.) */
+  content-visibility: auto; contain-intrinsic-size: auto 300px;
 }
 .row-track::-webkit-scrollbar { display: none; }
 .row-track > * { scroll-snap-align: start; flex: none; }
