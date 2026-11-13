@@ -159,7 +159,7 @@ body {
 
 .time-elapsed,
 .time-remaining {
-  min-width: 52px;
+  min-width: 5.8ch;
   font-size: 13px;
   font-weight: 600;
   line-height: 1;
@@ -170,6 +170,11 @@ body {
 
 .time-remaining {
   text-align: right;
+}
+
+.scrub-row.has-hours .time-elapsed,
+.scrub-row.has-hours .time-remaining {
+  min-width: 7.6ch;
 }
 
 .scrub-wrap {

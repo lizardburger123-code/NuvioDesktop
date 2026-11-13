@@ -814,7 +814,9 @@ const setProgress = (positionMs, durationMs, bufferedPositionMs) => {
   // With no duration yet there is nothing to measure the buffer against (it used to fill the bar).
   const bufferPercent = durationMs > 0 && bufferedPositionMs > 0 ?
     Math.max(0, Math.min(100, bufferedPositionMs / durationMs * 100)) : 0;
-  const value = String(Math.round(percent * 10));
+  // The bar has 100000 steps: with 1000, a click on a two-hour film landed up to 7 s from the time
+  // the bubble showed.
+  const value = String(Math.round(percent / 100 * (Number(seek.max) || 1)));
   if (seek.value !== value) seek.value = value;
   const progress = `${percent}%`;
   if (progress !== shownProgress) {
@@ -1252,7 +1254,7 @@ const playbackErrorText = () => String(state.playbackErrorMessage || "").trim();
 
 const rangePositionMs = () => {
   const durationMs = Math.max(0, Number(state.durationMs) || 0);
-  return durationMs > 0 ? Math.round(durationMs * Number(seek.value) / 1000) : 0;
+  return durationMs > 0 ? Math.round(durationMs * Number(seek.value) / (Number(seek.max) || 1)) : 0;
 };
 
 const modalByName = {
@@ -4375,6 +4377,9 @@ window.nuvioNativeResizeEnded = () => {
 
 let rootPointerStartX = 0;
 let rootPointerStartY = 0;
+let lastTapAt = 0;
+let previousTapAt = 0;
+let tapToggledAt = 0;
 let pipPointerStartX = 0;
 let pipPointerStartY = 0;
 let pipPointerDown = false;
@@ -4577,7 +4582,11 @@ root.addEventListener("click", event => {
   }
   if (playbackErrorText() || isControlsSurfaceEvent(event)) return;
   window.clearTimeout(tapTimer);
+  previousTapAt = lastTapAt;
+  lastTapAt = event.timeStamp;
+  const tapAt = lastTapAt;
   tapTimer = window.setTimeout(() => {
+    tapToggledAt = tapAt;
     requestPlaybackState("setPlaybackStateQuiet", false);
   }, 220);
 });
@@ -4629,6 +4638,12 @@ root.addEventListener("dblclick", event => {
   if (playbackErrorText() || isControlsSurfaceEvent(event)) return;
   event.preventDefault();
   window.clearTimeout(tapTimer);
+  // A slower double-click (still inside the system's double-click time) lets the first click's
+  // play/pause go through before this event: undo it, so a double-click only changes the window.
+  if (tapToggledAt && tapToggledAt === previousTapAt) {
+    tapToggledAt = 0;
+    requestPlaybackState("setPlaybackStateQuiet", false);
+  }
   if (state.isInPip) {
     send("pictureInPicture", 0);
     return;
@@ -4636,22 +4651,43 @@ root.addEventListener("dblclick", event => {
   togglePlayerFullscreen();
 });
 
+// A mouse wheel notch is one step. A touchpad sends a stream of small deltas, which add up to a
+// step every 50 px (they used to make a step each, sending the volume or the position flying).
+let wheelCarry = 0;
+let wheelCarryAt = 0;
+const wheelSteps = (delta, deltaMode, now) => {
+  const pixels = delta * (deltaMode === 1 ? 40 : deltaMode === 2 ? 800 : 1);
+  if (now - wheelCarryAt > 300) wheelCarry = 0;
+  wheelCarryAt = now;
+  if (Math.abs(pixels) >= 50) {
+    wheelCarry = 0;
+    return Math.sign(pixels);
+  }
+  wheelCarry += pixels;
+  if (Math.abs(wheelCarry) < 50) return 0;
+  const steps = Math.trunc(wheelCarry / 50);
+  wheelCarry -= steps * 50;
+  return steps;
+};
+
 root.addEventListener("wheel", event => {
   if (playbackErrorText() || activeModal) return;
   const isProgressTarget = Boolean(event.target.closest("#seek, .time-row, .time-pill, .scrub"));
   if (isProgressTarget || event.shiftKey) {
     event.preventDefault();
     noteChromeActivity();
-    const delta = event.deltaY !== 0 ? Math.sign(event.deltaY) * -1 : Math.sign(event.deltaX);
-    if (delta !== 0) {
-      fineSeek(delta > 0);
+    const steps = event.deltaY !== 0
+      ? -wheelSteps(event.deltaY, event.deltaMode, event.timeStamp)
+      : wheelSteps(event.deltaX, event.deltaMode, event.timeStamp);
+    if (steps !== 0) {
+      fineSeek(steps > 0);
     }
     return;
   }
   event.preventDefault();
-  const delta = Math.sign(event.deltaY) * -1;
-  if (delta !== 0) {
-    sendKeyboardVolume(delta);
+  const steps = -wheelSteps(event.deltaY, event.deltaMode, event.timeStamp);
+  if (steps !== 0) {
+    sendKeyboardVolume(steps);
   }
 }, { passive: false });
 

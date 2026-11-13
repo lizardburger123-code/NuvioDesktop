@@ -53,10 +53,16 @@
     return clamp((Number(seek.value) || 0) / max, 0, 1);
   };
 
+  // The labels keep one width for the whole file (wide enough for hours when it has them): when
+  // they grew or shrank with the text, the bar between them moved under the pointer.
+  const scrubRow = scrubWrap ? scrubWrap.parentElement : null;
   const renderTimes = () => {
     const shown = scrubbing ? seekFraction() * durationSec : positionSec;
-    if (elapsedLabel) elapsedLabel.textContent = formatTime(shown);
-    if (remainingLabel) remainingLabel.textContent = durationSec > 0 ? `-${formatTime(durationSec - shown)}` : "--:--";
+    const elapsed = formatTime(shown);
+    const remaining = durationSec > 0 ? `-${formatTime(durationSec - shown)}` : "--:--";
+    if (elapsedLabel && elapsedLabel.textContent !== elapsed) elapsedLabel.textContent = elapsed;
+    if (remainingLabel && remainingLabel.textContent !== remaining) remainingLabel.textContent = remaining;
+    if (scrubRow) scrubRow.classList.toggle("has-hours", durationSec >= 3600);
   };
 
   const originalUpdate = window.playerUpdate;
@@ -251,8 +257,11 @@
       },
     });
     seek.addEventListener("pointermove", event => {
+      // The range maps the pointer between the thumb's centres at either end (vision.css draws a
+      // 2px thumb), so the bubble does the same and names the time a click would go to.
+      const thumb = 2;
       const rect = seek.getBoundingClientRect();
-      hoverFraction = clamp((event.clientX - rect.left) / Math.max(1, rect.width), 0, 1);
+      hoverFraction = clamp((event.clientX - rect.left - thumb / 2) / Math.max(1, rect.width - thumb), 0, 1);
       if (!scrubbing) placeBubble(hoverFraction);
     });
     seek.addEventListener("pointerenter", () => bubbleVisible(true));
