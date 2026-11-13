@@ -25,9 +25,19 @@
   max-width: 14ch;
 }
 
+.details-title { overflow-wrap: anywhere; }
+.details-title.is-long { font-size: clamp(40px, 4.6vw, 68px); max-width: 20ch; line-height: 1; }
+.details-title.is-longer { font-size: clamp(32px, 3.4vw, 50px); max-width: 26ch; line-height: 1.05; }
+/* Arabic letters join: tight tracking would pull them apart. */
+.details-title:dir(rtl) { letter-spacing: 0; line-height: 1.25; }
+.hz-d-hero .details-title.is-long { font-size: clamp(38px, 4.2vw, 62px); }
+.hz-d-hero .details-title.is-longer { font-size: clamp(30px, 3.2vw, 46px); }
+
 .details-kicker { font-size: var(--fs-13); font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); }
 .details-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: var(--fs-15); font-weight: 600; color: #d3d8e0; }
 
+/* The story, and More to read all of it. */
+.details-story { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; max-width: 62ch; }
 .details-desc {
   max-width: 62ch;
   font-size: 17px;
@@ -38,6 +48,24 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.details-desc.is-open { display: block; -webkit-line-clamp: unset; overflow: visible; }
+.details-more {
+  min-height: 40px; margin: -6px -10px 0; padding: 0 10px; border-radius: 999px;
+  font-size: var(--fs-14); font-weight: 700; color: #fff; text-decoration: underline; text-decoration-color: rgb(255 255 255 / .35); text-underline-offset: 4px;
+  transition: background-color var(--t-fast) ease, text-decoration-color var(--t-fast) ease, transform var(--t-fast) var(--ease-soft);
+}
+.details-more:hover { background-color: rgb(255 255 255 / .08); text-decoration-color: #fff; }
+.details-more:active { transform: scale(.96); }
+
+/* A series still airing: the next episode and when it comes out. */
+.details-next { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: var(--fs-15); font-weight: 600; color: var(--ink-2); }
+.details-next svg { width: 18px; height: 18px; flex: none; color: var(--accent); }
+.details-next b { font-weight: 700; color: #fff; }
+.details-next > span + span::before { content: "·"; margin-right: 10px; color: var(--ink-3); }
+.details-next-when { color: #fff; }
+[data-layout="haze"] .details-next svg { color: rgb(var(--haze-rgb)); }
+.details-play:disabled { opacity: .5; cursor: default; }
+.details-play:disabled:active { transform: none; }
 
 .details-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 8px; }
 .details-actions .btn { height: 52px; font-size: var(--fs-16); }
@@ -48,7 +76,34 @@
 
 .details-episodes { margin-top: 28px; }
 .details-seasons { margin: 0 var(--gutter); }
+.details-seasons svg.details-season-done { width: 15px; height: 15px; color: var(--accent); }
 .details-episodes .row { margin-top: 20px; }
+/* A long season, a hundred episodes at a time. */
+.ep-ranges { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 4px 0; }
+.ep-ranges::-webkit-scrollbar { display: none; }
+.ep-ranges .chip { flex: none; height: 32px; padding: 0 14px; font-size: var(--fs-13); }
+.details-ranges { margin: 16px var(--gutter) 0; }
+.details-season-mark { margin-right: 8px; }
+
+/* An episode card: the picture plays it; the corner mark (its own button, beside the picture's,
+   so marking can never start playback) says whether it was seen and changes that. */
+.ep-card-mark {
+  position: absolute; left: 4px; top: 4px; z-index: 3; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+  opacity: 0; transition: opacity var(--t-fast) ease, transform 260ms var(--ease-out);
+}
+.ep-card-mark span {
+  width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: rgb(7 8 10 / .72);
+  transition: background-color var(--t-fast) ease, color var(--t-fast) ease;
+}
+.ep-card-mark svg { width: 16px; height: 16px; }
+.ep-card:hover .ep-card-mark, .ep-card-mark:focus-visible, .ep-card-mark[aria-pressed="true"] { opacity: 1; }
+/* It rides along when the picture lifts. */
+.ep-card:has(> .card-face:hover:not(:disabled)) .ep-card-mark { transform: translate(-3px, -6px); }
+.ep-card-mark:hover span, .ep-card-mark[aria-pressed="true"] span { background: #fff; color: #0a0b0d; }
+.ep-card-mark:active span { transform: scale(.96); }
+.ep-card .card-face:disabled { cursor: default; }
+.ep-card .card-face:disabled:hover { transform: none; outline: 1px solid rgb(255 255 255 / .1); outline-offset: -1px; box-shadow: none; }
+.ep-card .card-face:disabled .wide-play { display: none; }
 
 .person { width: 120px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
 .person img, .person-mono {
