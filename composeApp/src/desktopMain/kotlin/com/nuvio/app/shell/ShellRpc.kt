@@ -509,6 +509,9 @@ internal class ShellRpc(private val host: ShellHost) {
         // Time watched: the player's own duration where it played the title; episodes add up.
         val durationByTitle = progress.groupBy { it.parentMetaId }
             .mapValues { (_, entries) -> entries.distinctBy { it.videoId }.sumOf { it.durationMs.coerceAtLeast(0L) } }
+        // Artwork from each title's first progress entry: one pass, not two scans per trophy.
+        val firstProgress = HashMap<String, WatchProgressEntry>()
+        progress.forEach { firstProgress.putIfAbsent(it.parentMetaId, it) }
         val all = (films + series).sortedByDescending { it.markedAtEpochMs }.take(400)
         return buildJsonArray {
             all.forEach { item ->
@@ -522,8 +525,8 @@ internal class ShellRpc(private val host: ShellHost) {
                     val duration = durationByTitle[item.id] ?: 0L
                     if (duration > 0) put("durationMs", duration)
                     if (item.type == "series") put("episodes", seriesEpisodes[item.id]?.count { it.isEpisode } ?: 0)
-                    progress.firstOrNull { it.parentMetaId == item.id }?.background?.let { put("backdrop", it) }
-                    progress.firstOrNull { it.parentMetaId == item.id }?.logo?.let { put("logo", it) }
+                    firstProgress[item.id]?.background?.let { put("backdrop", it) }
+                    firstProgress[item.id]?.logo?.let { put("logo", it) }
                 })
             }
         }
