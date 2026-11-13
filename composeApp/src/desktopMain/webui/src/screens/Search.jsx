@@ -404,7 +404,8 @@ function NoSearchAddons({ reason }) {
       <p>{off
         ? "Search looks through the catalogs of your addons. Turn one on, such as Cinemeta, and search again."
         : "Search looks through the catalogs of your addons, and none of the ones turned on offers search. Add or turn on one that does, such as Cinemeta."}</p>
-      <button className="btn btn-glass btn-sm" onClick={() => navigate("addons")}><LuPuzzle /> Your addons</button>
+      {/* Turned on and added in Settings › Addons (the "Your addons" screen only browses catalogs). */}
+      <button className="btn btn-glass btn-sm" onClick={() => navigate("settings", { section: "addons" })}><LuPuzzle /> Your addons</button>
     </section>
   );
 }
