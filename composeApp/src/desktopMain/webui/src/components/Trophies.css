@@ -3,6 +3,9 @@
 
 .trophies { padding: 36px var(--gutter) 0; }
 .trophies .reach { margin: 44px 0 0; }
+/* Every case is a 3D object on its own layer: months out of view are skipped until scrolled to.
+   The row's padding holds a leaning or lifted case, so nothing it draws is cut off. */
+.trophies .bd-shelf { content-visibility: auto; contain-intrinsic-size: auto 280px; }
 
 /* ---- Level, headline and the three figures ------------------------------------------------ */
 .trophies-top { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: clamp(24px, 3vw, 44px); }

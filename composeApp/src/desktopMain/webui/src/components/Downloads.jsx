@@ -22,14 +22,16 @@ const UNDO_MS = 5400; // a little longer than the toast with its Undo stays up
 const MIN_BUSY_MS = 1200; // a double click lands on a button that is still busy
 const nameOf = item => `${item.title}${item.season != null ? ` ${episodeCode(item.season, item.episode)}` : ""}`;
 
-/** Library › Downloads: what's saved on this PC, live while it downloads. */
-export default function Downloads() {
+/**
+ * Library › Downloads: what's saved on this PC, live while it downloads. `gone` holds files
+ * deleted while their Undo is up (the Library keeps it, so the tab count agrees).
+ */
+export default function Downloads({ gone, onGone }) {
   const { toast } = useApp();
   const items = useTopic("downloads", NONE);
   const listRef = useRef(null);
   // Per file: the action on its way (its buttons wait), and files deleted but still undoable.
   const [busy, setBusy] = useState({});
-  const [gone, setGone] = useState(() => new Set());
   useEffect(() => { call("downloads.subscribe").catch(() => {}); }, []);
 
   // A finished download says so once.
@@ -82,8 +84,8 @@ export default function Downloads() {
 
   // Deleting goes at once and happens once the Undo has passed: these files are large.
   const remove = item => {
-    setGone(prev => new Set(prev).add(item.id));
-    const restore = () => setGone(prev => { const next = new Set(prev); next.delete(item.id); return next; });
+    onGone(item.id, true);
+    const restore = () => onGone(item.id, false);
     let undone = false;
     const timer = window.setTimeout(() => {
       if (undone) return;
