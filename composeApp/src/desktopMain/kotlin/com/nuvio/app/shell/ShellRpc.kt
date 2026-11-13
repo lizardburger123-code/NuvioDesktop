@@ -53,6 +53,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -576,9 +577,11 @@ internal class ShellRpc(private val host: ShellHost) {
         val query = params.string("query").orEmpty().trim()
         searchQuery = query
         if (params.bool("commit") == true && query.length > 1) SearchHistoryRepository.recordSearch(query)
-        watch("search", SearchRepository.uiState) { state ->
+        // Each state names its own search: one from a search since replaced never reaches the page
+        // (it would show the old results under the new words).
+        watch("search", SearchRepository.uiState.filter { it.query == searchQuery }) { state ->
             buildJsonObject {
-                put("query", searchQuery)
+                put("query", state.query)
                 put("loading", state.isLoading)
                 put("sections", buildJsonArray {
                     state.sections.forEach { section ->
@@ -591,10 +594,14 @@ internal class ShellRpc(private val host: ShellHost) {
                         })
                     }
                 })
+                // Why nothing came back (as on the streams topic): NoActiveAddons, NoSearchCatalogs
+                // (no addon can search), NoResults or RequestFailed (with error).
+                state.emptyStateReason?.let { put("empty", it.name) }
                 state.errorMessage?.let { put("error", it) }
             }
         }
-        SearchRepository.search(query, AddonRepository.uiState.value.addons)
+        // force (Try again): ask the addons afresh instead of reusing the answer to the same words.
+        SearchRepository.search(query, AddonRepository.uiState.value.addons, forceRefresh = params.bool("force") == true)
         return JsonPrimitive(true)
     }
 

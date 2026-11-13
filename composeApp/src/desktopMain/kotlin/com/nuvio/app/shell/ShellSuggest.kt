@@ -140,6 +140,23 @@ internal object ShellPeople {
 
     private data class Work(val imdb: String, var name: String, var year: Int? = null, val kinds: MutableSet<String> = HashSet(), val roles: MutableSet<String> = HashSet())
 
+    /** Items (Q ids) whose English label or alias is [name] in any capitalisation, from Wikidata's search. */
+    private fun personIds(name: String): List<String> {
+        val url = "https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&type=item&language=en&uselang=en&limit=20&search=" +
+            URLEncoder.encode(name, "UTF-8")
+        val text = suggestGet(url, 6, mapOf("User-Agent" to "NuvioDesktopFork/1.0 (cast lookup)"))
+        val found = (suggestJson.parseToJsonElement(text) as? JsonObject)?.get("search") as? JsonArray ?: return emptyList()
+        val wanted = name.lowercase()
+        return found.mapNotNull { it as? JsonObject }
+            .filter { item ->
+                listOfNotNull(item.text("label"), (item["match"] as? JsonObject)?.text("text"))
+                    .any { it.trim().replace(Regex("\\s+"), " ").lowercase() == wanted }
+            }
+            .mapNotNull { item -> item.text("id")?.takeIf { it.matches(Regex("Q\\d+")) } }
+            .distinct()
+            .take(10)
+    }
+
     suspend fun works(name: String, titleId: String? = null): JsonObject {
         val wanted = name.trim().replace(Regex("\\s+"), " ")
         require(wanted.length in 2..120) { "No name." }
@@ -148,9 +165,17 @@ internal object ShellPeople {
         val cacheKey = "${wanted.lowercase()}|${from.orEmpty()}"
         cache[cacheKey]?.let { return it }
         val literal = wanted.replace("\\", "\\\\").replace("\"", "\\\"")
+        // A label match is exact ("leonardo dicaprio" misses); Wikidata's search ignores case. When
+        // the search can't help, the exact label is used as before.
+        val ids = withContext(Dispatchers.IO) { runCatching { personIds(wanted) }.getOrDefault(emptyList()) }
+        val whoClause = if (ids.isNotEmpty()) {
+            "VALUES ?person { ${ids.joinToString(" ") { "wd:$it" }} } ?person wdt:P31 wd:Q5 ."
+        } else {
+            "?person rdfs:label \"$literal\"@en ; wdt:P31 wd:Q5 ."
+        }
         val query = """
             SELECT ?person ?work ?workLabel ?imdb ?date ?start ?kindLabel ?role WHERE {
-              ?person rdfs:label "$literal"@en ; wdt:P31 wd:Q5 .
+              $whoClause
               { ?work wdt:P161 ?person . BIND("cast" AS ?role) }
               UNION { ?work wdt:P725 ?person . BIND("voice" AS ?role) }
               UNION { ?work wdt:P57 ?person . BIND("director" AS ?role) }
