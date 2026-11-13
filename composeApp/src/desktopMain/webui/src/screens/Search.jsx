@@ -216,6 +216,8 @@ export default function Search({ params }) {
   useEffect(() => {
     if (!active) return undefined;
     const onKey = event => {
+      // A layer on top (the shortcuts sheet, the profile card) owns the keys: the field under it stays put.
+      if (document.querySelector("[data-modal-open]")) return;
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName || "") || event.target?.isContentEditable;
       if (!((event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === "k") || (event.key === "/" && !typing))) return;
       event.preventDefault();

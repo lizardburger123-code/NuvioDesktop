@@ -50,6 +50,10 @@ const SearchHero = forwardRef(function SearchHero({ autoFocus = false, initial =
   // scrolling, and only when the box is on screen anyway.
   useEffect(() => {
     if (!autoFocus || window.scrollY > 160) return;
+    // Back from a title, the screen has put focus on the result it was opened from: it stays
+    // there, so Esc goes on back instead of emptying the search.
+    const at = document.activeElement;
+    if (at && at !== document.body && inputRef.current?.closest(".screen-host")?.contains(at) && !at.hasAttribute("data-nav-focus")) return;
     inputRef.current?.focus({ preventScroll: true });
   }, [autoFocus]);
 

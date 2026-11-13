@@ -149,21 +149,28 @@ const placeFocus = (host, saved) => {
       target.setAttribute("data-nav-focus", "");
     }
     target.focus({ preventScroll: true });
+    return target;
   };
   const back = saved?.isConnected && host.contains(saved) ? saved : null;
-  const heading = host.querySelector("h1");
-  take(back || heading || host);
-  if (back || heading) return;
-  // A screen still drawing its page has no heading yet: hand focus to it once it appears,
-  // unless the user has moved focus meanwhile.
+  if (back) { take(back); return; }
+  // A screen still drawing its page has no heading yet, or swaps its loading heading for the
+  // page's own (a title page): focus follows the heading there instead of dropping to the body,
+  // for a few seconds, unless the user has moved it meanwhile.
+  let held = take(host.querySelector("h1") || host);
   let frames = 0;
-  const wait = () => {
-    if (document.activeElement !== host) return;
-    const later = host.querySelector("h1");
-    if (later) take(later);
-    else if (++frames < 60) window.requestAnimationFrame(wait);
+  const follow = () => {
+    if (host.classList.contains("is-parked")) return;
+    const at = document.activeElement;
+    const dropped = !held.isConnected && (!at || at === document.body);
+    if (at !== held && !dropped) return;
+    if (dropped || held === host) {
+      const heading = host.querySelector("h1");
+      if (heading) held = take(heading);
+      else if (dropped) held = take(host);
+    }
+    if (++frames < 300) window.requestAnimationFrame(follow);
   };
-  window.requestAnimationFrame(wait);
+  window.requestAnimationFrame(follow);
 };
 
 /**

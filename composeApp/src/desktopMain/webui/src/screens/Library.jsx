@@ -50,10 +50,11 @@ const LibraryTabs = memo(function LibraryTabs({ tab, cloudCount, pending }) {
   const library = useTopic("library", null);
   const completed = useTopic("completed", NO_ITEMS);
   const downloads = useTopic("downloads", NO_ITEMS);
-  // Taken off but still undoable: not counted, so the count agrees with what the tab shows.
+  // Taken off but still undoable: not counted, so the count agrees with what the tab shows (a
+  // Continue watching entry leaves the topic itself, through removeContinue).
   const counts = {
     later: watchLater.length,
-    continue: continueWatching.filter(entry => !pending.continue.has(entry.key)).length,
+    continue: continueWatching.length,
     saved: library?.items?.length ?? 0,
     completed: completed.length,
     cloud: cloudCount,
@@ -89,8 +90,8 @@ export default function Library({ params }) {
   // shows once that answer is in, so it doesn't change under the user.
   const [cloud, setCloud] = useState({ items: null, error: null });
   const [clearing, setClearing] = useState(false);
-  // Continue watching entries and downloads taken off while their Undo is up.
-  const [pending, setPending] = useState(() => ({ continue: new Set(), downloads: new Set() }));
+  // Downloads taken off while their Undo is up.
+  const [pending, setPending] = useState(() => ({ downloads: new Set() }));
   const hold = useCallback((kind, key, on) => setPending(prev => {
     const next = new Set(prev[kind]);
     if (on) next.add(key);
@@ -130,7 +131,7 @@ export default function Library({ params }) {
       <div role="tabpanel" aria-labelledby={`library-tab-${tab}`}>
         {tab === "downloads" ? <Downloads gone={pending.downloads} onGone={(id, on) => hold("downloads", id, on)} />
           : tab === "completed" ? <Trophies />
-            : tab === "continue" ? <ContinueTab hidden={pending.continue} onHide={(key, on) => hold("continue", key, on)} />
+            : tab === "continue" ? <ContinueTab />
               : tab === "cloud" ? <CloudTab state={cloud} onRetry={loadCloud} />
                 : tab === "saved" ? <SavedTab />
                   : <LaterTab />}
@@ -204,25 +205,10 @@ function CloudTab({ state, onRetry }) {
   );
 }
 
-function ContinueTab({ hidden, onHide }) {
-  const { resume, toast } = useApp();
-  const entries = useTopic("continue", NO_ITEMS);
-  // Taken off at once and only forgotten when the Undo has passed: the app keeps no copy to restore.
-  const remove = useCallback(entry => {
-    onHide(entry.key, true);
-    let undone = false;
-    const timer = window.setTimeout(() => {
-      if (undone) return;
-      call("continue.remove", { id: entry.id, type: entry.type }).catch(error => {
-        onHide(entry.key, false);
-        toast(error.message, { tone: "error" });
-      });
-    }, 5400);
-    toast(`Removed ${entry.name} from Continue watching`, {
-      action: { label: "Undo", run: () => { undone = true; window.clearTimeout(timer); onHide(entry.key, false); } },
-    });
-  }, [toast, onHide]);
-  const shown = useMemo(() => entries.filter(entry => !hidden.has(entry.key)), [entries, hidden]);
+function ContinueTab() {
+  // Taken off at once on every screen and only forgotten once the Undo has passed (removeContinue).
+  const { resume, removeContinue } = useApp();
+  const shown = useTopic("continue", NO_ITEMS);
   if (!shown.length) {
     return (
       <section className="empty">
@@ -234,7 +220,7 @@ function ContinueTab({ hidden, onHide }) {
   }
   return (
     <section className="library-grid library-grid-wide">
-      {shown.map(entry => <ContinueCard key={entry.key} entry={entry} onResume={resume} onRemove={remove} />)}
+      {shown.map(entry => <ContinueCard key={entry.key} entry={entry} onResume={resume} onRemove={removeContinue} />)}
     </section>
   );
 }

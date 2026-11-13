@@ -18,7 +18,6 @@ const eta = s => {
   return minutes < 60 ? `${minutes} min left` : `${Math.floor(minutes / 60)} h ${minutes % 60} min left`;
 };
 const STATUS = { downloading: "Downloading", paused: "Paused", completed: "Ready", failed: "Failed" };
-const UNDO_MS = 5400; // a little longer than the toast with its Undo stays up
 const MIN_BUSY_MS = 1200; // a double click lands on a button that is still busy
 const nameOf = item => `${item.title}${item.season != null ? ` ${episodeCode(item.season, item.episode)}` : ""}`;
 
@@ -82,17 +81,17 @@ export default function Downloads({ gone, onGone }) {
     });
   };
 
-  // Deleting goes at once and happens once the Undo has passed: these files are large.
+  // Deleting goes at once and happens once the Undo has passed: these files are large. The
+  // note waits while the pointer or focus is on it, so the file waits for the note to leave.
   const remove = item => {
     onGone(item.id, true);
     const restore = () => onGone(item.id, false);
-    let undone = false;
-    const timer = window.setTimeout(() => {
-      if (undone) return;
-      call("downloads.remove", { id: item.id }).catch(error => { restore(); toast(error.message, { tone: "error" }); });
-    }, UNDO_MS);
     toast(item.status === "completed" ? `Deleted ${nameOf(item)}` : `Cancelled ${nameOf(item)}`, {
-      action: { label: "Undo", run: () => { undone = true; window.clearTimeout(timer); restore(); } },
+      action: { label: "Undo", run: () => {} },
+      onDone: undone => {
+        if (undone) { restore(); return; }
+        call("downloads.remove", { id: item.id }).catch(error => { restore(); toast(error.message, { tone: "error" }); });
+      },
     });
   };
 
