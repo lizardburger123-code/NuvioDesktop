@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LuRotateCw } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
@@ -15,12 +15,72 @@ import { lookOf } from "../lib/look.js";
 import TopTen from "../haze/TopTen.jsx";
 import "./Home.css";
 
+// How long a title taken off Continue watching can still be put back (a little longer than
+// the toast that offers it stays up).
+const UNDO_MS = 6400;
+
+/**
+ * Taking titles off Continue watching, with Undo. The app has no way to bring an entry back, so
+ * the title is hidden at once and only removed for good once the toast offering Undo has gone.
+ */
+function useContinueRemoval(entries) {
+  const { toast } = useApp();
+  const [hidden, setHidden] = useState(() => new Set());
+  const pending = useRef(new Map());
+  const show = useCallback(id => setHidden(prev => {
+    if (!prev.has(id)) return prev;
+    const next = new Set(prev);
+    next.delete(id);
+    return next;
+  }), []);
+  const commit = useCallback((id, entry) => {
+    pending.current.delete(id);
+    call("continue.remove", { id: entry.id, type: entry.type }).catch(error => {
+      show(id);
+      toast(error.message, { tone: "error" });
+    });
+  }, [show, toast]);
+  const remove = useCallback(entry => {
+    const id = entry.id;
+    if (pending.current.has(id)) return;
+    setHidden(prev => new Set(prev).add(id));
+    pending.current.set(id, { entry, timer: window.setTimeout(() => commit(id, entry), UNDO_MS) });
+    toast(`Removed ${entry.name} from Continue watching`, {
+      duration: UNDO_MS - 400,
+      action: {
+        label: "Undo",
+        run: () => {
+          const job = pending.current.get(id);
+          if (!job) return;
+          window.clearTimeout(job.timer);
+          pending.current.delete(id);
+          show(id);
+        },
+      },
+    });
+  }, [commit, show, toast]);
+  // A removed title stays hidden until the app's list no longer has it; after that it can come
+  // back on its own (watched again).
+  useEffect(() => {
+    setHidden(prev => {
+      if (!prev.size) return prev;
+      const listed = new Set(entries.map(entry => entry.id));
+      const next = new Set([...prev].filter(id => listed.has(id) || pending.current.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [entries]);
+  // Leaving for good (another profile): what was removed is removed now.
+  useEffect(() => () => pending.current.forEach(({ entry, timer }, id) => { window.clearTimeout(timer); commit(id, entry); }), [commit]);
+  const shown = useMemo(() => (hidden.size ? entries.filter(entry => !hidden.has(entry.id)) : entries), [entries, hidden]);
+  return [shown, remove];
+}
+
 export default function Home() {
-  const { watchLater, laterIds, openDetails, resume, removeContinue, appearance } = useApp();
+  const { watchLater, laterIds, openDetails, resume, appearance } = useApp();
   const toggleLater = useToggleLater();
   const haze = lookOf(appearance) === "haze";
   const home = useTopic("home", { loading: true, hero: [], sections: [] });
-  const continueWatching = useTopic("continue", []);
+  const [continueWatching, removeContinue] = useContinueRemoval(useTopic("continue", []));
   // A catalog that came back empty is not a row.
   const sections = useMemo(() => home.sections.filter(section => section.items?.length), [home.sections]);
   const [retrying, setRetrying] = useState(false);
