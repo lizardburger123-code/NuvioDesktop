@@ -137,12 +137,13 @@ const restoreScroll = (host, target) => {
 /**
  * Keyboard focus follows the move: into a screen that just opened (its heading, so a screen
  * reader names it), and back onto what you left from when you return. Focus that is still on
- * something live (a bar a tab was picked in, a field the screen focused itself) stays put.
+ * something live (a bar a tab was picked in, a field the screen focused itself) stays put; a
+ * layer or a note whose button made the move is on its way out, so its focus doesn't count.
  */
 const placeFocus = (host, saved) => {
   if (!host) return;
   const now = document.activeElement;
-  if (now && now !== document.body && !now.closest(".is-parked, [inert]")) return;
+  if (now && now !== document.body && !now.closest(".is-parked, [inert], [data-modal-open], .toasts, .tpop")) return;
   const take = target => {
     if (!target.matches("a[href], button, input, select, textarea, [tabindex]")) {
       target.setAttribute("tabindex", "-1");
