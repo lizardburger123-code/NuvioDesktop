@@ -192,8 +192,12 @@ export default function Sources({ meta, video, onClose }) {
   }, []);
 
   // Focus goes back to whatever opened the sheet (the Sources or Play button), when it is still there.
+  // A sheet that opened by itself (Resume, a spotlight's Play) hands it to the title's Play button.
   const opener = useRef(undefined);
-  if (opener.current === undefined) opener.current = shown.current ? document.activeElement : null;
+  if (opener.current === undefined) {
+    const at = document.activeElement;
+    opener.current = !shown.current ? null : at && at !== document.body ? at : document.querySelector(".screen-host:not(.is-parked) .details-play");
+  }
   useEffect(() => () => {
     const node = opener.current;
     if (node && node !== document.body && node.isConnected && !node.closest("[inert], .is-parked")) node.focus({ preventScroll: true });
