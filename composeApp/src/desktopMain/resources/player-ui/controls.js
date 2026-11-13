@@ -984,6 +984,120 @@ chapterList.addEventListener("click", event => {
   window.setTimeout(closePlayerModal, 120);
 });
 
+// ---- Keyboard shortcuts sheet (?) -------------------------------------------------------------
+// Lists what the keydown handler below really does, and only what works for this video (no
+// Episodes line for a film, no chapter keys for a file without chapters). Keep the two in step.
+const shortcutsModal = document.getElementById("shortcutsModal");
+const shortcutsGrid = document.getElementById("shortcutsGrid");
+let shortcutsKey = "";
+
+// Each row: alternatives (each a list of keys pressed together), then what they do.
+const shortcutGroups = () => {
+  const boost = state.holdToSpeedEnabled ? `${formatSpeedBoostString(normalizedSpeedBoost())}x` : "";
+  return [
+    { title: "Playback", rows: [
+      [[["Space"], ["K"]], "Play or pause"],
+      boost && [[["Hold", "Space"]], `Play at ${boost} while held`],
+      [[["Enter"]], "Skip the intro or credits when offered"],
+      state.showEpisodes && [[["Shift", "N"]], "Next episode"],
+      [[["<"], [">"]], "Slower or faster"],
+      [[["/"]], "Normal speed"],
+      [[["`"]], "Speed menu"],
+    ] },
+    { title: "Seeking", rows: [
+      [[["←"], ["J"]], "Back 10 seconds"],
+      [[["→"], ["L"]], "Forward 10 seconds"],
+      [[["Shift", "←"], ["Shift", "→"]], "Back or forward 1 second"],
+      playerChapters().length && [[["PgUp"], ["PgDn"]], "Previous or next chapter"],
+    ] },
+    { title: "Volume", rows: [
+      [[["↑"], ["↓"]], "Louder or quieter"],
+      [[["M"]], "Mute or unmute"],
+    ] },
+    { title: "Subtitles and audio", rows: [
+      [[["S"]], "Subtitles menu"],
+      [[["V"]], "Subtitles on or off"],
+      [[["G"], ["H"]], "Subtitles 0.1 s earlier or later"],
+      [[["Shift", "G"], ["Shift", "H"]], "Subtitles 1 s earlier or later"],
+      [[["O"]], "Dim the subtitles, or undim"],
+      [[["I"]], "Subtitles more see-through"],
+      [[["A"]], "Audio menu"],
+      [[["B"]], "Next audio track"],
+    ] },
+    { title: "Menus and window", rows: [
+      state.showEpisodes && [[["E"]], "Episodes"],
+      state.showSources && [[["Q"]], "Sources"],
+      hasChapterList() && [[["C"]], "Chapters"],
+      [[["F"], ["F11"]], "Full screen"],
+      String(state.pipLabel || "").trim() && [[["P"]], "Picture in picture"],
+      [[["Esc"]], "Close a menu, leave full screen, or close the player"],
+      [[["?"]], "These shortcuts"],
+    ] },
+    { title: "Mouse", rows: [
+      [[["Click"]], "Play or pause"],
+      [[["Double-click"]], "Full screen"],
+      boost && [[["Hold", "Click"]], `Play at ${boost} while held`],
+      [[["Wheel"]], "Louder or quieter"],
+      [[["Wheel on the bar"]], "1 second back or forward"],
+    ] },
+  ].map(group => ({ ...group, rows: group.rows.filter(Boolean) }));
+};
+
+const buildShortcutKeys = alternatives => {
+  const keys = document.createElement("span");
+  keys.className = "shortcut-keys";
+  // Shift + ← or Shift + → reads better as Shift + ← or →.
+  const shared = alternatives.length > 1 && alternatives.every(combo => combo.length === 2 && combo[0] === alternatives[0][0] && combo[0] !== "Hold")
+    ? alternatives[0][0] : "";
+  if (shared) {
+    keys.append(Object.assign(document.createElement("kbd"), { textContent: shared }));
+    keys.append(Object.assign(document.createElement("span"), { className: "shortcut-or", textContent: "+" }));
+    alternatives = alternatives.map(combo => [combo[1]]);
+  }
+  alternatives.forEach((combo, index) => {
+    if (index) keys.append(Object.assign(document.createElement("span"), { className: "shortcut-or", textContent: "or" }));
+    combo.forEach((key, keyIndex) => {
+      if (key === "Hold") {
+        keys.append(Object.assign(document.createElement("span"), { className: "shortcut-or", textContent: "hold" }));
+        return;
+      }
+      if (keyIndex && combo[keyIndex - 1] !== "Hold") keys.append(Object.assign(document.createElement("span"), { className: "shortcut-or", textContent: "+" }));
+      keys.append(Object.assign(document.createElement("kbd"), { textContent: key }));
+    });
+  });
+  return keys;
+};
+
+const renderShortcutsModal = () => {
+  const groups = shortcutGroups();
+  const key = JSON.stringify(groups);
+  if (key === shortcutsKey) return;
+  shortcutsKey = key;
+  shortcutsGrid.textContent = "";
+  groups.forEach(group => {
+    const section = document.createElement("section");
+    section.className = "shortcuts-group";
+    const heading = document.createElement("h3");
+    heading.textContent = group.title;
+    section.appendChild(heading);
+    group.rows.forEach(([alternatives, what]) => {
+      const row = document.createElement("div");
+      row.className = "shortcut-row";
+      const label = document.createElement("span");
+      label.className = "shortcut-label";
+      label.textContent = what;
+      row.append(label, buildShortcutKeys(alternatives));
+      section.appendChild(row);
+    });
+    shortcutsGrid.appendChild(section);
+  });
+};
+
+document.getElementById("shortcutsCloseButton").addEventListener("click", event => {
+  event.stopPropagation();
+  closePlayerModal();
+});
+
 const setText = (element, text) => {
   setTextIfChanged(element, text || "");
   if (element.hidden !== !text) element.hidden = !text;
@@ -1151,6 +1265,7 @@ const modalByName = {
   p2pConsent: p2pConsentModal,
   party: partyModal,
   chapters: chaptersModal,
+  shortcuts: shortcutsModal,
 };
 const modalElements = Object.values(modalByName);
 const modalCloseTimers = new Map();
@@ -2768,6 +2883,7 @@ const renderActiveModal = (modalOpened = false) => {
   if (activeModal === "p2pConsent") renderP2pConsentModal();
   if (activeModal === "party") renderPartyModal();
   if (activeModal === "chapters") renderChaptersModal();
+  if (activeModal === "shortcuts") renderShortcutsModal();
 };
 
 window.nuvioNativeViewportChanged = () => {
@@ -3102,7 +3218,9 @@ const renderChrome = () => {
   if (!state.isInPip && isPipLocked) setPipLocked(false);
   root.classList.toggle("chrome-hidden", Boolean(showError || !state.controlsVisible));
   root.classList.toggle("modal-open", Boolean(activeModal));
-  root.classList.toggle("side-panel-open", Boolean(activeModal && modalByName[activeModal]?.classList.contains("player-side-modal")));
+  // Side panels and the shortcuts sheet lie over the bar, which would show through their glass.
+  const coveringPanel = activeModal ? modalByName[activeModal] : null;
+  root.classList.toggle("panel-covers-bar", Boolean(coveringPanel && (coveringPanel.classList.contains("player-side-modal") || coveringPanel === shortcutsModal)));
   root.classList.toggle("source-visible", Boolean(!showError && !isPlaying && !state.isLoading && (state.streamTitle || state.providerName)));
   syncHiddenCursor();
   const showOpening = renderOpeningOverlay(showError);
@@ -4731,6 +4849,13 @@ document.addEventListener("keydown", event => {
       openPlayerModal("episodes");
       send("episodes", 0);
     }
+    return;
+  }
+  // "?" is Shift + / on most layouts (where plain / resets the speed below); "؟" on Arabic ones.
+  if (event.key === "?" || event.key === "\u061f" || (event.code === "Slash" && event.shiftKey)) {
+    event.preventDefault();
+    if (activeModal === "shortcuts") closePlayerModal(true);
+    else openPlayerModal("shortcuts");
     return;
   }
   if (event.code === "KeyC" && (activeModal === "chapters" || hasChapterList())) {

@@ -404,7 +404,7 @@
     if (!layer || !box || !progress) return;
     let target = 0;
     const chromeShown = !root.classList.contains("chrome-hidden") && !root.classList.contains("opening-active") &&
-      !root.classList.contains("side-panel-open");
+      !root.classList.contains("panel-covers-bar");
     if (chromeShown && box.dataset.empty !== "true" && !box.classList.contains("sub-dragging")) {
       const currentY = Number(gsap.getProperty(layer, "y")) || 0;
       const boxBottom = box.getBoundingClientRect().bottom - currentY;
