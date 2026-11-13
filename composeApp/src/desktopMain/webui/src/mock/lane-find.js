@@ -11,6 +11,18 @@ export default ctx => {
   const { push, base, data } = ctx;
   const option = () => window.__mockSearch || {};
 
+  // window.__mockLongLists(n): a list and a trophy shelf of n titles, for long-list checks.
+  window.__mockLongLists = (n = 300) => {
+    const pool = data.all;
+    const day = 86400e3;
+    const items = Array.from({ length: n }, (_, i) => {
+      const base = pool[i % pool.length];
+      return { ...base, id: `${base.id}-${i}`, name: `${base.name} ${i + 1}`, addedAt: Date.now() - i * 3600e3, imdbRating: String((5 + (i * 7) % 50 / 10).toFixed(1)) };
+    });
+    push("watchLater", items);
+    push("completed", items.map((item, i) => ({ id: item.id, type: item.type, name: item.name, poster: item.poster, releaseInfo: item.releaseInfo, completedAt: Date.now() - Math.floor(i / 3) * day * 2, durationMs: 100 * 60e3, episodes: item.type === "series" ? 10 : undefined })));
+  };
+
   // Recent searches, recorded when a search is committed, like the app does.
   let history = [...(base["search.history"]() || [])];
   const record = query => { history = [query, ...history.filter(item => item.toLowerCase() !== query.toLowerCase())].slice(0, 8); };
