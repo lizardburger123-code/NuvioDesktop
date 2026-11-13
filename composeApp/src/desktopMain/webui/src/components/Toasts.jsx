@@ -109,19 +109,27 @@ export default function Toasts() {
     return () => window.cancelAnimationFrame(frame);
   }, [toasts]);
 
-  // A note that leaves takes its pointer and focus with it (a removed button never blurs).
+  // A note that leaves takes its pointer and focus with it (a removed button never blurs, and
+  // the browser sends no pointer leave when the note under the pointer goes): otherwise the rest
+  // of the stack, and what waits on it (an Undo's change), would wait for good.
+  const pointer = useRef(null);
   useEffect(() => {
     if (!stackRef.current?.contains(document.activeElement)) setFocused(false);
-    if (!toasts.length) setHovered(false);
+    if (!toasts.length || (pointer.current && !stackRef.current?.contains(document.elementFromPoint(...pointer.current)))) {
+      pointer.current = null;
+      setHovered(false);
+    }
   }, [toasts]);
+  const point = event => { pointer.current = [event.clientX, event.clientY]; };
 
   return (
     <>
       <div
         ref={stackRef}
         className="toasts"
-        onPointerEnter={() => setHovered(true)}
-        onPointerLeave={() => setHovered(false)}
+        onPointerEnter={event => { point(event); setHovered(true); }}
+        onPointerMove={point}
+        onPointerLeave={() => { pointer.current = null; setHovered(false); }}
         onFocus={() => setFocused(true)}
         onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false); }}
       >
