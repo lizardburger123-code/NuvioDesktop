@@ -34,6 +34,8 @@ export async function refreshCache(hashes) {
 }
 
 export async function sendToTorbox(hash, name) {
+  // Already on its way (a double click, or the same file listed twice): one request is enough.
+  if (state.sending.has(hash)) return;
   state.sending.add(hash);
   state.names[hash] = name || state.names[hash];
   emit();

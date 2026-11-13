@@ -98,7 +98,7 @@
 }
 .sources-group-head > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sources-group-head svg { width: 16px; height: 16px; flex: none; }
-.sources-group-head .num { letter-spacing: 0; flex: none; }
+.sources-group-head .num { letter-spacing: 0; text-transform: none; flex: none; }
 .sources-note { padding: 2px 12px 12px; font-size: var(--fs-14); color: var(--ink-3); }
 .sources-note.is-error { display: flex; align-items: center; gap: 12px; color: #ffb4ad; }
 .sources-note.is-error > span { flex: 1; min-width: 0; }
