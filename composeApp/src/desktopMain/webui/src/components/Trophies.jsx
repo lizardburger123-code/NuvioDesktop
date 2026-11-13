@@ -130,7 +130,10 @@ export default function Trophies() {
         <div className="trophies-lead">
           <span className="trophies-kicker">{rank.toNext === 1 ? "One more to level up" : `${rank.toNext} more to level ${rank.level + 1}`}</span>
           <h2 className="trophies-headline"><span className="num">{s.total}</span> finished</h2>
-          <p dir="auto">{latest ? `Latest: ${latest.name}, ${ago(latest.completedAt)}.` : ""} {s.films} {s.films === 1 ? "film" : "films"} and {s.series} series on the shelf.</p>
+          <p>
+            {latest ? <>Latest: <bdi>{latest.name}</bdi>, {ago(latest.completedAt)}. </> : null}
+            {[s.films ? `${s.films} ${s.films === 1 ? "film" : "films"}` : null, s.series ? `${s.series} series` : null].filter(Boolean).join(" and ")} on the shelf.
+          </p>
         </div>
         <dl className="trophies-figures">
           <div><dt>Watched</dt><dd className="num">{fmtHours(s.totalMs)}</dd><small>{s.timed < s.total ? `${s.total - s.timed} without a time` : "from the player"}</small></div>
@@ -150,9 +153,9 @@ export default function Trophies() {
 
       <div className="trophies-row" data-rise>
         <h2 className="trophies-h">{view === "year" ? "The year" : "The shelf"}</h2>
-        <div className="seg" role="tablist" aria-label="View">
-          <button role="tab" aria-pressed={view === "shelf"} onClick={() => setView("shelf")}>By month</button>
-          <button role="tab" aria-pressed={view === "year"} onClick={() => setView("year")}>Year</button>
+        <div className="seg" role="group" aria-label="View">
+          <button aria-pressed={view === "shelf"} onClick={() => setView("shelf")}>By month</button>
+          <button aria-pressed={view === "year"} onClick={() => setView("year")}>Year</button>
         </div>
       </div>
 

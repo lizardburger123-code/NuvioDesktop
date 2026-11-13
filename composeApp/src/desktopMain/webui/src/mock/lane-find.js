@@ -87,7 +87,33 @@ export default ctx => {
     tick();
   };
 
+  // window.__mockTrophies(n): a shelf of n titles that this file owns from then on, so taking
+  // one off and Undo show on the shelf (the app re-sends the list after either). Call it after
+  // Trophies has opened: opening it asks home.subscribe, which sends the preview's own shelf.
+  let trophies = null;
+  const hiddenTrophies = new Set();
+  const publishTrophies = (delay = 0) => trophies && push("completed", trophies.filter(item => !hiddenTrophies.has(`${item.type}:${item.id}`)), delay);
+  window.__mockTrophies = (n = 20) => {
+    const pool = data.all;
+    trophies = Array.from({ length: n }, (_, i) => {
+      const base = pool[i % pool.length];
+      const when = new Date(Date.now() - Math.floor(i / 2) * 3 * 86400e3);
+      when.setHours(21, 10, 0, 0);
+      return { id: i < pool.length ? base.id : `${base.id}-${i}`, type: base.type, name: i < pool.length ? base.name : `${base.name} ${i + 1}`, poster: base.poster, releaseInfo: base.releaseInfo, completedAt: when.getTime(), durationMs: base.type === "series" ? 9 * 50 * 60e3 : 118 * 60e3, episodes: base.type === "series" ? 9 : undefined };
+    });
+    hiddenTrophies.clear();
+    publishTrophies();
+  };
+
   return {
+    // Every trophy card handed out, for tests; window.__mockPlayerOpen = true takes them "into
+    // the player" so they don't queue in the page.
+    "player.trophy": ({ cards }) => {
+      window.__mockTrophyCards = [...(window.__mockTrophyCards || []), ...(cards || []).map(card => card.key)];
+      return Boolean(window.__mockPlayerOpen);
+    },
+    "completed.remove": ({ type, id }) => { hiddenTrophies.add(`${type}:${id}`); publishTrophies(60); return true; },
+    "completed.restore": ({ type, id }) => { hiddenTrophies.delete(`${type}:${id}`); publishTrophies(60); return true; },
     "downloads.subscribe": () => { publish(); return true; },
     "downloads.start": ({ streamKey, title, season, episode }) => {
       downloads = [{ id: `d${Date.now()}`, type: "series", metaId: "x", videoId: streamKey, title: title || "Download", season, episode, fileName: `${title || "Download"}.mkv`, source: "SELection", status: "downloading", done: 0, total: 2.4e9, speed: 0, rate: 3.2e8, createdAt: Date.now() }, ...downloads];

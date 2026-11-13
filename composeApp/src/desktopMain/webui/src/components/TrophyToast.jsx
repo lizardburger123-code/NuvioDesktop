@@ -15,6 +15,7 @@ const OPEN_MS = 3800;
 const FOLD_MS = 460;
 const LEAVE_MS = 360;
 const pct = value => Math.round(Math.max(0, Math.min(1, value)) * 100);
+const MODAL = "[data-modal-open], [aria-modal=\"true\"]";
 
 /** A short two-note chime as the medal lands (three for platinum). */
 let audio = null;
@@ -40,7 +41,7 @@ function chime(tier) {
 }
 
 /**
- * The unlock moment, the console way: the medal lands in the top-right corner, the card opens
+ * The unlock moment, the console way: the medal lands in the bottom-right corner, the card opens
  * beside it to say what was earned and fills the level bar, then folds away. Finishing a film or
  * a series, the last episode of a season, a badge and a new level each get one, in that order.
  * While a film is still playing, the cards go to the player and show over the video instead.
@@ -50,9 +51,13 @@ export default function TrophyToast() {
   const items = useTopic("completed", null);
   const seasons = useTopic("seasonsDone", null);
   const seen = useRef(null);
+  // Every title seen on the shelf this session, with when it was finished: one taken off and
+  // put back (Undo) keeps its old time and is not new; one finished again moves on.
+  const known = useRef(new Map());
   const seenSeasons = useRef(null);
   const [queue, setQueue] = useState([]);
   const [current, setCurrent] = useState(null);
+  const [retry, setRetry] = useState(0);
   const sound = appearance?.trophySound !== false;
 
   const deliver = cards => {
@@ -67,12 +72,14 @@ export default function TrophyToast() {
 
   useEffect(() => {
     if (!Array.isArray(items)) return;
-    if (seen.current == null) { seen.current = items; return; } // first load: nothing is new
     const before = seen.current;
-    const known = new Set(before.map(i => `${i.type}:${i.id}`));
-    const added = items.filter(i => !known.has(`${i.type}:${i.id}`));
+    const added = before == null ? [] : items.filter(i => {
+      const at = known.current.get(`${i.type}:${i.id}`);
+      return at == null || (i.completedAt || 0) - at > 60e3;
+    });
+    items.forEach(i => known.current.set(`${i.type}:${i.id}`, i.completedAt || 0));
     seen.current = items;
-    if (!added.length) return;
+    if (!added.length) return; // the first load, a title put back, or one taken off
     const was = level(before);
     const now = level(items);
     const bar = { from: pct(was.progress), to: now.level > was.level ? 100 : pct(now.progress) };
@@ -110,13 +117,19 @@ export default function TrophyToast() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seasons]);
 
-  // Next card up, once the corner is free.
+  // Next card up, once the corner is free and no dialog is open (a card would sit over it, and a
+  // click meant for the dialog would open Trophies instead).
   useEffect(() => {
-    if (current || !queue.length) return;
+    if (current || !queue.length) return undefined;
+    if (document.querySelector(MODAL)) {
+      const wait = window.setTimeout(() => setRetry(n => n + 1), 1000);
+      return () => window.clearTimeout(wait);
+    }
     const [next, ...rest] = queue;
     setQueue(rest);
     setCurrent({ ...next, phase: "in" });
-  }, [queue, current]);
+    return undefined;
+  }, [queue, current, retry]);
 
   // Each card: lands, opens, stays a few seconds, folds, goes.
   const key = current?.key;
