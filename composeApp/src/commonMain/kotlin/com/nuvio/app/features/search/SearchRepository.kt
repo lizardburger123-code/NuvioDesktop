@@ -35,6 +35,8 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import nuvio.composeapp.generated.resources.*
@@ -102,6 +104,7 @@ object SearchRepository {
                     else -> SearchEmptyStateReason.NoActiveAddons
                 },
                 errorMessage = addonManifestErrorMessage,
+                query = normalizedQuery,
             )
             return
         }
@@ -116,6 +119,7 @@ object SearchRepository {
             _uiState.value = SearchUiState(
                 isLoading = hasPendingAddonManifests,
                 emptyStateReason = if (hasPendingAddonManifests) null else SearchEmptyStateReason.NoSearchCatalogs,
+                query = normalizedQuery,
             )
             return
         }
@@ -152,8 +156,10 @@ object SearchRepository {
         lastRequestKey = requestKey
 
         activeJob?.cancel()
-        _uiState.value = SearchUiState(isLoading = true)
+        _uiState.value = SearchUiState(isLoading = true, query = normalizedQuery)
 
+        // The job writes only while it is the active search: the next search cancels it before
+        // writing, so a late write from this one can never land on top of the newer state.
         activeJob = scope.launch {
             val resultChannel = Channel<IndexedSearchResult>(Channel.UNLIMITED)
             val jobs = loaders.mapIndexed { index, load ->
@@ -191,10 +197,13 @@ object SearchRepository {
                     results[result.index] = result
                     val sections = results.orderedSections()
                     if (sections.isNotEmpty()) {
-                        _uiState.value = SearchUiState(
-                            isLoading = true,
-                            sections = sections,
-                        )
+                        _uiState.update { current ->
+                            if (!isActive) current else SearchUiState(
+                                isLoading = true,
+                                sections = sections,
+                                query = normalizedQuery,
+                            )
+                        }
                     }
                 }
             } finally {
@@ -207,17 +216,20 @@ object SearchRepository {
             val firstFailure = completedResults.firstNotNullOfOrNull { result -> result.error?.let { it.serverMessage() ?: it.message } }
             val allFailed = completedResults.isNotEmpty() && completedResults.all { it.error != null }
 
-            _uiState.value = SearchUiState(
-                isLoading = sections.isEmpty() && hasPendingAddonManifests,
-                sections = sections,
-                emptyStateReason = when {
-                    sections.isNotEmpty() -> null
-                    hasPendingAddonManifests -> null
-                    allFailed -> SearchEmptyStateReason.RequestFailed
-                    else -> SearchEmptyStateReason.NoResults
-                },
-                errorMessage = if (allFailed) firstFailure else null,
-            )
+            _uiState.update { current ->
+                if (!isActive) current else SearchUiState(
+                    isLoading = sections.isEmpty() && hasPendingAddonManifests,
+                    sections = sections,
+                    emptyStateReason = when {
+                        sections.isNotEmpty() -> null
+                        hasPendingAddonManifests -> null
+                        allFailed -> SearchEmptyStateReason.RequestFailed
+                        else -> SearchEmptyStateReason.NoResults
+                    },
+                    errorMessage = if (allFailed) firstFailure else null,
+                    query = normalizedQuery,
+                )
+            }
         }
     }
 
