@@ -301,7 +301,7 @@ function RatingsSheet({ meta, seasons, onPlay }) {
 }
 
 /** A title's page in the Haze look. The data and the play logic come from Details; this is the furniture. */
-export default function HazeDetails({ meta, topic, seasons, season, setSeason, episodes, target, nextAir, similar, stats, onMark, onMarkSeason, play, openSources, saved, heroRef, children }) {
+export default function HazeDetails({ meta, topic, seasons, season, setSeason, episodes, target, nextAir, similar, stats, onMark, onMarkSeason, play, openSources, saved, heroRef }) {
   const { appearance, laterIds, toggleLater, openDetails, toast } = useApp();
   const color = useArtColor([meta.background, meta.banner, meta.poster], appearance?.hazeArt !== false);
   const series = seasons.length > 0;
@@ -546,7 +546,6 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
         </Row>
       ) : null}
       <div className="screen-end" />
-      {children}
     </main>
   );
 }

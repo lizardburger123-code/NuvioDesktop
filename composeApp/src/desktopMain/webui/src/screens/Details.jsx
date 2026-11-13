@@ -364,15 +364,20 @@ const TitlePage = memo(function TitlePage({ state, params }) {
   const saved = laterIds.has(key);
   const ids = useId();
 
+  // The source list is a sheet over the page (drawn into the body): it sits beside either look's
+  // page, so switching look while it is open keeps its list, its filter and its place.
+  const sheet = sources ? <Sources meta={meta} video={sources} onClose={() => setSources(null)} /> : null;
+
   if (lookOf(appearance) === "haze") {
     return (
-      <HazeDetails
-        meta={meta} topic={state} seasons={seasons} season={season} setSeason={setSeason} episodes={episodes}
-        target={target} nextAir={nextAir} similar={similar} stats={stats} onMark={toggleWatched} onMarkSeason={markSeason}
-        play={play} openSources={setSources} saved={saved} heroRef={heroRef}
-      >
-        {sources ? <Sources meta={meta} video={sources} onClose={() => setSources(null)} /> : null}
-      </HazeDetails>
+      <>
+        <HazeDetails
+          meta={meta} topic={state} seasons={seasons} season={season} setSeason={setSeason} episodes={episodes}
+          target={target} nextAir={nextAir} similar={similar} stats={stats} onMark={toggleWatched} onMarkSeason={markSeason}
+          play={play} openSources={setSources} saved={saved} heroRef={heroRef}
+        />
+        {sheet}
+      </>
     );
   }
 
@@ -387,6 +392,7 @@ const TitlePage = memo(function TitlePage({ state, params }) {
   const seasonDone = current.aired > 0 && current.watched >= current.aired;
 
   return (
+    <>
     <main className="screen details">
       <section className="details-hero" ref={heroRef}>
         <span className="details-kicker" data-rise>{[meta.type === "series" ? "Series" : "Film", ...(meta.genres?.slice(0, 3) || [])].join(" · ")}</span>
@@ -506,14 +512,8 @@ const TitlePage = memo(function TitlePage({ state, params }) {
         ))}
       </section>
       <div className="screen-end" />
-
-      {sources ? (
-        <Sources
-          meta={meta}
-          video={sources}
-          onClose={() => setSources(null)}
-        />
-      ) : null}
     </main>
+    {sheet}
+    </>
   );
 });
