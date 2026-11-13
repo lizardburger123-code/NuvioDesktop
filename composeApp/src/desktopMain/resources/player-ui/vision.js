@@ -199,14 +199,22 @@
     return { refresh: refreshGoal };
   };
 
-  // Seek: hover preview bubble that follows the pointer, and live time while dragging.
+  // Seek: hover preview bubble that follows the pointer, and live time while dragging. Over a file
+  // with named chapters it also names the chapter under the pointer.
+  const bubbleTime = document.getElementById("scrubBubbleTime");
+  const bubbleChapter = document.getElementById("scrubBubbleChapter");
   let hoverFraction = null;
   const placeBubble = fraction => {
-    if (!bubble || !scrubWrap) return;
+    if (!bubble || !scrubWrap || !bubbleTime || !bubbleChapter) return;
+    const seconds = fraction * durationSec;
+    const time = durationSec > 0 ? formatTime(seconds) : "--:--";
+    const chapter = durationSec > 0 && typeof window.playerChapterTitleAt === "function" ? window.playerChapterTitleAt(seconds) : "";
+    if (bubbleTime.textContent !== time) bubbleTime.textContent = time;
+    if (bubbleChapter.textContent !== chapter) bubbleChapter.textContent = chapter;
+    if (bubbleChapter.hidden !== !chapter) bubbleChapter.hidden = !chapter;
     const width = scrubWrap.clientWidth;
     const half = (bubble.offsetWidth || 48) / 2;
     const x = clamp(fraction * width, half, Math.max(half, width - half));
-    bubble.textContent = durationSec > 0 ? formatTime(fraction * durationSec) : "--:--";
     bubble.style.left = `${x.toFixed(1)}px`;
   };
   const bubbleVisible = visible => {

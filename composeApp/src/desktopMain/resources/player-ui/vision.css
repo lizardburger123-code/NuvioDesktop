@@ -203,12 +203,18 @@ body {
   margin-top: 0;
 }
 
+/* The ring goes round the input, not the track: the track is masked where chapters start, and a
+   mask would cut a shadow ring away. */
 .scrub:focus-visible {
-  outline: none;
+  outline: 2px solid var(--theme-focus);
+  outline-offset: 2px;
+  border-radius: 999px;
 }
 
-.scrub:focus-visible::-webkit-slider-runnable-track {
-  box-shadow: 0 0 0 2px var(--theme-focus);
+/* Chapter starts: gaps cut through the bar (controls.js builds the mask from the chapter times). */
+.scrub::-webkit-slider-runnable-track {
+  -webkit-mask-image: var(--chapter-mask, none);
+  mask-image: var(--chapter-mask, none);
 }
 
 .scrub-bubble {
@@ -229,6 +235,21 @@ body {
   pointer-events: none;
   transform: translateX(-50%) translateY(4px) scale(.92);
   transform-origin: 50% 100%;
+}
+
+.scrub-bubble {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.scrub-bubble-chapter {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--v-ink-2);
+  font-size: 12px;
 }
 
 .time-row,
@@ -1459,3 +1480,8 @@ button.action:focus-visible,
   opacity: 0;
   pointer-events: none;
 }
+
+/* ---- Chapters list ------------------------------------------------------------------------- */
+.chapter-row .track-label { flex: 1 1 auto; min-width: 0; }
+.chapter-time { flex: none; font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--v-ink-2); }
+.track-row.selected .chapter-time { color: rgba(10, 11, 13, .66); }

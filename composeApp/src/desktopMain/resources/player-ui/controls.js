@@ -839,6 +839,151 @@ const setProgress = (positionMs, durationMs, bufferedPositionMs) => {
   }
 };
 
+// ---- Chapters ----------------------------------------------------------------------------------
+// The file's chapters (state.chapters: titles and start times in seconds) cut small gaps into the
+// seek bar, name the part under the pointer, and can be jumped between with Page Up / Page Down.
+// With two or more named chapters there is also a list (the Chapters button, or C). With none,
+// nothing of this shows.
+const chaptersModal = document.getElementById("chaptersModal");
+const chapterList = document.getElementById("chapterList");
+const chaptersButton = document.getElementById("chaptersButton");
+let chapterSource = null;
+let chapterCache = [];
+let chapterMarksKey = "";
+let chapterListKey = "";
+let shownChapterIndex = -2;
+
+const playerChapters = () => {
+  if (state.chapters === chapterSource) return chapterCache;
+  chapterSource = state.chapters;
+  chapterCache = (Array.isArray(state.chapters) ? state.chapters : [])
+    .map(chapter => ({ title: String(chapter && chapter.title || "").trim(), time: Number(chapter && chapter.time) }))
+    .filter(chapter => Number.isFinite(chapter.time) && chapter.time >= 0)
+    .sort((a, b) => a.time - b.time);
+  return chapterCache;
+};
+
+const chapterIndexAt = seconds => {
+  const chapters = playerChapters();
+  let found = -1;
+  for (let index = 0; index < chapters.length && chapters[index].time <= seconds + 0.001; index += 1) found = index;
+  return found;
+};
+
+const chapterLabel = index => playerChapters()[index].title || `Chapter ${index + 1}`;
+const hasChapterList = () => playerChapters().filter(chapter => chapter.title).length >= 2;
+const currentPositionSeconds = () => (isScrubbing ? scrubPositionMs : Math.max(0, Number(state.positionMs) || 0)) / 1000;
+
+// For the time bubble in vision.js: the named chapter at a time, or "".
+window.playerChapterTitleAt = seconds => {
+  const index = chapterIndexAt(seconds);
+  return index >= 0 ? playerChapters()[index].title : "";
+};
+
+const syncChapterMarks = () => {
+  const durationSec = Math.max(0, Number(state.durationMs) || 0) / 1000;
+  const points = durationSec > 0
+    ? playerChapters().map(chapter => chapter.time / durationSec * 100).filter(point => point > 0.2 && point < 99.8)
+    : [];
+  const key = points.map(point => point.toFixed(3)).join(",");
+  if (key === chapterMarksKey) return;
+  chapterMarksKey = key;
+  if (!points.length) {
+    seek.style.removeProperty("--chapter-mask");
+    return;
+  }
+  // Each chapter start is a 3px gap through the bar (a mask, so it follows the bar's thickness).
+  const stops = [];
+  let from = "0px";
+  points.forEach(point => {
+    stops.push(`#000 ${from} calc(${point.toFixed(3)}% - 1.5px)`, `transparent calc(${point.toFixed(3)}% - 1.5px) calc(${point.toFixed(3)}% + 1.5px)`);
+    from = `calc(${point.toFixed(3)}% + 1.5px)`;
+  });
+  stops.push(`#000 ${from} 100%`);
+  seek.style.setProperty("--chapter-mask", `linear-gradient(90deg, ${stops.join(", ")})`);
+};
+
+const seekToMs = positionMs => {
+  const durationMs = Math.max(0, Number(state.durationMs) || 0);
+  const target = Math.max(0, durationMs > 0 ? Math.min(durationMs, positionMs) : positionMs);
+  state.positionMs = target;
+  setProgress(target, durationMs, Math.max(0, Number(state.bufferedPositionMs) || 0));
+  // The same pair of messages a click on the seek bar sends.
+  send("scrubChange", target);
+  send("scrubFinish", target);
+};
+
+const jumpChapter = direction => {
+  const chapters = playerChapters();
+  if (!chapters.length) return;
+  const position = currentPositionSeconds();
+  const current = chapterIndexAt(position);
+  let target;
+  if (direction > 0) {
+    target = chapters.findIndex(chapter => chapter.time > position + 0.5);
+    if (target < 0) {
+      showPlayerToast("No next chapter");
+      return;
+    }
+  } else {
+    // Like mpv: more than five seconds into a chapter, back goes to its start first.
+    target = current >= 0 && position - chapters[current].time > 5 ? current : current - 1;
+  }
+  seekToMs(target >= 0 ? Math.round(chapters[target].time * 1000) : 0);
+  showPlayerToast(target >= 0 ? chapterLabel(target) : "Back to the start");
+  syncCurrentChapterRow();
+};
+
+const syncCurrentChapterRow = () => {
+  if (activeModal !== "chapters") return;
+  const index = chapterIndexAt(currentPositionSeconds());
+  if (index === shownChapterIndex) return;
+  shownChapterIndex = index;
+  Array.from(chapterList.children).forEach(row => {
+    const current = Number(row.dataset.index) === index;
+    row.classList.toggle("selected", current);
+    if (current) row.setAttribute("aria-current", "true");
+    else row.removeAttribute("aria-current");
+  });
+};
+
+const renderChaptersModal = () => {
+  const chapters = playerChapters();
+  const key = JSON.stringify(chapters);
+  if (key !== chapterListKey) {
+    chapterListKey = key;
+    shownChapterIndex = -2;
+    chapterList.textContent = "";
+    chapters.forEach((chapter, index) => {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "track-row chapter-row";
+      row.dataset.index = String(index);
+      const label = document.createElement("span");
+      label.className = "track-label";
+      label.textContent = chapterLabel(index);
+      const time = document.createElement("span");
+      time.className = "chapter-time";
+      time.textContent = formatTime(chapter.time * 1000);
+      row.append(label, time, buildCheckIcon());
+      chapterList.appendChild(row);
+    });
+    if (!chapters.length) appendEmptyTrackState(chapterList, "This video has no chapters");
+  }
+  syncCurrentChapterRow();
+};
+
+chapterList.addEventListener("click", event => {
+  const row = event.target.closest(".chapter-row");
+  if (!row) return;
+  event.stopPropagation();
+  const chapter = playerChapters()[Number(row.dataset.index)];
+  if (!chapter) return;
+  seekToMs(Math.round(chapter.time * 1000));
+  syncCurrentChapterRow();
+  window.setTimeout(closePlayerModal, 120);
+});
+
 const setText = (element, text) => {
   setTextIfChanged(element, text || "");
   if (element.hidden !== !text) element.hidden = !text;
@@ -1005,6 +1150,7 @@ const modalByName = {
   submitIntro: submitIntroModal,
   p2pConsent: p2pConsentModal,
   party: partyModal,
+  chapters: chaptersModal,
 };
 const modalElements = Object.values(modalByName);
 const modalCloseTimers = new Map();
@@ -2621,6 +2767,7 @@ const renderActiveModal = (modalOpened = false) => {
   if (activeModal === "submitIntro") renderSubmitIntroModal();
   if (activeModal === "p2pConsent") renderP2pConsentModal();
   if (activeModal === "party") renderPartyModal();
+  if (activeModal === "chapters") renderChaptersModal();
 };
 
 window.nuvioNativeViewportChanged = () => {
@@ -2995,6 +3142,8 @@ const renderChrome = () => {
   setVisible(videoSettingsButton, Boolean(state.showVideoSettings));
   setVisible(sourcesButton, Boolean(state.showSources));
   setVisible(episodesButton, Boolean(state.showEpisodes));
+  setVisible(chaptersButton, hasChapterList());
+  syncChapterMarks();
   syncActionFocusState();
 
   const playPauseLabel = isPlaying ? state.pauseLabel : state.playLabel;
@@ -3560,6 +3709,10 @@ document.querySelectorAll("[data-command]").forEach(button => {
       openPlayerModal("submitIntro");
       return;
     }
+    if (command === "chapters") {
+      openPlayerModal("chapters");
+      return;
+    }
     if (command === "toggleFullscreen") {
       togglePlayerFullscreen();
       return;
@@ -3933,6 +4086,7 @@ window.playerUpdate = update => {
   };
   if (onlyTimeMoved) {
     if (!isScrubbing) setProgress(positionMs, durationMs, bufferedPositionMs);
+    syncCurrentChapterRow();
     return;
   }
   if (!appliedRememberedVolume) {
@@ -4443,6 +4597,7 @@ document.addEventListener("keydown", event => {
   }
 
   if (activeModal === "sources" && handleSourceListKey(event)) return;
+  if (activeModal === "chapters" && moveListFocus(chapterList, event)) return;
   if (activeModal === "episodes" && moveListFocus(state.episodeStreamsVisible ? episodeStreamList : episodeList, event)) return;
 
   if ((activeModal === "episodes" || activeModal === "sources") && (event.code === "ArrowLeft" || event.code === "ArrowRight")) {
@@ -4578,6 +4733,12 @@ document.addEventListener("keydown", event => {
     }
     return;
   }
+  if (event.code === "KeyC" && (activeModal === "chapters" || hasChapterList())) {
+    event.preventDefault();
+    if (activeModal === "chapters") closePlayerModal(true);
+    else openPlayerModal("chapters");
+    return;
+  }
   if (event.code === "KeyQ") {
     event.preventDefault();
     if (activeModal === "sources") {
@@ -4594,6 +4755,12 @@ document.addEventListener("keydown", event => {
     return;
   }
 
+  if ((event.code === "PageUp" || event.code === "PageDown") && playerChapters().length) {
+    event.preventDefault();
+    noteChromeActivity();
+    jumpChapter(event.code === "PageDown" ? 1 : -1);
+    return;
+  }
   if (event.code === "Enter" && state.skipPromptVisible) {
     const activeEl = document.activeElement;
     if (!activeEl || activeEl.tagName === "BODY" || activeEl === root) {
