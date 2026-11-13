@@ -423,6 +423,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
         sourceIsLoading = sourceStreamsState.isAnyLoading,
         sourceFilters = sourceFilters,
         sourceItems = sourceItems,
+        chapters = fileChapters,
         episodeItems = episodeItems,
         episodeSeasons = episodeSeasons,
         episodeStreamsVisible = episodeStreamsPanelState.showStreams,

@@ -11,6 +11,7 @@ import com.nuvio.app.features.addons.AddonRepository
 import com.nuvio.app.features.addons.enabledAddons
 import com.nuvio.app.features.autosync.AutoSyncPreferencesRepository
 import com.nuvio.app.features.details.MetaDetailsRepository
+import com.nuvio.app.features.details.MetaVideo
 import com.nuvio.app.features.home.HomeRepository
 import com.nuvio.app.features.library.LibraryRepository
 import com.nuvio.app.features.player.PlayerSettingsRepository
@@ -26,6 +27,8 @@ import com.nuvio.app.features.streams.StreamsRepository
 import com.nuvio.app.features.mdblist.MdbListSettingsRepository
 import com.nuvio.app.features.watched.WatchedItem
 import com.nuvio.app.features.watched.WatchedRepository
+import com.nuvio.app.features.watched.episodePlaybackId
+import com.nuvio.app.features.watching.application.WatchingActions
 import com.nuvio.app.features.watchprogress.WatchProgressUiState
 import com.nuvio.app.features.watchprogress.WatchProgressEntry
 import com.nuvio.app.features.watched.WatchedUiState
@@ -280,6 +283,9 @@ internal class ShellRpc(private val host: ShellHost) {
             ShellTrophyStore.restore(item.type, item.id)
             JsonPrimitive(WatchedRepository.isWatched(item.id, item.type))
         }
+        // One episode, or a season's worth, marked watched or not from the title page.
+        "watched.episode" -> markEpisodes(params, wholeList = false)
+        "watched.season" -> markEpisodes(params, wholeList = true)
         // The trophy pop-up: shown inside the player when one is open, else the app shows it.
         "player.trophy" -> JsonPrimitive(
             com.nuvio.app.features.player.desktop.DesktopTrophyPop.post((params["cards"] as? JsonArray ?: JsonArray(emptyList())).toString()),
@@ -575,6 +581,57 @@ internal class ShellRpc(private val host: ShellHost) {
     }
 
     // ---- Details ---------------------------------------------------------------------------
+
+    /**
+     * Marks episodes of the open title watched or unwatched the way the classic episode sheet
+     * does: a watched mark and a finished playback both count as watched, so both are set or
+     * cleared together. The details topic follows by itself (it listens to both stores).
+     */
+    private fun markEpisodes(params: JsonObject, wholeList: Boolean): JsonElement {
+        val id = params.string("id") ?: error("Missing title.")
+        val meta = MetaDetailsRepository.uiState.value.meta?.takeIf { it.id == id || detailsKey?.second == id }
+            ?: error("Open the title's page first.")
+
+        fun find(entry: JsonObject): MetaVideo? {
+            val videoId = entry.string("videoId")
+            val season = entry.int("season")
+            val episode = entry.int("episode")
+            return meta.videos.firstOrNull { videoId != null && it.id == videoId }
+                ?: meta.videos.firstOrNull { season != null && episode != null && it.season == season && it.episode == episode }
+        }
+
+        fun isWatched(video: MetaVideo): Boolean =
+            WatchedRepository.isWatched(meta.id, meta.type, video.season, video.episode) ||
+                WatchProgressRepository.progressForVideo(
+                    videoId = meta.episodePlaybackId(video),
+                    parentMetaId = meta.id,
+                    seasonNumber = video.season,
+                    episodeNumber = video.episode,
+                )?.isCompleted == true
+
+        if (!wholeList) {
+            val video = find(params) ?: error("That episode isn't part of this title.")
+            val now = isWatched(video)
+            val on = params.bool("on") ?: !now
+            if (on != now) WatchingActions.toggleEpisodeWatched(meta = meta, episode = video, isCurrentlyWatched = now)
+            return JsonPrimitive(on)
+        }
+
+        val on = params.bool("on") ?: true
+        val season = params.int("season")
+        val listed = (params["episodes"] as? JsonArray)
+            ?.mapNotNull { entry -> (entry as? JsonObject)?.let { find(it) } }
+            .orEmpty()
+        val episodes = listed.ifEmpty { meta.videos.filter { season != null && it.season == season } }
+            .filter { it.episode != null }
+            // Marking a season watched leaves alone what hasn't aired yet.
+            .filter { !on || it.available }
+            .filter { isWatched(it) != on }
+        if (episodes.isNotEmpty()) {
+            WatchingActions.toggleSeasonWatched(meta = meta, episodes = episodes, areCurrentlyWatched = !on)
+        }
+        return JsonPrimitive(on)
+    }
 
     private fun loadDetails(params: JsonObject): JsonElement {
         val type = params.string("type") ?: error("Missing type.")

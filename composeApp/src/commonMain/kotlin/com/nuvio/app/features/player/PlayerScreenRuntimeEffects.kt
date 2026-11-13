@@ -588,23 +588,21 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
 
     // The playing file's own chapters: read once it is loaded, again for every new file.
     val chaptersReady = playbackSnapshot.durationMs > 0L && initialLoadCompleted
-    LaunchedEffect(
-        playerController,
-        playerControllerSourceUrl,
-        activeSourceUrl,
-        chaptersReady,
-        contentType,
-        parentMetaType,
-        playerSettingsUiState.skipIntroEnabled,
-    ) {
-        fileChapterIntervals = emptyList()
+    LaunchedEffect(playerController, playerControllerSourceUrl, activeSourceUrl, chaptersReady) {
+        fileChapters = emptyList()
         val controller = playerController ?: return@LaunchedEffect
-        if (!chaptersReady || !playerSettingsUiState.skipIntroEnabled) return@LaunchedEffect
-        if (playerControllerSourceUrl != activeSourceUrl) return@LaunchedEffect
-        // Films use chapters for scenes, not for theme songs.
-        if ((contentType ?: parentMetaType).equals("movie", ignoreCase = true)) return@LaunchedEffect
-        val chapters = runCatching { controller.getChapters() }.getOrDefault(emptyList())
-        fileChapterIntervals = chapterSkipIntervals(chapters, playbackSnapshot.durationMs / 1000.0)
+        if (!chaptersReady || playerControllerSourceUrl != activeSourceUrl) return@LaunchedEffect
+        fileChapters = runCatching { controller.getChapters() }.getOrDefault(emptyList())
+    }
+
+    // Films use chapters for scenes, not for theme songs, so only episodes get skip segments.
+    LaunchedEffect(fileChapters, contentType, parentMetaType, playerSettingsUiState.skipIntroEnabled, playbackSnapshot.durationMs) {
+        val film = (contentType ?: parentMetaType).equals("movie", ignoreCase = true)
+        fileChapterIntervals = if (film || !playerSettingsUiState.skipIntroEnabled) {
+            emptyList()
+        } else {
+            chapterSkipIntervals(fileChapters, playbackSnapshot.durationMs / 1000.0)
+        }
     }
 
     LaunchedEffect(onlineSkipIntervals, fileChapterIntervals) {

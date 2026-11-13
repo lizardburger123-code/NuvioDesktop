@@ -230,6 +230,8 @@ internal class PlayerScreenRuntime(
     var onlineSkipIntervals by mutableStateOf<List<SkipInterval>>(emptyList())
     /** Opening, ending and recap as the playing file's own chapters mark them. */
     var fileChapterIntervals by mutableStateOf<List<SkipInterval>>(emptyList())
+    /** The playing file's chapters as written in it. */
+    var fileChapters by mutableStateOf<List<PlayerChapter>>(emptyList())
     val autoSkippedIntervals = mutableSetOf<SkipInterval>()
     var lastManualSkipSeekPositions by mutableStateOf<Pair<Long, Long>?>(null)
     var activeSkipInterval by mutableStateOf<SkipInterval?>(null)

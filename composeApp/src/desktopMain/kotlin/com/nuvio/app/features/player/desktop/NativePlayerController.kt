@@ -2194,6 +2194,14 @@ private fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageRea
         append(',')
         appendJsonArrayField("sourceItems", sourceItems) { appendSourceItemJson(it) }
         append(',')
+        appendJsonArrayField("chapters", chapters.filter { it.startSec.isFinite() && it.startSec >= 0.0 }) { chapter ->
+            append('{')
+            appendJsonField("title", chapter.title)
+            append(',')
+            append("\"time\":").append(chapter.startSec)
+            append('}')
+        }
+        append(',')
         appendJsonArrayField("episodeItems", episodeItems) { appendEpisodeItemJson(it) }
         append(',')
         appendJsonArrayField("episodeSeasons", episodeSeasons) { appendSeasonItemJson(it) }

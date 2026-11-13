@@ -246,6 +246,8 @@ data class PlayerControlsState(
     val sourceIsLoading: Boolean = false,
     val sourceFilters: List<PlayerControlFilterItem> = emptyList(),
     val sourceItems: List<PlayerControlSourceItem> = emptyList(),
+    /** The playing file's chapters, for marks on the seek bar. */
+    val chapters: List<PlayerChapter> = emptyList(),
     val episodeItems: List<PlayerControlEpisodeItem> = emptyList(),
     val episodeSeasons: List<PlayerControlSeasonItem> = emptyList(),
     val episodeStreamsVisible: Boolean = false,
