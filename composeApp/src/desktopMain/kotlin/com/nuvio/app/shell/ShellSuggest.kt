@@ -1,8 +1,7 @@
 package com.nuvio.app.shell
 
 import co.touchlab.kermit.Logger
-import com.nuvio.app.features.addons.httpGetText
-import com.nuvio.app.features.addons.httpGetTextWithHeaders
+import com.nuvio.app.core.network.DesktopIPv4FirstDns
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -17,10 +16,30 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import java.net.URLEncoder
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 private val suggestJson = Json { ignoreUnknownKeys = true; isLenient = true }
+private val suggestHttp by lazy {
+    OkHttpClient.Builder().dns(DesktopIPv4FirstDns()).connectTimeout(10, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
+}
+
+/**
+ * A GET that gives up after [seconds] in all. A coroutine timeout can't stop a blocking call: a
+ * slow Wikidata used to keep the person page waiting a minute, then throw the answer away.
+ */
+private fun suggestGet(url: String, seconds: Long, headers: Map<String, String> = emptyMap()): String {
+    val request = Request.Builder().url(url).apply { headers.forEach { (name, value) -> header(name, value) } }.get().build()
+    val client = suggestHttp.newBuilder().callTimeout(seconds, TimeUnit.SECONDS).build()
+    return client.newCall(request).execute().use { response ->
+        if (!response.isSuccessful) error("HTTP ${response.code}")
+        response.body?.string().orEmpty()
+    }
+}
+
 private fun JsonObject.text(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull
 private fun JsonObject.texts(key: String): List<String> =
     (this[key] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }.orEmpty()
@@ -69,7 +88,7 @@ internal object ShellSimilar {
                         withTimeoutOrNull(9_000) {
                             runCatching {
                                 val url = "$Cinemeta/catalog/$kind/top/genre=${URLEncoder.encode(genre, "UTF-8").replace("+", "%20")}.json"
-                                ((suggestJson.parseToJsonElement(httpGetText(url)) as? JsonObject)?.get("metas") as? JsonArray).orEmpty()
+                                ((suggestJson.parseToJsonElement(suggestGet(url, 9)) as? JsonObject)?.get("metas") as? JsonArray).orEmpty()
                             }.onFailure { log.d { "No $genre list: ${it.message}" } }.getOrNull()
                         }.orEmpty()
                     }
@@ -140,12 +159,12 @@ internal object ShellPeople {
         """.trimIndent()
         val url = "https://query.wikidata.org/sparql?format=json&query=" + URLEncoder.encode(query, "UTF-8")
         val text = withContext(Dispatchers.IO) {
-            withTimeoutOrNull(20_000) {
-                httpGetTextWithHeaders(url, mapOf(
+            runCatching {
+                suggestGet(url, 20, mapOf(
                     "Accept" to "application/sparql-results+json",
                     "User-Agent" to "NuvioDesktopFork/1.0 (cast lookup)",
                 ))
-            }
+            }.onFailure { log.d { "Wikidata didn't answer: ${it.message}" } }.getOrNull()
         } ?: error("Couldn't reach the film database. Try again in a moment.")
         val rows = ((suggestJson.parseToJsonElement(text) as? JsonObject)?.get("results") as? JsonObject)?.get("bindings") as? JsonArray
             ?: JsonArray(emptyList())
