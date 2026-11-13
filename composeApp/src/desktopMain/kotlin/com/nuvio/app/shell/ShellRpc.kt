@@ -597,7 +597,8 @@ internal class ShellRpc(private val host: ShellHost) {
                 state.errorMessage?.let { put("error", it) }
             }
         }
-        SearchRepository.search(query, AddonRepository.uiState.value.addons)
+        // force (Try again): ask the addons afresh instead of reusing the answer to the same words.
+        SearchRepository.search(query, AddonRepository.uiState.value.addons, forceRefresh = params.bool("force") == true)
         return JsonPrimitive(true)
     }
 
