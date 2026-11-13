@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   LuArrowLeft, LuBookmark, LuBookmarkCheck, LuCheck, LuCheckCheck, LuClapperboard, LuListVideo, LuPlay, LuRotateCcw, LuRotateCw, LuSearch, LuTrophy,
 } from "react-icons/lu";
@@ -15,7 +15,7 @@ import TitleMark from "../components/TitleMark.jsx";
 import Ratings from "../components/Ratings.jsx";
 import Person from "../components/Person.jsx";
 import { useSimilar } from "../lib/similar.js";
-import HazeDetails, { Description, NextEpisode, RangePicker, airDate, airDay, asVideo, rangeOf, rangesOf, sameEpisode, seasonName } from "../haze/Details.jsx";
+import HazeDetails, { Description, NextEpisode, RangePicker, onTabKeys, airDate, airDay, asVideo, rangeOf, rangesOf, sameEpisode, seasonName } from "../haze/Details.jsx";
 import { lookOf } from "../lib/look.js";
 import { episodeCode, minutesLeft, year } from "../lib/format.js";
 import "./Details.css";
@@ -362,6 +362,7 @@ const TitlePage = memo(function TitlePage({ state, params }) {
   }, [markEpisodes, toast]);
 
   const saved = laterIds.has(key);
+  const ids = useId();
 
   if (lookOf(appearance) === "haze") {
     return (
@@ -431,12 +432,12 @@ const TitlePage = memo(function TitlePage({ state, params }) {
 
       {seasons.length ? (
         <section className="details-episodes">
-          <div className="tabs details-seasons" role="tablist" aria-label="Seasons">
+          <div className="tabs details-seasons" role="tablist" aria-label="Seasons" onKeyDown={onTabKeys}>
             {seasons.map(s => {
               const st = stats.get(s);
               const done = st && st.aired > 0 && st.watched >= st.aired;
               return (
-                <button key={s} role="tab" aria-selected={s === season} onClick={() => setSeason(s)}>
+                <button key={s} id={`${ids}-season-${s}`} role="tab" aria-selected={s === season} aria-controls={`${ids}-episodes`} tabIndex={s === season ? 0 : -1} onClick={() => setSeason(s)}>
                   {seasonName(s)}
                   {done ? <LuCheck className="details-season-done" aria-hidden="true" /> : st?.watched ? <span className="tabs-count num" aria-hidden="true">{st.watched}/{st.aired}</span> : null}
                   {st?.watched ? <span className="sr-only">{done ? ", watched" : `, ${st.watched} of ${st.aired} watched`}</span> : null}
@@ -444,19 +445,21 @@ const TitlePage = memo(function TitlePage({ state, params }) {
               );
             })}
           </div>
-          {ranges ? <RangePicker ranges={ranges} value={rangeIndex} onChange={setRange} className="details-ranges" /> : null}
-          <Row
-            title="Episodes"
-            subtitle={`${seasonName(season)} · ${episodes.length} ${episodes.length === 1 ? "episode" : "episodes"}${current.total > current.aired ? ` · ${current.total - current.aired} to come` : ""}${current.watched ? ` · ${seasonDone ? "all watched" : `${current.watched} watched`}` : ""}`}
-            key={`${season}:${rangeIndex}`}
-            action={current.aired ? (
-              <button className="btn btn-sm btn-line details-season-mark" onClick={() => markSeason(season, !seasonDone)} aria-label={`Mark all of ${seasonName(season)} as ${seasonDone ? "unwatched" : "watched"}`}>
-                {seasonDone ? <LuRotateCcw /> : <LuCheckCheck />} {seasonDone ? "Mark season unwatched" : "Mark season watched"}
-              </button>
-            ) : null}
-          >
-            {rowEpisodes.map(video => <EpisodeCard key={video.id} video={video} fallback={meta.background} onPlay={play} onMark={toggleWatched} />)}
-          </Row>
+          <div role="tabpanel" id={`${ids}-episodes`} aria-labelledby={`${ids}-season-${season}`}>
+            {ranges ? <RangePicker ranges={ranges} value={rangeIndex} onChange={setRange} className="details-ranges" /> : null}
+            <Row
+              title="Episodes"
+              subtitle={`${seasonName(season)} · ${episodes.length} ${episodes.length === 1 ? "episode" : "episodes"}${current.total > current.aired ? ` · ${current.total - current.aired} to come` : ""}${current.watched ? ` · ${seasonDone ? "all watched" : `${current.watched} watched`}` : ""}`}
+              key={`${season}:${rangeIndex}`}
+              action={current.aired ? (
+                <button className="btn btn-sm btn-line details-season-mark" onClick={() => markSeason(season, !seasonDone)} aria-label={`Mark all of ${seasonName(season)} as ${seasonDone ? "unwatched" : "watched"}`}>
+                  {seasonDone ? <LuRotateCcw /> : <LuCheckCheck />} {seasonDone ? "Mark season unwatched" : "Mark season watched"}
+                </button>
+              ) : null}
+            >
+              {rowEpisodes.map(video => <EpisodeCard key={video.id} video={video} fallback={meta.background} onPlay={play} onMark={toggleWatched} />)}
+            </Row>
+          </div>
         </section>
       ) : null}
 
