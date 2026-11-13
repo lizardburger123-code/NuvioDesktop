@@ -1552,3 +1552,10 @@ button.action:focus-visible,
   white-space: nowrap;
 }
 .shortcut-or { font-size: 13px; color: var(--v-ink-3); }
+
+/* Volume and seek toasts change their number in place: keep the digits from shifting. */
+.player-toast-text { font-variant-numeric: tabular-nums; }
+
+/* controls.css gives every row its own compositing layer (translateZ + will-change); a long episode
+   or source list made one layer per row. Rows press with an ordinary transform transition. */
+.track-row { transform: none; will-change: auto; }

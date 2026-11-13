@@ -501,11 +501,13 @@ const send = (type, value = 0) => {
 const syncFullscreenButtons = () => {
   const isFullscreen = Boolean(state.isFullscreen);
   const icon = isFullscreen ? "#icon-fullscreen-exit" : "#icon-fullscreen";
-  const label = isFullscreen ? "Exit fullscreen" : "Enter fullscreen";
+  const label = isFullscreen ? "Leave full screen (F)" : "Full screen (F)";
   setAttributeIfChanged(fullscreenIcon, "href", icon);
   setAttributeIfChanged(openingFullscreenIcon, "href", icon);
-  setAttributeIfChanged(fullscreenButton, "aria-label", label);
-  setAttributeIfChanged(openingFullscreenButton, "aria-label", label);
+  [fullscreenButton, openingFullscreenButton].forEach(button => {
+    setAttributeIfChanged(button, "aria-label", label);
+    setAttributeIfChanged(button, "title", label);
+  });
 };
 
 const togglePlayerFullscreen = (fromEscape = false) => {
@@ -568,6 +570,11 @@ const volumeToastLabel = (fallbackDelta = 0) => {
   return "";
 };
 
+const showVolumeToast = (delta = 0) => {
+  const muted = !(Number(state.volumeLevel) > 0);
+  showPlayerToast(volumeToastLabel(delta), { icon: muted ? "icon-volume-muted" : "icon-volume" });
+};
+
 const syncVolumeControl = () => {
   if (!volumeControl || !volumeSlider || !volumeIcon) return;
   const volumeLevel = state.volumeLevel;
@@ -585,7 +592,7 @@ const syncVolumeControl = () => {
   volumeSlider.setAttribute("title", label);
   volumeIcon.setAttribute("href", percent === 0 ? "#icon-volume-muted" : "#icon-volume");
   if (volumeButton) {
-    const btnLabel = percent === 0 ? "Unmute" : "Mute";
+    const btnLabel = percent === 0 ? "Unmute (M)" : "Mute (M)";
     volumeButton.setAttribute("aria-label", btnLabel);
     volumeButton.setAttribute("title", btnLabel);
   }
@@ -3259,12 +3266,13 @@ const renderChrome = () => {
   setTextIfChanged(audioLabel, state.audioLabel || "Audio");
   setTextIfChanged(sourcesLabel, state.sourcesLabel || "Sources");
   setTextIfChanged(episodesLabel, state.episodesLabel || "Episodes");
-  setActionButtonLabel("resize", state.resizeModeLabel || "Fit");
-  setActionButtonLabel("speed", state.playbackSpeedLabel || "1x");
-  setActionButtonLabel("subtitles", state.subtitlesLabel || "Subs");
-  setActionButtonLabel("audio", state.audioLabel || "Audio");
-  setActionButtonLabel("sources", state.sourcesLabel || "Sources");
-  setActionButtonLabel("episodes", state.episodesLabel || "Episodes");
+  // The bar shows icons only: names say what each button does (not just "Fit" or "1x") and its key.
+  setActionButtonLabel("resize", `Picture size: ${state.resizeModeLabel || "Fit"}`);
+  setActionButtonLabel("speed", `Playback speed: ${state.playbackSpeedLabel || "1x"} (\`)`);
+  setActionButtonLabel("subtitles", `${state.subtitlesLabel || "Subtitles"} (S)`);
+  setActionButtonLabel("audio", `${state.audioLabel || "Audio"} (A)`);
+  setActionButtonLabel("sources", `${state.sourcesLabel || "Sources"} (Q)`);
+  setActionButtonLabel("episodes", `${state.episodesLabel || "Episodes"} (E)`);
   if (pipButton) {
     const pipLabel = String(state.pipLabel || "").trim();
     setAttributeIfChanged(pipButton, "aria-label", pipLabel);
@@ -3298,6 +3306,7 @@ const renderChrome = () => {
   }
   syncFullscreenButtons();
   setAttributeIfChanged(backButton, "aria-label", state.closeLabel || "Close player");
+  setAttributeIfChanged(backButton, "title", state.closeLabel || "Close player");
   setAttributeIfChanged(submitIntroButton, "aria-label", state.submitIntroLabel || "Submit Intro");
   setAttributeIfChanged(videoSettingsButton, "aria-label", state.videoSettingsLabel || "Video settings");
   setProgress(positionMs, durationMs, bufferedPositionMs);
@@ -3675,7 +3684,7 @@ const sendKeyboardVolume = delta => {
     ? state.volumeLevel
     : 1;
   if (delta > 0 && currentLevel >= standardMaxVolumeLevel) {
-    showPlayerToast(volumeToastLabel(delta));
+    showVolumeToast(delta);
     return;
   }
   const adjustedLevel = currentLevel + (delta * volumeStepLevel);
@@ -3687,7 +3696,7 @@ const sendKeyboardVolume = delta => {
     preMuteVolumeLevel = nextLevel;
   }
   syncVolumeControl();
-  showPlayerToast(volumeToastLabel(delta));
+  showVolumeToast(delta);
   send("volumeChange", nextLevel);
 };
 
@@ -4180,7 +4189,7 @@ volumeSlider.addEventListener("input", event => {
     preMuteVolumeLevel = nextLevel;
   }
   syncVolumeControl();
-  showPlayerToast(volumeToastLabel());
+  showVolumeToast();
   send("volumeChange", nextLevel);
 });
 
