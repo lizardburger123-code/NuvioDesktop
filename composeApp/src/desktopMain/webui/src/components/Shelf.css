@@ -35,8 +35,17 @@
 /* ---- The box --------------------------------------------------------------------------------- */
 .bd-case {
   position: absolute; inset: 0; display: block; padding: 0; border-radius: 0; background: none; z-index: 2;
-  transform-style: preserve-3d; will-change: transform; color: inherit;
+  transform-style: preserve-3d; color: inherit;
 }
+/* A case at rest is only its cover, drawn flat; it becomes a box (spine, edges, its own layer)
+   only while it leans. In 3D every face of every case (and what overlapped them) took a
+   compositor layer: about seven per case, thousands for a big month. */
+.bd-slot.is-moving .bd-case, .bd-stage .bd-case { will-change: transform; }
+.bd-slot:not(.is-moving) .bd-case { transform-style: flat; transform: none; }
+.bd-slot:not(.is-moving) .bd-case > :not(.bd-cover) { display: none; }
+/* 1.006: how much nearer the cover sits in 3D (half the case's depth under the slot's
+   perspective), so nothing jumps when a case starts to lean. */
+.bd-slot:not(.is-moving) .bd-cover { transform: scale(1.006); -webkit-backface-visibility: visible; backface-visibility: visible; }
 .bd-case > span { position: absolute; display: block; }
 .bd-cover, .bd-back {
   inset: 0; border-radius: 4px; overflow: hidden; backface-visibility: hidden; -webkit-backface-visibility: hidden;

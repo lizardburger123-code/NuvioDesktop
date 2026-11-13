@@ -55,6 +55,9 @@ function CaseFaces({ item, full }) {
 function ShelfRow({ items, away, onLift }) {
   const rowRef = useRef(null);
   const bodies = useRef(new Map());
+  // Where each case stands, in page coordinates: read once as the pointer arrives instead of
+  // on every move (a month can hold hundreds of cases).
+  const spots = useRef(null);
 
   const bodyFor = el => {
     let body = bodies.current.get(el);
@@ -64,27 +67,51 @@ function ShelfRow({ items, away, onLift }) {
         el.style.setProperty("--ty", `${x.ty.toFixed(2)}px`);
         el.style.setProperty("--gx", `${(50 - Math.sin((x.ry * Math.PI) / 180) * 70).toFixed(1)}%`);
       }, LEAN);
+      // A box (and a compositor layer) only while it leans; back upright it is a flat picture.
+      body.onRest = () => { if (!body.t.ry && !body.t.ty) el.classList.remove("is-moving"); };
       bodies.current.set(el, body);
     }
     return body;
   };
 
   useEffect(() => () => bodies.current.forEach(stop), []);
+  useEffect(() => { spots.current = null; }, [items]);
 
   const lean = event => {
     if (away || reduceMotion() || event.pointerType === "touch") return;
-    rowRef.current?.querySelectorAll(".bd-slot").forEach(el => {
-      const r = el.getBoundingClientRect();
-      const dx = event.clientX - (r.left + r.width / 2);
-      const dy = event.clientY - (r.top + r.height / 2);
+    if (!spots.current) {
+      spots.current = [...(rowRef.current?.querySelectorAll(".bd-slot") || [])].map(el => {
+        const r = el.getBoundingClientRect();
+        return { el, x: r.left + r.width / 2 + window.scrollX, y: r.top + r.height / 2 + window.scrollY };
+      });
+    }
+    spots.current.forEach(({ el, x, y }) => {
+      const dx = event.pageX - x;
+      const dy = event.pageY - y;
       const row = Math.exp(-(dy * dy) / 26000);
-      const body = bodyFor(el);
-      body.t.ry = Math.max(-1, Math.min(1, dx / 110)) * -17 * Math.exp(-(dx * dx) / 30000) * row;
-      body.t.ty = -12 * Math.exp(-(dx * dx) / 4200) * row;
+      let ry = Math.max(-1, Math.min(1, dx / 110)) * -17 * Math.exp(-(dx * dx) / 30000) * row;
+      let ty = -12 * Math.exp(-(dx * dx) / 4200) * row;
+      if (Math.abs(ry) < 0.05 && Math.abs(ty) < 0.05) { ry = 0; ty = 0; }
+      const known = bodies.current.get(el);
+      // Cases out of reach stay asleep: nothing to move, nothing to draw again.
+      if (!known && !ry && !ty) return;
+      const body = known || bodyFor(el);
+      if (Math.abs(body.t.ry - ry) < 0.02 && Math.abs(body.t.ty - ty) < 0.02) return;
+      body.t.ry = ry;
+      body.t.ty = ty;
+      el.classList.add("is-moving");
       wake(body);
     });
   };
-  const rest = () => bodies.current.forEach(body => { body.t.ry = 0; body.t.ty = 0; wake(body); });
+  const rest = () => {
+    spots.current = null;
+    bodies.current.forEach(body => {
+      if (!body.t.ry && !body.t.ty) return;
+      body.t.ry = 0;
+      body.t.ty = 0;
+      wake(body);
+    });
+  };
 
   useEffect(() => { if (away) rest(); }, [away]);
 
