@@ -438,13 +438,13 @@ const pipUnlockLabel = () => String(state.unlockLabel || "Unlock player controls
 const syncPipLockLabels = () => {
   const lockLabel = isPipLocked ? pipUnlockLabel() : pipLockLabel();
   if (pipLockButton) {
-    pipLockButton.setAttribute("aria-label", lockLabel);
-    pipLockButton.setAttribute("title", lockLabel);
+    setAttributeIfChanged(pipLockButton, "aria-label", lockLabel);
+    setAttributeIfChanged(pipLockButton, "title", lockLabel);
   }
   if (pipLockBadge) {
     const unlockLabel = pipUnlockLabel();
-    pipLockBadge.setAttribute("aria-label", unlockLabel);
-    pipLockBadge.setAttribute("title", unlockLabel);
+    setAttributeIfChanged(pipLockBadge, "aria-label", unlockLabel);
+    setAttributeIfChanged(pipLockBadge, "title", unlockLabel);
   }
 };
 const setPipLocked = locked => {
@@ -502,10 +502,10 @@ const syncFullscreenButtons = () => {
   const isFullscreen = Boolean(state.isFullscreen);
   const icon = isFullscreen ? "#icon-fullscreen-exit" : "#icon-fullscreen";
   const label = isFullscreen ? "Exit fullscreen" : "Enter fullscreen";
-  if (fullscreenIcon) fullscreenIcon.setAttribute("href", icon);
-  if (openingFullscreenIcon) openingFullscreenIcon.setAttribute("href", icon);
-  if (fullscreenButton) fullscreenButton.setAttribute("aria-label", label);
-  if (openingFullscreenButton) openingFullscreenButton.setAttribute("aria-label", label);
+  setAttributeIfChanged(fullscreenIcon, "href", icon);
+  setAttributeIfChanged(openingFullscreenIcon, "href", icon);
+  setAttributeIfChanged(fullscreenButton, "aria-label", label);
+  setAttributeIfChanged(openingFullscreenButton, "aria-label", label);
 };
 
 const togglePlayerFullscreen = (fromEscape = false) => {
@@ -641,8 +641,9 @@ const parentalWarningKey = warnings =>
   warnings.map(warning => `${warning.label}\u0000${warning.severity}`).join("\u0001");
 
 const hideParentalGuide = () => {
-  root.classList.remove("parental-visible", "parental-line-visible");
-  parentalGuide.setAttribute("aria-hidden", "true");
+  root.classList.toggle("parental-visible", false);
+  root.classList.toggle("parental-line-visible", false);
+  setAttributeIfChanged(parentalGuide, "aria-hidden", "true");
   parentalGuideList.querySelectorAll(".parental-guide-row").forEach(row => {
     row.classList.remove("visible");
   });
@@ -805,22 +806,35 @@ const formatTime = milliseconds => {
     : `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 };
 
+let shownProgress = "";
+let shownBufferProgress = "";
+
 const setProgress = (positionMs, durationMs, bufferedPositionMs) => {
   const percent = durationMs > 0 ? Math.max(0, Math.min(100, positionMs / durationMs * 100)) : 0;
-  const bufferPercent = bufferedPositionMs > 0 ?
+  // With no duration yet there is nothing to measure the buffer against (it used to fill the bar).
+  const bufferPercent = durationMs > 0 && bufferedPositionMs > 0 ?
     Math.max(0, Math.min(100, bufferedPositionMs / durationMs * 100)) : 0;
-  seek.value = Math.round(percent * 10);
-  seek.style.setProperty("--progress", `${percent}%`);
-  seek.style.setProperty("--bufferProgress", `${bufferPercent}%`);
-  positionLabel.textContent = formatTime(positionMs);
-  durationLabel.textContent = formatTime(durationMs);
+  const value = String(Math.round(percent * 10));
+  if (seek.value !== value) seek.value = value;
+  const progress = `${percent}%`;
+  if (progress !== shownProgress) {
+    shownProgress = progress;
+    seek.style.setProperty("--progress", progress);
+  }
+  const bufferProgress = `${bufferPercent}%`;
+  if (bufferProgress !== shownBufferProgress) {
+    shownBufferProgress = bufferProgress;
+    seek.style.setProperty("--bufferProgress", bufferProgress);
+  }
+  setTextIfChanged(positionLabel, formatTime(positionMs));
+  setTextIfChanged(durationLabel, formatTime(durationMs));
   if (timeLabel) {
     durationMs = durationMs - (durationMs % 1000);
     if (timeLabelShowRemaining) {
       let remainingTimeMs = durationMs - positionMs + (positionMs % 1000 == 0 ? 0 : 1000);
-      timeLabel.textContent = `-${formatTime(remainingTimeMs)}`;
+      setTextIfChanged(timeLabel, `-${formatTime(remainingTimeMs)}`);
     } else {
-      timeLabel.textContent = `${formatTime(positionMs)} / ${formatTime(durationMs)}`;
+      setTextIfChanged(timeLabel, `${formatTime(positionMs)} / ${formatTime(durationMs)}`);
     }
   }
 };
@@ -866,7 +880,7 @@ const renderPlayerBadges = () => {
 };
 
 const setVisible = (element, visible) => {
-  element.hidden = !visible;
+  if (element.hidden !== !visible) element.hidden = !visible;
 };
 
 const setActionButtonLabel = (command, label) => {
@@ -874,23 +888,22 @@ const setActionButtonLabel = (command, label) => {
   if (!button) return;
   const text = String(label || "").trim();
   if (!text) return;
-  button.setAttribute("aria-label", text);
-  button.setAttribute("title", text);
+  setAttributeIfChanged(button, "aria-label", text);
+  setAttributeIfChanged(button, "title", text);
 };
 
 const setImageVisualState = (element, stateName) => {
   const frame = element.parentElement;
   [element, frame].filter(Boolean).forEach(target => {
-    target.classList.remove("image-loading", "image-loaded", "image-error");
-    if (stateName) target.classList.add(`image-${stateName}`);
+    ["loading", "loaded", "error"].forEach(name => target.classList.toggle(`image-${name}`, name === stateName));
   });
 };
 
 const setImageSource = (element, source) => {
   const url = String(source || "").trim();
   if (!url) {
-    element.removeAttribute("src");
-    element.removeAttribute("data-loaded-src");
+    if (element.hasAttribute("src")) element.removeAttribute("src");
+    if (element.hasAttribute("data-loaded-src")) element.removeAttribute("data-loaded-src");
     setImageVisualState(element, "");
     return "";
   }
@@ -960,18 +973,15 @@ const renderPauseMetadataOverlay = showOpening => {
     !showOpening,
   );
 
-  pauseWatchingLabel.textContent = state.pauseOverlayWatchingLabel || "You're watching";
-  pauseLogo.hidden = !logoUrl;
-  pauseTitle.textContent = titleText;
-  pauseTitle.hidden = Boolean(logoUrl || !titleText);
-  pauseEpisodeInfo.textContent = episodeInfo;
-  pauseEpisodeInfo.hidden = !episodeInfo;
-  pauseEpisodeTitle.textContent = episodeTitleText;
-  pauseEpisodeTitle.hidden = !episodeTitleText;
-  pauseDescription.textContent = descriptionText;
-  pauseDescription.hidden = !descriptionText;
+  setTextIfChanged(pauseWatchingLabel, state.pauseOverlayWatchingLabel || "You're watching");
+  setVisible(pauseLogo, Boolean(logoUrl));
+  setTextIfChanged(pauseTitle, titleText);
+  setVisible(pauseTitle, !(logoUrl || !titleText));
+  setText(pauseEpisodeInfo, episodeInfo);
+  setText(pauseEpisodeTitle, episodeTitleText);
+  setText(pauseDescription, descriptionText);
   pauseMetadataOverlay.classList.toggle("visible", showOverlay);
-  pauseMetadataOverlay.setAttribute("aria-hidden", showOverlay ? "false" : "true");
+  setAttributeIfChanged(pauseMetadataOverlay, "aria-hidden", showOverlay ? "false" : "true");
 };
 
 const normalizedOpeningProgress = () => {
@@ -2661,21 +2671,21 @@ const renderOpeningOverlay = suppress => {
   openingOverlay.classList.toggle("visible", showOpening);
   openingOverlay.classList.toggle("has-artwork", Boolean(artworkUrl));
   openingOverlay.classList.toggle("has-progress", hasProgress);
-  openingOverlay.setAttribute("aria-hidden", showOpening ? "false" : "true");
-  openingBackButton.setAttribute("aria-label", state.closeLabel || "Close player");
+  setAttributeIfChanged(openingOverlay, "aria-hidden", showOpening ? "false" : "true");
+  setAttributeIfChanged(openingBackButton, "aria-label", state.closeLabel || "Close player");
   syncFullscreenButtons();
 
-  openingLogoSlot.hidden = !logoUrl;
+  setVisible(openingLogoSlot, Boolean(logoUrl));
   openingLogoFillClip.style.width = `${(progress || 0) * 100}%`;
 
-  openingTitle.textContent = titleText;
-  openingTitle.hidden = Boolean(logoUrl || !titleText);
-  openingSpinner.hidden = Boolean(logoUrl || titleText);
+  setTextIfChanged(openingTitle, titleText);
+  setVisible(openingTitle, !(logoUrl || !titleText));
+  setVisible(openingSpinner, !(logoUrl || titleText));
   openingLoadingIndicator.setActive(showOpening && !openingSpinner.hidden);
 
-  openingMessage.textContent = messageText;
-  openingStatus.hidden = !(messageText || showHorizontalProgress);
-  openingProgressTrack.hidden = !showHorizontalProgress;
+  setTextIfChanged(openingMessage, messageText);
+  setVisible(openingStatus, Boolean(messageText || showHorizontalProgress));
+  setVisible(openingProgressTrack, showHorizontalProgress);
   openingProgressBar.style.width = `${(progress || 0) * 100}%`;
 
   return showOpening;
@@ -2689,12 +2699,12 @@ const renderPlaybackError = () => {
 
   root.classList.toggle("error-active", showError);
   playbackError.classList.toggle("visible", showError);
-  playbackError.setAttribute("aria-hidden", showError ? "false" : "true");
-  playbackError.setAttribute("aria-label", titleText || "Playback error");
-  playbackErrorTitle.textContent = titleText || "Playback error";
-  playbackErrorMessage.textContent = messageText;
-  playbackErrorActionLabel.textContent = actionText || "Go back";
-  playbackErrorAction.setAttribute("aria-label", actionText || "Go back");
+  setAttributeIfChanged(playbackError, "aria-hidden", showError ? "false" : "true");
+  setAttributeIfChanged(playbackError, "aria-label", titleText || "Playback error");
+  setTextIfChanged(playbackErrorTitle, titleText || "Playback error");
+  setTextIfChanged(playbackErrorMessage, messageText);
+  setTextIfChanged(playbackErrorActionLabel, actionText || "Go back");
+  setAttributeIfChanged(playbackErrorAction, "aria-label", actionText || "Go back");
 
   return showError;
 };
@@ -2771,9 +2781,9 @@ const renderNativePlaybackPrompts = () => {
   const shouldShowSkip = Boolean(state.skipPromptVisible && (!state.skipPromptDismissed || state.controlsVisible));
   const showSkip = Boolean(shouldShowSkip && (!skipPromptAutoHidden || state.controlsVisible));
   const showSkipProgress = Boolean(showSkip && !state.controlsVisible && !skipPromptAutoHidden && !state.skipPromptDismissed);
-  skipPromptLabel.textContent = state.skipPromptLabel || "Skip";
-  skipPrompt.setAttribute("aria-label", state.skipPromptLabel || "Skip");
-  skipPrompt.setAttribute("aria-hidden", showSkip ? "false" : "true");
+  setTextIfChanged(skipPromptLabel, state.skipPromptLabel || "Skip");
+  setAttributeIfChanged(skipPrompt, "aria-label", state.skipPromptLabel || "Skip");
+  setAttributeIfChanged(skipPrompt, "aria-hidden", showSkip ? "false" : "true");
   skipPrompt.classList.toggle("visible", showSkip);
   skipPrompt.classList.toggle("show-progress", showSkipProgress);
   syncSkipPromptPlacement(showSkip);
@@ -2788,12 +2798,11 @@ const renderNativePlaybackPrompts = () => {
   const showNextEpisode = Boolean(state.nextEpisodeVisible);
   const nextThumbUrl = setImageSource(nextEpisodeThumb, state.nextEpisodeThumbnail);
   const blurNextThumb = Boolean(nextThumbUrl) && Boolean(state.nextEpisodeThumbnailBlurred);
-  nextEpisodeHeader.textContent = state.nextEpisodeHeaderLabel || "Next episode";
-  nextEpisodeTitle.textContent = state.nextEpisodeTitle || "";
-  nextEpisodeStatus.textContent = state.nextEpisodeStatus || "";
-  nextEpisodeStatus.hidden = !state.nextEpisodeStatus;
-  nextEpisodeAction.textContent = state.nextEpisodeActionLabel || "Play";
-  nextEpisodeCard.setAttribute("aria-hidden", showNextEpisode ? "false" : "true");
+  setTextIfChanged(nextEpisodeHeader, state.nextEpisodeHeaderLabel || "Next episode");
+  setTextIfChanged(nextEpisodeTitle, state.nextEpisodeTitle || "");
+  setText(nextEpisodeStatus, state.nextEpisodeStatus || "");
+  setTextIfChanged(nextEpisodeAction, state.nextEpisodeActionLabel || "Play");
+  setAttributeIfChanged(nextEpisodeCard, "aria-hidden", showNextEpisode ? "false" : "true");
   nextEpisodeCard.classList.toggle("visible", showNextEpisode);
   nextEpisodeCard.classList.toggle("playable", Boolean(state.nextEpisodePlayable));
   nextEpisodeCard.classList.toggle("has-thumb", Boolean(nextThumbUrl));
@@ -2853,7 +2862,7 @@ const syncHiddenCursor = () => {
   if (!shouldHideCursorForIdleChrome()) {
     clearHiddenCursorTimer();
     hiddenCursorTemporarilyVisible = false;
-    root.classList.remove("cursor-hidden");
+    root.classList.toggle("cursor-hidden", false);
     return;
   }
   root.classList.toggle("cursor-hidden", !hiddenCursorTemporarilyVisible);
@@ -2953,17 +2962,17 @@ const renderChrome = () => {
   if (state.pauseOverlayEnabled || showError) renderPauseMetadataOverlay(showOpening || showError);
   syncParentalGuide(showOpening || showError);
 
-  title.textContent = state.title || "";
+  setTextIfChanged(title, state.title || "");
   setText(episode, state.episodeText);
   setText(streamTitle, state.streamTitle);
   setText(providerName, state.providerName);
   renderPlayerBadges();
-  resizeLabel.textContent = state.resizeModeLabel || "Fit";
-  speedLabel.textContent = state.playbackSpeedLabel || "1x";
-  subtitlesLabel.textContent = state.subtitlesLabel || "Subs";
-  audioLabel.textContent = state.audioLabel || "Audio";
-  sourcesLabel.textContent = state.sourcesLabel || "Sources";
-  episodesLabel.textContent = state.episodesLabel || "Episodes";
+  setTextIfChanged(resizeLabel, state.resizeModeLabel || "Fit");
+  setTextIfChanged(speedLabel, state.playbackSpeedLabel || "1x");
+  setTextIfChanged(subtitlesLabel, state.subtitlesLabel || "Subs");
+  setTextIfChanged(audioLabel, state.audioLabel || "Audio");
+  setTextIfChanged(sourcesLabel, state.sourcesLabel || "Sources");
+  setTextIfChanged(episodesLabel, state.episodesLabel || "Episodes");
   setActionButtonLabel("resize", state.resizeModeLabel || "Fit");
   setActionButtonLabel("speed", state.playbackSpeedLabel || "1x");
   setActionButtonLabel("subtitles", state.subtitlesLabel || "Subs");
@@ -2972,14 +2981,14 @@ const renderChrome = () => {
   setActionButtonLabel("episodes", state.episodesLabel || "Episodes");
   if (pipButton) {
     const pipLabel = String(state.pipLabel || "").trim();
-    pipButton.setAttribute("aria-label", pipLabel);
-    pipButton.setAttribute("title", pipLabel);
-    pipButton.hidden = !pipLabel;
+    setAttributeIfChanged(pipButton, "aria-label", pipLabel);
+    setAttributeIfChanged(pipButton, "title", pipLabel);
+    setVisible(pipButton, Boolean(pipLabel));
   }
   syncPipLockLabels();
   const showBuffering = Boolean(!showError && state.isLoading && !activeModal && !showOpening);
   bufferingStatus.classList.toggle("visible", showBuffering);
-  bufferingStatus.setAttribute("aria-hidden", showBuffering ? "false" : "true");
+  setAttributeIfChanged(bufferingStatus, "aria-hidden", showBuffering ? "false" : "true");
   bufferingLoadingIndicator.setActive(showBuffering);
 
   setVisible(submitIntroButton, Boolean(state.showSubmitIntro));
@@ -2989,26 +2998,20 @@ const renderChrome = () => {
   syncActionFocusState();
 
   const playPauseLabel = isPlaying ? state.pauseLabel : state.playLabel;
-  if (toggle) {
-    toggle.setAttribute("aria-label", playPauseLabel || (isPlaying ? "Pause" : "Play"));
-  }
-  if (toggleIcon) {
-    toggleIcon.setAttribute("href", isPlaying ? "#icon-pause" : "#icon-play");
-  }
-  if (toggleLabel) {
-    toggleLabel.textContent = playPauseLabel || (isPlaying ? "Pause" : "Play");
-  }
+  setAttributeIfChanged(toggle, "aria-label", playPauseLabel || (isPlaying ? "Pause" : "Play"));
+  setAttributeIfChanged(toggleIcon, "href", isPlaying ? "#icon-pause" : "#icon-play");
+  setTextIfChanged(toggleLabel, playPauseLabel || (isPlaying ? "Pause" : "Play"));
   if (nextEpisodeButton) {
-    nextEpisodeButton.hidden = !state.nextEpisodePlayable;
+    setVisible(nextEpisodeButton, Boolean(state.nextEpisodePlayable));
     const nextLabel = state.nextEpisodeHeaderLabel || "Next episode";
-    nextEpisodeButton.setAttribute("aria-label", nextLabel);
-    nextEpisodeButton.setAttribute("title", nextLabel);
-    if (nextEpisodeButtonLabel) nextEpisodeButtonLabel.textContent = nextLabel;
+    setAttributeIfChanged(nextEpisodeButton, "aria-label", nextLabel);
+    setAttributeIfChanged(nextEpisodeButton, "title", nextLabel);
+    setTextIfChanged(nextEpisodeButtonLabel, nextLabel);
   }
   syncFullscreenButtons();
-  backButton.setAttribute("aria-label", state.closeLabel || "Close player");
-  submitIntroButton.setAttribute("aria-label", state.submitIntroLabel || "Submit Intro");
-  videoSettingsButton.setAttribute("aria-label", state.videoSettingsLabel || "Video settings");
+  setAttributeIfChanged(backButton, "aria-label", state.closeLabel || "Close player");
+  setAttributeIfChanged(submitIntroButton, "aria-label", state.submitIntroLabel || "Submit Intro");
+  setAttributeIfChanged(videoSettingsButton, "aria-label", state.videoSettingsLabel || "Video settings");
   setProgress(positionMs, durationMs, bufferedPositionMs);
   if (showError) {
     skipPrompt.classList.remove("visible", "show-progress");
@@ -3269,6 +3272,8 @@ const ensureActionFocus = ({ focus = true } = {}) => {
 };
 
 const syncActionFocusState = () => {
+  // Most of the time nothing in the bar has keyboard focus: skip the style reads below.
+  if (!focusedActionCommand && !document.querySelector(".action-pill .action.focused")) return;
   const controls = visibleActionButtons();
   const visibleSet = new Set(controls);
   document.querySelectorAll(".action-pill .action.focused").forEach(button => {
@@ -3902,18 +3907,34 @@ window.playerUpdate = update => {
     window.clearTimeout(pendingPlaybackTimer);
     pendingPlaybackTimer = 0;
   }
+  const isPlaying = pendingIsPlaying === null ? nativeIsPlaying : pendingIsPlaying;
+  const isLoading = Boolean(update.loading || update.isLoading);
+  const isEnded = Boolean(update.ended);
+  // Most updates only move the clock: they redraw the bar and the times and touch nothing else.
+  const onlyTimeMoved = appliedRememberedVolume &&
+    durationMs === state.durationMs &&
+    isPlaying === state.isPlaying &&
+    isLoading === state.isLoading &&
+    isEnded === state.isEnded &&
+    volumeLevel === state.volumeLevel &&
+    !audioTracksChanged &&
+    !subtitleTracksChanged;
   state = {
     ...state,
     durationMs,
     positionMs,
     bufferedPositionMs,
-    isPlaying: pendingIsPlaying === null ? nativeIsPlaying : pendingIsPlaying,
-    isLoading: Boolean(update.loading || update.isLoading),
-    isEnded: Boolean(update.ended),
+    isPlaying,
+    isLoading,
+    isEnded,
     volumeLevel,
     audioTracks,
     subtitleTracks,
   };
+  if (onlyTimeMoved) {
+    if (!isScrubbing) setProgress(positionMs, durationMs, bufferedPositionMs);
+    return;
+  }
   if (!appliedRememberedVolume) {
     appliedRememberedVolume = true;
     syncVolumeControl();
