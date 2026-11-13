@@ -151,17 +151,24 @@ internal object ShellRatings {
 
     private fun normalize(value: String): String = value.lowercase().filter { it.isLetterOrDigit() }
 
-    /** The same title on Cinemeta: exactly this name, and this year when both are known. */
+    /**
+     * The same title on Cinemeta: exactly this name, and this year when both are known. When a
+     * year can't tell same-named titles apart (a remake, a namesake), none is taken: their scores
+     * would be shown as this title's.
+     */
     private suspend fun findImdbId(type: String, name: String, releaseInfo: String?): String? {
         val wanted = normalize(name)
         if (wanted.length < 2) return null
         val query = URLEncoder.encode(name.trim(), "UTF-8").replace("+", "%20")
         val root = json.parseToJsonElement(httpGetText("$Cinemeta/catalog/$type/top/search=$query.json")) as? JsonObject ?: return null
         val year = releaseInfo?.let { Regex("\\d{4}").find(it)?.value }
-        return (root["metas"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }.firstOrNull { item ->
+        val same = (root["metas"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }.mapNotNull { item ->
             val itemYear = (item.text("releaseInfo") ?: item.text("year"))?.let { Regex("\\d{4}").find(it)?.value }
-            normalize(item.text("name").orEmpty()) == wanted && (year == null || itemYear == null || year == itemYear)
-        }?.text("id")?.let { imdbRegex.find(it)?.value }
+            item.takeIf { normalize(it.text("name").orEmpty()) == wanted && (year == null || itemYear == null || year == itemYear) }
+                ?.let { it to itemYear }
+        }
+        val match = same.firstOrNull { (_, itemYear) -> year != null && itemYear == year }?.first ?: same.singleOrNull()?.first
+        return match?.text("id")?.let { imdbRegex.find(it)?.value }
     }
 
     // ---- Wikidata ------------------------------------------------------------------------------
