@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { call } from "./bridge.js";
+import { call, setLens } from "./bridge.js";
 import { useTopic } from "./store.js";
 import { navigate } from "./lib/router.js";
 import { applyAppearance } from "./theme/appearance.js";
@@ -27,33 +27,37 @@ export function AppProvider({ boot, children }) {
 
   // The list is kept in a ref as well, so toast() can see what is on screen right now.
   const publishToasts = useCallback(next => { toastList.current = next; setToasts(next); }, []);
-  /** Lets a toast animate out, then drops it. */
-  const dismissToast = useCallback(id => {
-    if (!toastList.current.some(t => t.id === id && !t.leaving)) return;
+  /** Lets a toast animate out, then drops it; its onDone hears whether its button was used. */
+  const dismissToast = useCallback((id, used = false) => {
+    const leaving = toastList.current.find(t => t.id === id && !t.leaving);
+    if (!leaving) return;
     publishToasts(toastList.current.map(t => (t.id === id ? { ...t, leaving: true } : t)));
     window.setTimeout(() => publishToasts(toastList.current.filter(t => t.id !== id)), 240);
+    try { leaving.onDone?.(used); } catch (error) { console.error("toast", error); }
   }, [publishToasts]);
 
   /**
-   * A short note at the bottom; returns its id. action: { label, run } adds a button (Undo...).
-   * The same note again while it is still up refreshes that one instead of stacking a copy.
+   * A short note at the bottom; returns its id. action: { label, run } adds a button (Undo...);
+   * onDone(used) runs once when the note leaves, telling whether that button was pressed.
+   * The same plain note again while it is still up refreshes that one instead of stacking a copy
+   * (notes with a button never merge: each Undo belongs to its own change).
    * Toasts wait while the pointer or keyboard focus is on them (see Toasts.jsx).
    */
-  const toast = useCallback((message, { icon, tone, action, duration } = {}) => {
+  const toast = useCallback((message, { icon, tone, action, duration, onDone } = {}) => {
     const text = String(message ?? "");
     const stay = duration || (action ? 5200 : 3200);
     const live = toastList.current.filter(t => !t.leaving);
-    const twin = live.find(t => t.message === text && t.tone === tone);
-    const wrap = id => (action ? { label: action.label, run: () => { dismissToast(id); action.run(); } } : null);
+    const twin = !action && !onDone && live.find(t => !t.action && !t.onDone && t.message === text && t.tone === tone);
     if (twin) {
-      publishToasts(toastList.current.map(t => (t === twin ? { ...t, action: wrap(t.id) || t.action, duration: stay, bump: t.bump + 1 } : t)));
+      publishToasts(toastList.current.map(t => (t === twin ? { ...t, duration: stay, bump: t.bump + 1 } : t)));
       return twin.id;
     }
     toastId.current += 1;
     const id = toastId.current;
+    const wrapped = action ? { label: action.label, run: () => { dismissToast(id, true); action.run(); } } : null;
     // A fourth note sends the oldest one on its way rather than piling up.
     live.slice(0, Math.max(0, live.length - (MAX_TOASTS - 1))).forEach(old => dismissToast(old.id));
-    publishToasts([...toastList.current, { id, message: text, icon, tone, action: wrap(id), duration: stay, bump: 0 }]);
+    publishToasts([...toastList.current, { id, message: text, icon, tone, action: wrapped, onDone, duration: stay, bump: 0 }]);
     return id;
   }, [dismissToast, publishToasts]);
   const toastControl = useMemo(() => ({ dismiss: dismissToast }), [dismissToast]);
@@ -139,12 +143,32 @@ export function AppProvider({ boot, children }) {
     navigate("details", { type: entry.type, id: entry.id, name: entry.name, sources: target.videoId, season: target.season, episode: target.episode });
   }, [toast]);
 
+  // Continue watching entries taken off while their Undo is up. They leave every screen that
+  // reads the list at once (through a lens on the topic); the app is told only when the note has
+  // gone without an Undo, because it keeps no copy to restore. Same as Library's own list.
+  const leavingContinue = useRef(new Set());
+  const lensContinue = useCallback(() => {
+    const keys = leavingContinue.current;
+    setLens("continue", keys.size ? list => (Array.isArray(list) ? list.filter(entry => !keys.has(entry.key)) : list) : null);
+  }, []);
   const removeContinue = useCallback(entry => {
-    call("continue.remove", { id: entry.id, type: entry.type }).then(
-      () => toast(`Removed ${entry.name} from Continue watching`),
-      error => toast(error.message, { tone: "error" }),
-    );
-  }, [toast]);
+    const key = entry.key ?? `${entry.type}:${entry.id}`;
+    if (leavingContinue.current.has(key)) return;
+    const showAgain = () => { leavingContinue.current.delete(key); lensContinue(); };
+    leavingContinue.current.add(key);
+    lensContinue();
+    toast(`Removed ${entry.name} from Continue watching`, {
+      action: { label: "Undo", run: () => {} },
+      onDone: undone => {
+        if (undone) { showAgain(); return; }
+        call("continue.remove", { id: entry.id, type: entry.type }).then(
+          // The app sends the shorter list on its own; stop hiding once it surely has.
+          () => window.setTimeout(showAgain, 15000),
+          error => { showAgain(); toast(error.message, { tone: "error" }); },
+        );
+      },
+    });
+  }, [toast, lensContinue]);
 
   const value = useMemo(() => ({
     boot, profile, setProfile, appearance, setAppearance, art, setArt, toast,
