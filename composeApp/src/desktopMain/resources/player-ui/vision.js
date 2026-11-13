@@ -395,7 +395,8 @@
     const box = layer && layer.querySelector(".sub-box");
     if (!layer || !box || !progress) return;
     let target = 0;
-    const chromeShown = !root.classList.contains("chrome-hidden") && !root.classList.contains("opening-active");
+    const chromeShown = !root.classList.contains("chrome-hidden") && !root.classList.contains("opening-active") &&
+      !root.classList.contains("side-panel-open");
     if (chromeShown && box.dataset.empty !== "true" && !box.classList.contains("sub-dragging")) {
       const currentY = Number(gsap.getProperty(layer, "y")) || 0;
       const boxBottom = box.getBoundingClientRect().bottom - currentY;
