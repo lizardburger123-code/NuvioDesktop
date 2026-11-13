@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   LuCaptions, LuExternalLink, LuImage, LuKeyRound, LuLoaderCircle, LuPalette, LuPlay, LuPuzzle,
-  LuTrash2, LuUser, LuInfo, LuCheck, LuRefreshCw, LuMonitorPlay, LuCamera, LuGlobe, LuShieldCheck, LuCloud, LuPlug, LuPower, LuLock,
+  LuTrash2, LuUser, LuInfo, LuCheck, LuRefreshCw, LuMonitorPlay, LuCamera, LuGlobe, LuShieldCheck, LuCloud, LuPlug, LuPower, LuLock, LuKeyboard,
 } from "react-icons/lu";
 import { call } from "../bridge.js";
 import AddonStore from "../components/AddonStore.jsx";
@@ -11,6 +11,7 @@ import { navigate } from "../lib/router.js";
 import { useSegmentPill } from "../lib/motion.js";
 import { reloadApp } from "../lib/session.js";
 import { LOOKS, lookOf, switchLook } from "../lib/look.js";
+import { SHORTCUTS } from "../lib/nav.js";
 import { PROFILE_CARD, initials } from "../components/TopBar.jsx";
 import "./Settings.css";
 
@@ -902,10 +903,15 @@ function About() {
     ["Icons", "Lucide"],
   ], []);
   return (
-    <Panel title="Nuvio" description={`Version ${boot.version || ""}`}>
-      <dl className="credits">
-        {credits.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}
-      </dl>
-    </Panel>
+    <>
+      <Panel title="Nuvio" description={`Version ${boot.version || ""}`}>
+        <dl className="credits">
+          {credits.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}
+        </dl>
+      </Panel>
+      <Panel title="Keyboard" description="Search, back and forward, and switching looks all have keys. Press ? anywhere to see them.">
+        <button className="btn btn-glass btn-sm settings-classic" onClick={() => window.dispatchEvent(new Event(SHORTCUTS))}><LuKeyboard aria-hidden="true" /> Keyboard shortcuts</button>
+      </Panel>
+    </>
   );
 }

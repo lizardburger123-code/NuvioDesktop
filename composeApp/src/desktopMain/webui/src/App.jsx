@@ -1,4 +1,4 @@
-import { Component, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Component, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { LuArrowLeft, LuHouse, LuRotateCcw } from "react-icons/lu";
 import { gsap } from "gsap";
 import { call, notify, on } from "./bridge.js";
@@ -11,6 +11,8 @@ import { recovered, reloadApp } from "./lib/session.js";
 import { setArtProxy } from "./lib/artColor.js";
 import { switchLook } from "./lib/look.js";
 import { ScreenActiveContext } from "./lib/screen.js";
+import { SHORTCUTS, focusSearch } from "./lib/nav.js";
+import Shortcuts from "./components/Shortcuts.jsx";
 import Background from "./components/Background.jsx";
 import TopBar from "./components/TopBar.jsx";
 import Toasts from "./components/Toasts.jsx";
@@ -105,6 +107,65 @@ function BootError({ title, error }) {
   );
 }
 
+const USER_MOVES = ["wheel", "pointerdown", "keydown", "touchstart"];
+
+/**
+ * Back to where the page was. A screen built again (or still receiving its data) can be too
+ * short at first: follow it as it grows, for a moment, until the user moves it themselves.
+ * Returns a function that stops following.
+ */
+const restoreScroll = (host, target) => {
+  window.scrollTo(0, target);
+  if (!host || !target || Math.abs(window.scrollY - target) < 2 || typeof ResizeObserver !== "function") return null;
+  let observer = null;
+  let timer = 0;
+  const stop = () => {
+    observer?.disconnect();
+    window.clearTimeout(timer);
+    USER_MOVES.forEach(type => window.removeEventListener(type, stop, true));
+  };
+  observer = new ResizeObserver(() => {
+    window.scrollTo(0, target);
+    if (Math.abs(window.scrollY - target) < 2) stop();
+  });
+  observer.observe(host);
+  timer = window.setTimeout(stop, 2500);
+  USER_MOVES.forEach(type => window.addEventListener(type, stop, { capture: true, passive: true }));
+  return stop;
+};
+
+/**
+ * Keyboard focus follows the move: into a screen that just opened (its heading, so a screen
+ * reader names it), and back onto what you left from when you return. Focus that is still on
+ * something live (a bar a tab was picked in, a field the screen focused itself) stays put.
+ */
+const placeFocus = (host, saved) => {
+  if (!host) return;
+  const now = document.activeElement;
+  if (now && now !== document.body && !now.closest(".is-parked, [inert]")) return;
+  const take = target => {
+    if (!target.matches("a[href], button, input, select, textarea, [tabindex]")) {
+      target.setAttribute("tabindex", "-1");
+      target.setAttribute("data-nav-focus", "");
+    }
+    target.focus({ preventScroll: true });
+  };
+  const back = saved?.isConnected && host.contains(saved) ? saved : null;
+  const heading = host.querySelector("h1");
+  take(back || heading || host);
+  if (back || heading) return;
+  // A screen still drawing its page has no heading yet: hand focus to it once it appears,
+  // unless the user has moved focus meanwhile.
+  let frames = 0;
+  const wait = () => {
+    if (document.activeElement !== host) return;
+    const later = host.querySelector("h1");
+    if (later) take(later);
+    else if (++frames < 60) window.requestAnimationFrame(wait);
+  };
+  window.requestAnimationFrame(wait);
+};
+
 /**
  * One kept-alive screen. Parked screens stay mounted (state, scroll, decoded images) but are
  * taken out of flow, skipped by rendering and made inert; activating one restores its scroll
@@ -114,9 +175,11 @@ const ScreenLayer = memo(function ScreenLayer({ entry, active, nav }) {
   const ref = useRef(null);
   const shown = useRef(false);
   const rowScroll = useRef(new Map());
+  const lastFocus = useRef(null);
+  const stopRestore = useRef(null);
   const Component = SCREENS[entry.name] || Home;
 
-  // Parking a screen drops its scrollers' offsets, so remember them just before leaving.
+  // Parking a screen drops its scrollers' offsets and its focus, so remember them just before leaving.
   useEffect(() => {
     if (!active) return undefined;
     const save = () => {
@@ -125,6 +188,8 @@ const ScreenLayer = memo(function ScreenLayer({ entry, active, nav }) {
         if (el.scrollLeft || el.scrollTop) map.set(el, [el.scrollLeft, el.scrollTop]);
       });
       rowScroll.current = map;
+      const focused = document.activeElement;
+      lastFocus.current = focused && focused !== ref.current && ref.current?.contains(focused) ? focused : null;
     };
     window.addEventListener(BEFORE_NAV, save);
     return () => window.removeEventListener(BEFORE_NAV, save);
@@ -133,20 +198,23 @@ const ScreenLayer = memo(function ScreenLayer({ entry, active, nav }) {
   useLayoutEffect(() => {
     if (!active) {
       shown.current = false;
+      stopRestore.current?.();
       return;
     }
     if (shown.current) return;
     shown.current = true;
-    window.scrollTo(0, entry.scroll || 0);
+    stopRestore.current = restoreScroll(ref.current, entry.scroll || 0);
     rowScroll.current.forEach(([left, top], el) => {
       if (!el.isConnected) return;
       el.scrollLeft = left;
       el.scrollTop = top;
     });
     playScreenEntrance(ref.current, nav);
+    if (nav && nav.kind !== "none" && nav.kind !== "replace") placeFocus(ref.current, lastFocus.current);
     // Only on activation; nav is read for that moment.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
+  useEffect(() => () => stopRestore.current?.(), []);
 
   // Parking/unparking must not re-render the whole screen; only what reads the active flag does.
   const content = useMemo(() => (
@@ -175,6 +243,27 @@ function Screens() {
 
 const NO_FEATURED = [];
 
+const KIND_TITLES = { movie: "Movies", series: "Series", anime: "Anime" };
+const LIBRARY_TITLES = { later: "My list", completed: "Trophies", downloads: "Downloads" };
+
+/** The window's title follows the screen: "Slow Horses · Nuvio", "Movies · Nuvio". */
+function WindowTitle({ entry }) {
+  const details = useTopic("details", null);
+  const p = entry.params || {};
+  const opened = details?.meta && details.meta.id === p.id ? details.meta.name : null;
+  const page = {
+    browse: KIND_TITLES[p.kind] || "Browse",
+    search: p.q ? `Search: ${p.q}` : "Search",
+    details: p.name || opened || null,
+    person: p.name || null,
+    library: LIBRARY_TITLES[p.tab] || "Library",
+    settings: "Settings",
+    addons: "Your addons",
+  }[entry.name] || null;
+  useEffect(() => { document.title = page ? `${page} · Nuvio` : "Nuvio"; }, [page]);
+  return null;
+}
+
 function Shell() {
   const router = useRouter();
   const top = router.stack[router.stack.length - 1];
@@ -189,21 +278,44 @@ function Shell() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  const [keysOpen, setKeysOpen] = useState(false);
   useEffect(() => {
-    const isTyping = target => target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+    const open = () => setKeysOpen(true);
+    window.addEventListener(SHORTCUTS, open);
+    return () => window.removeEventListener(SHORTCUTS, open);
+  }, []);
+
+  useEffect(() => {
+    // Keys never leave a field the user is typing in, except Esc (which leaves the field).
+    const isTyping = target => Boolean(target && (/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) || target.isContentEditable));
     const onKey = event => {
-      if ((event.ctrlKey && event.key.toLowerCase() === "k") || (event.key === "/" && !isTyping(event.target))) {
+      // Something on top (the shelf's open case, a sheet) already took this key.
+      if (event.defaultPrevented) return;
+      const key = event.key || "";
+      const plain = !event.ctrlKey && !event.altKey && !event.metaKey;
+      // A layer that is open (a sheet, the profile card, Who's watching?) owns the keys.
+      const layer = document.querySelector("[data-modal-open]");
+      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && key.toLowerCase() === "k") {
         event.preventDefault();
-        goSection("search");
+        if (!layer) focusSearch();
         return;
       }
-      if (event.key === "Escape" && !document.querySelector("[data-modal-open]")) {
-        if (isTyping(event.target)) event.target.blur();
-        else back();
+      // Alt+arrows edit nothing in a field, so they move through history from anywhere.
+      if (event.altKey && !event.ctrlKey && !event.shiftKey && (key === "ArrowLeft" || key === "ArrowRight")) {
+        if (layer) return;
+        event.preventDefault();
+        if (key === "ArrowLeft") back();
+        else forward();
+        return;
       }
-      if (event.key === "Backspace" && !isTyping(event.target)) back();
-      if (event.altKey && event.key === "ArrowLeft") { event.preventDefault(); back(); }
-      if (event.altKey && event.key === "ArrowRight") { event.preventDefault(); forward(); }
+      if (isTyping(event.target)) {
+        if (key === "Escape" && !layer) event.target.blur();
+        return;
+      }
+      if (layer) return;
+      if (key === "/" && plain) { event.preventDefault(); focusSearch(); return; }
+      if (key === "?" && plain) { event.preventDefault(); setKeysOpen(true); return; }
+      if ((key === "Escape" || key === "Backspace") && plain && !event.shiftKey) back();
     };
     // Mouse side buttons: back and forward, like a browser.
     const onMouse = event => {
@@ -248,7 +360,7 @@ function Shell() {
   }, [gate, toast, setAppearance]);
   useEffect(() => {
     const onKey = event => {
-      if (!(event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "l")) return;
+      if (!(event.ctrlKey && event.shiftKey && String(event.key || "").toLowerCase() === "l")) return;
       event.preventDefault();
       const next = document.documentElement.dataset.layout === "haze" ? "cinema" : "haze";
       switchLook(next, layout => setAppearance({ layout }));
@@ -257,6 +369,7 @@ function Shell() {
     return () => window.removeEventListener("keydown", onKey);
   }, [setAppearance]);
 
+  const closeKeys = useCallback(() => setKeysOpen(false), []);
   const compact = top.name !== "home" || scrolled;
   const sceneArt = top.name === "details" ? art : null;
 
@@ -274,6 +387,8 @@ function Shell() {
       {gate ? <Guard name="profile gate" onError={() => setGate(false)}><ProfileGate onDone={() => setGate(false)} /></Guard> : null}
       <Guard name="toasts"><Toasts /></Guard>
       <Guard name="trophy toast"><TrophyToast /></Guard>
+      {keysOpen ? <Guard name="shortcuts"><Shortcuts onClose={closeKeys} /></Guard> : null}
+      <Guard name="window title"><WindowTitle entry={top} /></Guard>
     </>
   );
 }

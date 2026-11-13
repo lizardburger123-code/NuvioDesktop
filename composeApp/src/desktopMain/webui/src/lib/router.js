@@ -70,11 +70,16 @@ export const aliveEntries = router => {
 
 // ---- Where the user pressed: spatial origin for the next transition ---------------------------
 
+// Cards are held weakly: history keeps up to 40 entries, and a strong reference from each would
+// keep the whole page it came from in memory long after that screen was let go.
+const weak = node => (node && typeof WeakRef === "function" ? new WeakRef(node) : node || null);
+const deref = ref => (ref && typeof ref.deref === "function" ? ref.deref() : ref) || null;
+
 let lastPress = { t: 0 };
 if (typeof window !== "undefined") {
   window.addEventListener("pointerdown", event => {
     const card = event.target?.closest?.("[data-card]") || null;
-    lastPress = { x: event.clientX, y: event.clientY, t: performance.now(), card };
+    lastPress = { x: event.clientX, y: event.clientY, t: performance.now(), card: weak(card) };
   }, { capture: true, passive: true });
 }
 const recentPress = () => (performance.now() - lastPress.t < 1500 ? lastPress : null);
@@ -85,8 +90,9 @@ let transition = null;
 let pending = null;
 let heroNode = null;
 
-const setHero = node => {
+const setHero = card => {
   clearHero();
+  const node = deref(card);
   if (!node?.isConnected) return;
   const target = node.querySelector("[data-hero]") || node.querySelector(".tilted-card__body") || node;
   const rect = target.getBoundingClientRect();
