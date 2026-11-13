@@ -230,8 +230,14 @@ internal object ShellNet {
                 out.flush()
                 return
             }
-            out.write("HTTP/1.1 200 Connection Established\r\n\r\n".toByteArray())
-            out.flush()
+            try {
+                out.write("HTTP/1.1 200 Connection Established\r\n\r\n".toByteArray())
+                out.flush()
+            } catch (_: Exception) {
+                // The client left before the tunnel was up (a player seeking): let the server go too.
+                runCatching { upstream.close() }
+                return
+            }
             client.soTimeout = 0
             relay(client, input, upstream, host, tls = port == 443 && mode == Mode.UNBLOCK)
         } else {
@@ -255,7 +261,12 @@ internal object ShellNet {
                 out.flush()
                 return
             }
-            upstream.getOutputStream().apply { write(rebuilt.toByteArray(Charsets.ISO_8859_1)); flush() }
+            try {
+                upstream.getOutputStream().apply { write(rebuilt.toByteArray(Charsets.ISO_8859_1)); flush() }
+            } catch (_: Exception) {
+                runCatching { upstream.close() }
+                return
+            }
             client.soTimeout = 0
             relay(client, input, upstream, host, tls = false)
         }
