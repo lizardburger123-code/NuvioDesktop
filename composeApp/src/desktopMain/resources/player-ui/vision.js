@@ -299,6 +299,7 @@
     const ease = t => 0.5 - Math.cos(Math.PI * t) / 2;
     let start = 0;
     let raf = 0;
+    let still = false;
     const paint = pos => {
       const half = width / 2;
       const core = half * (1 - softness);
@@ -310,12 +311,18 @@
     const tick = now => {
       raf = 0;
       if (!element.isConnected) return;
-      const visible = element.offsetParent !== null;
+      // Class and attribute checks only: this runs every half second for the whole session, and
+      // reading offsetParent here forced a layout each time.
+      const visible = root.classList.contains("opening-active") && !element.closest("[hidden]");
       if (!visible || reduced()) {
-        element.style.backgroundImage = `linear-gradient(${base}, ${base})`;
+        if (!still) {
+          still = true;
+          element.style.backgroundImage = `linear-gradient(${base}, ${base})`;
+        }
         window.setTimeout(() => { if (!raf) raf = requestAnimationFrame(tick); }, 500);
         return;
       }
+      still = false;
       if (!start) start = now;
       const cycle = (speed + delay) * 1000;
       const t = ((now - start) % cycle) / (speed * 1000);
