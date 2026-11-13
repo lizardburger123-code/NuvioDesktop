@@ -77,4 +77,11 @@
 .details-fact span { font-size: var(--fs-13); color: var(--ink-3); font-weight: 500; }
 .details-fact strong { font-size: var(--fs-15); font-weight: 600; }
 
-.details-error { margin: 0 var(--gutter); color: #ffb4b4; }
+/* Loading: the page's frame in grey, with the name already in place when the card gave it. */
+.details-skel-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.details-skel-row .skel { border-radius: 999px; }
+.details-skel-name { color: var(--ink-3); }
+.details-skel-tail { margin: 24px var(--gutter) 0; max-width: 1200px; }
+
+/* A title that didn't load or that no addon has: what happened, and the ways forward. */
+.details-problem-text { max-width: 60ch; font-size: var(--fs-16); line-height: 1.55; color: var(--ink-2); }
