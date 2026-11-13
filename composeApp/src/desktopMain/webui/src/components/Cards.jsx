@@ -75,7 +75,7 @@ export const ContinueCard = ({ entry, onResume, onRemove, width }) => {
       progress={entry.progress}
       onOpen={() => onResume(entry)}
       onRemove={onRemove ? () => onRemove(entry) : undefined}
-      removeLabel={`Remove ${entry.name} from Continue watching`}
+      removeLabel="Remove from Continue watching"
     />
   );
 };
