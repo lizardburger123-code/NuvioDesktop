@@ -442,7 +442,14 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
               ) : null}
               <label className="hz-find">
                 <LuSearch aria-hidden="true" />
-                <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Episode number or name" aria-label="Find an episode" />
+                <input
+                  value={query}
+                  onChange={event => setQuery(event.target.value)}
+                  // Esc empties the field first, as in every other filter; on an empty field it leaves it.
+                  onKeyDown={event => { if (event.key === "Escape" && query) { event.preventDefault(); event.stopPropagation(); setQuery(""); } }}
+                  placeholder="Episode number or name"
+                  aria-label="Find an episode"
+                />
               </label>
               <div className="seg" role="group" aria-label="Episode view">
                 <button aria-pressed={view === "list"} onClick={() => chooseView("list")} aria-label="List" title="List"><LuList /></button>
