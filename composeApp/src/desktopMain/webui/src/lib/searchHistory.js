@@ -21,6 +21,9 @@ export const clearHistory = () => {
   return call("search.history.clear").catch(() => loadHistory());
 };
 
+/** Keeps a search in the recent list (the app records a search when it is committed). */
+export const recordSearch = query => call("search.query", { query, commit: true }).then(loadHistory, () => {});
+
 export const useSearchHistory = () => {
   const [value, setValue] = useState(list || []);
   useEffect(() => {

@@ -9,21 +9,35 @@
 .dl-main strong { font-size: var(--fs-16); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dl-main strong em { font-style: normal; font-weight: 600; color: var(--ink-2); }
 .dl-file { font-size: var(--fs-13); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The bar grows by scale (compositor only), never by width. */
 .dl-progress { height: 4px; border-radius: 2px; background: rgb(255 255 255 / .14); overflow: hidden; }
-.dl-progress i { display: block; height: 100%; border-radius: inherit; background: #fff; transition: width 500ms linear; }
-.is-paused .dl-progress i, .is-failed .dl-progress i { background: rgb(255 255 255 / .4); }
+.dl-progress i { display: block; width: 100%; height: 100%; background: #fff; transform-origin: left center; transition: transform 500ms linear, background-color var(--t-med) ease; }
+.is-paused .dl-progress i { background: rgb(255 255 255 / .45); }
+.is-failed .dl-progress i { background: #ff8a80; }
+[data-layout="haze"] :is(.is-paused, .is-failed) .dl-progress i { box-shadow: none; }
+[data-layout="haze"] .is-paused .dl-progress i { background: rgb(255 255 255 / .45); }
+[data-layout="haze"] .is-failed .dl-progress i { background: #ff8a80; }
+
 .dl-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: var(--fs-13); color: var(--ink-2); }
-.dl-status { font-weight: 700; }
+.dl-status { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; color: var(--ink-2); }
+.dl-status svg { width: 14px; height: 14px; }
 .dl-status.s-downloading { color: #fff; }
 .dl-status.s-completed { color: #8fe3a8; }
 .dl-status.s-failed, .dl-error { color: #ffb4ad; }
+/* Changing figures keep their width, so the line doesn't shuffle as they tick. */
+.dl-pct { min-width: 3.2em; font-weight: 600; color: #fff; }
+.dl-speed { min-width: 5.6em; }
+.is-paused .dl-pct { color: var(--ink-2); }
+
 .dl-actions { display: flex; align-items: center; gap: 4px; }
 .dl-icon {
   width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; color: var(--ink-2);
-  transition: background-color var(--t-fast) ease, color var(--t-fast) ease, transform var(--t-fast) var(--ease-soft);
+  transition: background-color var(--t-fast) ease, color var(--t-fast) ease, opacity var(--t-fast) ease, transform var(--t-fast) var(--ease-soft);
 }
 .dl-icon svg { width: 18px; height: 18px; }
-.dl-icon:hover { color: #fff; background: rgb(255 255 255 / .12); }
-.dl-icon:active { transform: scale(.96); }
+.dl-icon:hover:not(:disabled) { color: #fff; background: rgb(255 255 255 / .12); }
+.dl-icon:active:not(:disabled) { transform: scale(.96); }
+.dl-actions :disabled { opacity: .45; cursor: progress; }
 .dl-actions .btn { margin-right: 8px; }
 @media (max-width: 900px) { .dl-item { grid-template-columns: 96px minmax(0, 1fr); } .dl-actions { grid-column: 1 / -1; justify-content: flex-end; } .dl-art { width: 96px; } }

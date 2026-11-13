@@ -35,12 +35,12 @@
 .recent-x {
   position: absolute; top: 50%; right: 6px; width: 26px; height: 26px; margin-top: -13px; border-radius: 50%;
   display: grid; place-items: center; color: var(--ink-3);
-  transition: background-color var(--t-fast) ease, color var(--t-fast) ease;
+  transition: background-color var(--t-fast) ease, color var(--t-fast) ease, transform var(--t-fast) var(--ease-soft);
 }
-.recent-x::before { content: ""; position: absolute; inset: -5px -4px; }
+.recent-x::before { content: ""; position: absolute; inset: -7px; }
 .recent-x svg { width: 14px; height: 14px; }
 .recent-x:hover, .recent-x:focus-visible { background: rgb(255 255 255 / .18); color: #fff; }
-.recent-x:active { transform: scale(.94); }
+.recent-x:active { transform: scale(.96); }
 .recent-clear {
   height: 36px; padding: 0 12px; border-radius: 999px; font-size: var(--fs-14); font-weight: 600; color: var(--ink-3);
   transition: color var(--t-fast) ease, background-color var(--t-fast) ease;
