@@ -3,7 +3,7 @@ import { LuArrowLeft, LuHouse, LuRotateCcw } from "react-icons/lu";
 import { gsap } from "gsap";
 import { call, notify, on } from "./bridge.js";
 import { useTopic } from "./store.js";
-import { AppProvider, useApp } from "./AppContext.jsx";
+import { AppProvider, useApp, useArt } from "./AppContext.jsx";
 import { applyAppearance } from "./theme/appearance.js";
 import { BEFORE_NAV, aliveEntries, back, forward, goSection, navigate, useRouter } from "./lib/router.js";
 import { playScreenEntrance } from "./lib/motion.js";
@@ -267,7 +267,8 @@ function WindowTitle({ entry }) {
 function Shell() {
   const router = useRouter();
   const top = router.stack[router.stack.length - 1];
-  const { appearance, art, boot } = useApp();
+  const { appearance, boot } = useApp();
+  const art = useArt();
   const [scrolled, setScrolled] = useState(false);
   const [gate, setGate] = useState(() => shouldShowGate(boot));
 
@@ -317,10 +318,15 @@ function Shell() {
       if (key === "?" && plain) { event.preventDefault(); setKeysOpen(true); return; }
       if ((key === "Escape" || key === "Backspace") && plain && !event.shiftKey) back();
     };
-    // Mouse side buttons: back and forward, like a browser.
+    // Mouse side buttons: back and forward, like a browser; while a layer (a sheet, a dialog) is
+    // open they leave the route alone, as the keys do.
     const onMouse = event => {
-      if (event.button === 3) { event.preventDefault(); back(); }
-      if (event.button === 4) { event.preventDefault(); forward(); }
+      if (event.button !== 3 && event.button !== 4) return;
+      const handled = event.defaultPrevented;
+      event.preventDefault();
+      if (handled || document.querySelector("[data-modal-open]")) return;
+      if (event.button === 3) back();
+      else forward();
     };
     window.addEventListener("keydown", onKey);
     window.addEventListener("mouseup", onMouse);

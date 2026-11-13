@@ -10,6 +10,9 @@ export const useApp = () => useContext(AppContext);
 const ToastContext = createContext([]);
 export const useToasts = () => useContext(ToastContext);
 const ToastControlContext = createContext(null);
+const ArtContext = createContext(null);
+/** The title picture behind the current screen (Details sets it with setArt), as it changes. */
+export const useArt = () => useContext(ArtContext);
 /** { dismiss(id) } for the toast stack. */
 export const useToastControl = () => useContext(ToastControlContext);
 
@@ -170,16 +173,24 @@ export function AppProvider({ boot, children }) {
     });
   }, [toast, lensContinue]);
 
+  // The title picture behind the screen changes with every title opened and left; in the shared
+  // value it would re-render every open screen each time. useApp().art still reads the current
+  // one; what has to follow it (the backdrop) uses useArt().
+  const artNow = useRef(art);
+  artNow.current = art;
   const value = useMemo(() => ({
-    boot, profile, setProfile, appearance, setAppearance, art, setArt, toast,
+    boot, profile, setProfile, appearance, setAppearance, setArt, toast,
+    get art() { return artNow.current; },
     watchLater, laterIds, toggleLater, openDetails, resume, removeContinue,
-  }), [boot, profile, appearance, setAppearance, art, toast, watchLater, laterIds, toggleLater, openDetails, resume, removeContinue]);
+  }), [boot, profile, appearance, setAppearance, toast, watchLater, laterIds, toggleLater, openDetails, resume, removeContinue]);
 
   return (
     <AppContext.Provider value={value}>
-      <ToastControlContext.Provider value={toastControl}>
-        <ToastContext.Provider value={toasts}>{children}</ToastContext.Provider>
-      </ToastControlContext.Provider>
+      <ArtContext.Provider value={art}>
+        <ToastControlContext.Provider value={toastControl}>
+          <ToastContext.Provider value={toasts}>{children}</ToastContext.Provider>
+        </ToastControlContext.Provider>
+      </ArtContext.Provider>
     </AppContext.Provider>
   );
 }
