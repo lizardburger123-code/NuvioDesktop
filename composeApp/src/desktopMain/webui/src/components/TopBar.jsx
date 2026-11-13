@@ -101,6 +101,7 @@ function CinemaBar({ route, stack, profile, compact }) {
           onClick={toggleCard}
           aria-haspopup="dialog"
           aria-expanded={Boolean(card)}
+          aria-label="Profile"
           title={completed.length ? `Level ${rank.level} · ${completed.length} trophies` : "Profile"}
         >
           <Avatar profile={profile} />

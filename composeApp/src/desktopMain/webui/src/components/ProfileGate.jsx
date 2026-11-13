@@ -25,23 +25,35 @@ export default function ProfileGate({ onDone }) {
   const listRef = useRef(null);
   const profiles = (boot.profiles || []).map(p => (p.id === profile?.id ? { ...p, avatar: profile.avatar || p.avatar, color: profile.color || p.color } : p));
 
-  // Profiles rise in one after another once the intro has lifted.
+  // Profiles rise in one after another as the intro lifts (whenever that is: it can be skipped),
+  // and keyboard focus is on your profile by then.
   useLayoutEffect(() => {
-    if (!listRef.current || reduceMotion()) return;
-    const items = [...listRef.current.querySelectorAll(".gate-profile")];
-    items.forEach((node, i) => node.animate(
-      [{ opacity: 0, transform: "translate3d(0, 24px, 0) scale(.94)" }, { opacity: 1, transform: "none" }],
-      { duration: 620, delay: 1500 + i * 70, easing: EASE.out, fill: "backwards" },
-    ));
-    ref.current.querySelectorAll(".gate-title, .gate-foot").forEach((node, i) => node.animate(
-      [{ opacity: 0, transform: "translate3d(0, 12px, 0)" }, { opacity: 1, transform: "none" }],
-      { duration: 600, delay: 1400 + i * 400, easing: EASE.out, fill: "backwards" },
-    ));
+    if (!listRef.current) return undefined;
+    const focusYou = () => {
+      const you = listRef.current?.querySelector(`[data-id="${profile?.id}"]:not(:disabled)`) || listRef.current?.querySelector(".gate-profile:not(:disabled)");
+      you?.focus({ preventScroll: true });
+    };
+    const rises = reduceMotion() ? [] : [
+      ...[...listRef.current.querySelectorAll(".gate-profile")].map((node, i) => node.animate(
+        [{ opacity: 0, transform: "translate3d(0, 24px, 0) scale(.94)" }, { opacity: 1, transform: "none" }],
+        { duration: 620, delay: 200 + i * 70, easing: EASE.out, fill: "backwards" },
+      )),
+      ...[...ref.current.querySelectorAll(".gate-title, .gate-foot")].map((node, i) => node.animate(
+        [{ opacity: 0, transform: "translate3d(0, 12px, 0)" }, { opacity: 1, transform: "none" }],
+        { duration: 600, delay: 100 + i * 400, easing: EASE.out, fill: "backwards" },
+      )),
+    ];
+    const start = () => { rises.forEach(rise => rise.play()); focusYou(); };
+    if (!document.querySelector(".intro")) { start(); return undefined; }
+    // Held on their first frame (hidden) until the intro hands over.
+    rises.forEach(rise => rise.pause());
+    window.addEventListener("nuvio:intro-out", start, { once: true });
+    return () => window.removeEventListener("nuvio:intro-out", start);
+    // Once, when the page opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    const first = listRef.current?.querySelector(`[data-id="${profile?.id}"]`) || listRef.current?.querySelector(".gate-profile:not(:disabled)");
-    const timer = window.setTimeout(() => first?.focus({ preventScroll: true }), 1600);
     const onKey = event => {
       if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
       const buttons = [...(listRef.current?.querySelectorAll(".gate-profile:not(:disabled)") || [])];
@@ -51,8 +63,8 @@ export default function ProfileGate({ onDone }) {
       event.preventDefault();
     };
     window.addEventListener("keydown", onKey);
-    return () => { window.clearTimeout(timer); window.removeEventListener("keydown", onKey); };
-  }, [profile?.id]);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const finish = id => {
     markPassed();
@@ -84,7 +96,7 @@ export default function ProfileGate({ onDone }) {
   };
 
   return (
-    <div ref={ref} className="gate" role="dialog" aria-label="Who's watching?" data-modal-open>
+    <div ref={ref} className="gate" role="dialog" aria-modal="true" aria-label="Who's watching?" data-modal-open>
       <h1 className="gate-title">Who's watching?</h1>
       <div ref={listRef} className="gate-list">
         {profiles.map(p => (
@@ -108,7 +120,10 @@ export default function ProfileGate({ onDone }) {
       <div className="gate-foot">
         <button
           className="btn btn-ghost btn-sm"
-          onClick={() => { setAppearance({ profileGate: false }); toast("Nuvio will open straight to Home. Turn this back on in Settings › Profile."); finish(profile?.id); }}
+          onClick={() => {
+            setAppearance({ profileGate: false }).then(ok => { if (ok) toast("Nuvio will open straight to Home. Turn this back on in Settings › Profile."); });
+            finish(profile?.id);
+          }}
         >
           Don't ask at launch
         </button>
