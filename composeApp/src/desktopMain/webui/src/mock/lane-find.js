@@ -137,6 +137,8 @@ export default ctx => {
       const q = String(query || "").trim();
       if (commit && q.length > 1) record(q);
       if (!q) { push("search", { query: "", loading: false, sections: [] }); return true; }
+      // Preview of the "nothing searched" states: type "noaddons" or "nosearch".
+      if (q === "noaddons" || q === "nosearch") { push("search", { query: q, loading: false, sections: [], empty: q === "noaddons" ? "NoActiveAddons" : "NoSearchCatalogs" }); return true; }
       const delay = option().delay?.[q] ?? 320;
       push("search", { query: q, loading: true, sections: [] });
       if (option().fail || /offline/i.test(q)) {

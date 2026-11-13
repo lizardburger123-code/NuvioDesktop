@@ -318,11 +318,8 @@ export default function Search({ params }) {
     heroRef.current?.set(text);
     run(text, { commit: true });
   };
-  const retry = () => {
-    // The app answers a repeated query from what it already has: clear it first to ask again.
-    call("search.query", { query: "" }).catch(() => {});
-    call("search.query", { query }).catch(() => {});
-  };
+  // Asks the addons again instead of answering from what the app already has.
+  const retry = () => { call("search.query", { query, force: true }).catch(() => {}); };
 
   return (
     <main className="screen search">
@@ -370,7 +367,11 @@ export default function Search({ params }) {
         />
       </div>
 
-      {query && !current.loading && !current.error && !total && !found ? <NoResults query={query} onSuggest={suggest} /> : null}
+      {query && !current.loading && !current.error && !total && !found ? (
+        current.empty === "NoActiveAddons" || current.empty === "NoSearchCatalogs"
+          ? <NoSearchAddons reason={current.empty} />
+          : <NoResults query={query} onSuggest={suggest} />
+      ) : null}
 
       {query && current.error && !total && !current.loading ? (
         <section className="empty">
@@ -389,6 +390,20 @@ export default function Search({ params }) {
       ) : null}
       <div className="screen-end" />
     </main>
+  );
+}
+
+/** Nothing was searched at all: no addon is on, or none of them offers search. */
+function NoSearchAddons({ reason }) {
+  const off = reason === "NoActiveAddons";
+  return (
+    <section className="empty">
+      <h2>{off ? "No addons are turned on" : "None of your addons can search"}</h2>
+      <p>{off
+        ? "Search looks through the catalogs of your addons. Turn one on, such as Cinemeta, and search again."
+        : "Search looks through the catalogs of your addons, and none of the ones turned on offers search. Add or turn on one that does, such as Cinemeta."}</p>
+      <button className="btn btn-glass btn-sm" onClick={() => navigate("addons")}><LuPuzzle /> Your addons</button>
+    </section>
   );
 }
 
