@@ -133,8 +133,15 @@ internal class ShellRpc(private val host: ShellHost) {
     private fun <T> watch(topic: String, flow: Flow<T>, map: (T) -> JsonElement) {
         if (topicJobs[topic]?.isActive == true) return
         topicJobs[topic] = scope.launch {
+            // The page keeps each topic's last value: one equal to it isn't sent again (playback
+            // progress changes the inputs every few seconds while most topics stay the same).
+            var last: JsonElement? = null
             flow.distinctUntilChanged().conflate().collect { value ->
-                val data = withContext(Dispatchers.Default) { runCatching { map(value) }.getOrElse { JsonNull } }
+                val previous = last
+                val data = withContext(Dispatchers.Default) {
+                    runCatching { map(value) }.getOrElse { JsonNull }.takeIf { it != previous }
+                } ?: return@collect
+                last = data
                 push(topic, data)
             }
         }
