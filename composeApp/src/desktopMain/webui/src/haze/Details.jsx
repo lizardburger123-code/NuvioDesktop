@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
-  LuCheck, LuChevronDown, LuChevronUp, LuClapperboard, LuLayoutGrid, LuList, LuListVideo, LuPlay, LuPlus, LuSearch, LuTrophy,
+  LuCheck, LuCheckCheck, LuChevronDown, LuChevronUp, LuClapperboard, LuLayoutGrid, LuList, LuListVideo, LuPlay, LuPlus, LuRotateCcw, LuSearch, LuTrophy,
 } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useApp } from "../AppContext.jsx";
@@ -16,58 +16,84 @@ import "./Details.css";
 
 const VIEW_KEY = "nuvio.haze.episodes";
 const savedView = () => { try { return window.localStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list"; } catch { return "list"; } };
-const seasonName = s => (s === 0 ? "Specials" : `Season ${s}`);
-const airDate = released => (released ? new Date(released).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" }) : "");
-const asVideo = video => ({ videoId: video.id, season: video.season, episode: video.episode, title: video.title, thumbnail: video.thumbnail });
+export const seasonName = s => (s === 0 ? "Specials" : `Season ${s}`);
+export const airDate = released => (released ? new Date(released).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" }) : "");
+export const asVideo = video => ({ videoId: video.id, season: video.season, episode: video.episode, title: video.title, thumbnail: video.thumbnail });
+/** The topic is pushed again often with the same episodes: compare what is drawn, not identity. */
+export const sameEpisode = (a, b) => a === b || ["id", "episode", "title", "thumbnail", "overview", "released", "runtime", "rating", "progress", "watched", "upcoming"].every(field => a[field] === b[field]);
+const sameRow = (a, b) => a.fallback === b.fallback && a.next === b.next && a.nextLabel === b.nextLabel && a.onPlay === b.onPlay && a.onMark === b.onMark && sameEpisode(a.video, b.video);
+const seasonDone = entry => Boolean(entry) && entry.aired > 0 && entry.watched >= entry.aired;
 
 /** A score out of ten as a colour: data, not decoration, so it keeps its own scale in every accent. */
 const scoreTone = rating => (rating >= 9 ? "a" : rating >= 8.5 ? "b" : rating >= 8 ? "c" : rating >= 7.5 ? "d" : rating >= 7 ? "e" : rating >= 6 ? "f" : "g");
 
-function Episode({ video, meta, next, nextLabel, onPlay }) {
+/** Seen or not, beside the episode (never inside its play button, so it can't start it by accident). */
+function WatchedMark({ video, onMark, className }) {
+  const name = video.title || `Episode ${video.episode}`;
   return (
-    <button className={`hz-ep${next ? " is-next" : ""}${video.watched ? " is-watched" : ""}`} onClick={() => onPlay(asVideo(video))} disabled={video.available === false}>
-      <span className="hz-ep-n num">{video.episode}</span>
-      <span className="hz-ep-thumb">
-        {video.thumbnail || meta.background ? <img src={video.thumbnail || meta.background} data-alt={video.thumbnail && meta.background ? meta.background : undefined} alt="" loading="lazy" decoding="async" /> : null}
-        <span className="hz-ep-play" aria-hidden="true"><LuPlay /></span>
-        {video.watched ? <span className="hz-ep-seen" aria-label="Watched"><LuCheck /></span> : null}
-        {video.progress > 0 ? <span className="wide-progress"><span style={{ width: `${Math.min(100, Math.round(video.progress * 100))}%` }} /></span> : null}
-      </span>
-      <span className="hz-ep-text">
-        <span className="hz-ep-line">
-          <span className="hz-ep-title" dir="auto">{video.title || `Episode ${video.episode}`}</span>
-          {next ? <span className="hz-tag is-haze">{nextLabel}</span> : null}
-          {video.available === false ? <span className="hz-tag">Upcoming</span> : null}
+    <button
+      className={className}
+      aria-pressed={Boolean(video.watched)}
+      aria-label={`Watched: episode ${video.episode}, ${name}`}
+      title={video.watched ? "Mark as unwatched" : "Mark as watched"}
+      onClick={() => onMark(video)}
+    >
+      <span><LuCheck /></span>
+    </button>
+  );
+}
+
+const Episode = memo(function Episode({ video, fallback, next, nextLabel, onPlay, onMark }) {
+  const image = video.thumbnail || fallback;
+  return (
+    <div className={`hz-ep${next ? " is-next" : ""}${video.watched ? " is-watched" : ""}${video.upcoming ? " is-upcoming" : ""}`}>
+      <button className="hz-ep-main" onClick={() => onPlay(asVideo(video))} disabled={video.upcoming}>
+        <span className="hz-ep-n num">{video.episode}</span>
+        <span className="hz-ep-thumb">
+          {image ? <img src={image} data-alt={video.thumbnail && fallback ? fallback : undefined} alt="" loading="lazy" decoding="async" /> : null}
+          <span className="hz-ep-play" aria-hidden="true"><LuPlay /></span>
+          {video.progress > 0 ? <span className="wide-progress"><span style={{ width: `${Math.min(100, Math.round(video.progress * 100))}%` }} /></span> : null}
         </span>
-        {video.overview ? <span className="hz-ep-desc" dir="auto">{video.overview}</span> : null}
+        <span className="hz-ep-text">
+          <span className="hz-ep-line">
+            <span className="hz-ep-title" dir="auto">{video.title || `Episode ${video.episode}`}</span>
+            {next ? <span className="hz-tag is-haze">{nextLabel}</span> : null}
+            {video.upcoming ? <span className="hz-tag">Upcoming</span> : null}
+          </span>
+          {video.overview ? <span className="hz-ep-desc" dir="auto">{video.overview}</span> : null}
+          <span className="hz-ep-meta num">
+            {airDate(video.released) ? <span>{airDate(video.released)}</span> : null}
+            <EpisodeScore value={video.rating} />
+            {video.runtime ? <span>{video.runtime} min</span> : null}
+          </span>
+        </span>
+      </button>
+      {video.upcoming ? null : <WatchedMark video={video} onMark={onMark} className="hz-ep-mark" />}
+    </div>
+  );
+}, sameRow);
+
+const EpisodeTile = memo(function EpisodeTile({ video, fallback, next, onPlay, onMark }) {
+  const image = video.thumbnail || fallback;
+  return (
+    <div className={`hz-tile${next ? " is-next" : ""}${video.watched ? " is-watched" : ""}`}>
+      <button className="hz-tile-main" onClick={() => onPlay(asVideo(video))} disabled={video.upcoming}>
+        <span className="hz-ep-thumb">
+          {image ? <img src={image} data-alt={video.thumbnail && fallback ? fallback : undefined} alt="" loading="lazy" decoding="async" /> : null}
+          <span className="hz-ep-play" aria-hidden="true"><LuPlay /></span>
+          {video.progress > 0 ? <span className="wide-progress"><span style={{ width: `${Math.min(100, Math.round(video.progress * 100))}%` }} /></span> : null}
+        </span>
+        <span className="hz-tile-title" dir="auto"><b className="num">{video.episode}</b>{video.title || `Episode ${video.episode}`}</span>
         <span className="hz-ep-meta num">
           {airDate(video.released) ? <span>{airDate(video.released)}</span> : null}
           <EpisodeScore value={video.rating} />
           {video.runtime ? <span>{video.runtime} min</span> : null}
         </span>
-      </span>
-    </button>
+      </button>
+      {video.upcoming ? null : <WatchedMark video={video} onMark={onMark} className="hz-tile-mark" />}
+    </div>
   );
-}
-
-function EpisodeTile({ video, meta, next, onPlay }) {
-  return (
-    <button className={`hz-tile${next ? " is-next" : ""}`} onClick={() => onPlay(asVideo(video))} disabled={video.available === false}>
-      <span className="hz-ep-thumb">
-        {video.thumbnail || meta.background ? <img src={video.thumbnail || meta.background} data-alt={video.thumbnail && meta.background ? meta.background : undefined} alt="" loading="lazy" decoding="async" /> : null}
-        <span className="hz-ep-play" aria-hidden="true"><LuPlay /></span>
-        {video.watched ? <span className="hz-ep-seen" aria-label="Watched"><LuCheck /></span> : null}
-        {video.progress > 0 ? <span className="wide-progress"><span style={{ width: `${Math.min(100, Math.round(video.progress * 100))}%` }} /></span> : null}
-      </span>
-      <span className="hz-tile-title" dir="auto"><b className="num">{video.episode}</b>{video.title || `Episode ${video.episode}`}</span>
-      <span className="hz-ep-meta num">
-        {airDate(video.released) ? <span>{airDate(video.released)}</span> : null}
-        <EpisodeScore value={video.rating} />
-        {video.runtime ? <span>{video.runtime} min</span> : null}
-      </span>
-    </button>
-  );
-}
+}, sameRow);
 
 /** Every episode's score on one sheet: seasons across, episodes down. Click a square to play it. */
 function RatingsSheet({ meta, seasons, onPlay }) {
@@ -137,7 +163,7 @@ function RatingsSheet({ meta, seasons, onPlay }) {
 }
 
 /** A title's page in the Haze look. The data and the play logic come from Details; this is the furniture. */
-export default function HazeDetails({ meta, topic, seasons, season, setSeason, episodes, target, similar, play, openSources, saved, heroRef, children }) {
+export default function HazeDetails({ meta, topic, seasons, season, setSeason, episodes, target, similar, stats, onMark, onMarkSeason, play, openSources, saved, heroRef, children }) {
   const { appearance, laterIds, toggleLater, openDetails, toast } = useApp();
   const color = useArtColor([meta.background, meta.banner, meta.poster], appearance?.hazeArt !== false);
   const series = seasons.length > 0;
@@ -173,8 +199,11 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
     setQuery("");
     toggleRef.current?.scrollIntoView({ block: "center", behavior: reduceMotion() ? "auto" : "smooth" });
   };
-  const lead = episodes.find(video => video.id === target?.videoId) || null;
-  const seen = episodes.filter(video => video.watched).length;
+  // Folded, the season shows the episode to watch next: the main button's when it is in this
+  // season, else this season's first one not yet seen.
+  const lead = episodes.find(video => video.id === target?.videoId) || episodes.find(video => !video.watched && !video.upcoming) || null;
+  const progress = stats.get(season) || { total: 0, aired: 0, watched: 0 };
+  const done = seasonDone(progress);
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -188,7 +217,7 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
     ["Status", meta.status], ["Released", meta.releaseInfo], ["Runtime", meta.runtime],
     ["Director", meta.director?.join(", ")], ["Country", meta.country], ["Language", meta.language],
   ].filter(([, value]) => value);
-  const nextLabel = meta.resume ? "Continue" : "Up next";
+  const nextLabel = target?.label === "Resume" ? "Continue" : "Up next";
 
   return (
     <main className="screen details hz-details" style={color ? { "--haze-rgb": color } : undefined}>
@@ -245,9 +274,24 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
         <section className="hz-d-panel">
           <div className="hz-ep-tools">
             <div className="hz-seasons" role="tablist" aria-label="Seasons" data-keep-scroll>
-              {seasons.map(s => <button key={s} role="tab" className="chip" aria-selected={s === season} aria-pressed={s === season} onClick={() => { setSeason(s); setOpen(true); }}>{seasonName(s)}</button>)}
+              {seasons.map(s => {
+                const entry = stats.get(s);
+                const complete = seasonDone(entry);
+                return (
+                  <button key={s} role="tab" className={`chip${s === season ? " on" : ""}`} aria-selected={s === season} onClick={() => { setSeason(s); setOpen(true); }}>
+                    {seasonName(s)}
+                    {complete ? <LuCheck className="hz-chip-done" aria-hidden="true" /> : entry?.watched ? <span className="hz-chip-count num" aria-hidden="true">{entry.watched}/{entry.aired}</span> : null}
+                    {entry?.watched ? <span className="sr-only">{complete ? ", watched" : `, ${entry.watched} of ${entry.aired} watched`}</span> : null}
+                  </button>
+                );
+              })}
             </div>
             <div className="hz-ep-right">
+              {progress.aired ? (
+                <button className="btn btn-glass btn-sm hz-season-mark" onClick={() => onMarkSeason(season, !done)} aria-label={`Mark all of ${seasonName(season)} as ${done ? "unwatched" : "watched"}`}>
+                  {done ? <LuRotateCcw /> : <LuCheckCheck />}<span>{done ? "Mark season unwatched" : "Mark season watched"}</span>
+                </button>
+              ) : null}
               <label className="hz-find">
                 <LuSearch aria-hidden="true" />
                 <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Episode number or name" aria-label="Find an episode" />
@@ -266,15 +310,19 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
             onClick={() => (expanded ? fold() : setOpen(true))}
           >
             <span className="hz-ep-toggle-name">{seasonName(season)}</span>
-            <span className="hz-ep-toggle-count num">
-              {episodes.length} {episodes.length === 1 ? "episode" : "episodes"}{seen ? ` · ${seen} watched` : ""}
-            </span>
+            <span className="hz-ep-toggle-count num">{episodes.length} {episodes.length === 1 ? "episode" : "episodes"}</span>
+            {progress.watched ? (
+              <span className="hz-ep-toggle-seen num">
+                <span className="hz-meter" aria-hidden="true"><i style={{ transform: `scaleX(${Math.min(1, progress.watched / Math.max(1, progress.aired))})` }} /></span>
+                {done ? "All watched" : `${progress.watched} of ${progress.aired} watched`}
+              </span>
+            ) : null}
             <span className="hz-ep-toggle-act">{expanded ? "Hide episodes" : "Show all episodes"}</span>
             <LuChevronDown aria-hidden="true" />
           </button>
           {!expanded && lead ? (
             <div className="hz-eps hz-ep-lead">
-              <Episode video={lead} meta={meta} next nextLabel={nextLabel} onPlay={play} />
+              <Episode video={lead} fallback={meta.background} next={lead.id === target?.videoId} nextLabel={nextLabel} onPlay={play} onMark={onMark} />
             </div>
           ) : null}
           <div id="hz-ep-list" className="hz-ep-fold" data-open={expanded} inert={expanded ? undefined : ""}>
@@ -282,11 +330,11 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
               {listed && shown.length === 0 ? <p className="hz-none">No episode matches “{query}”.</p> : null}
               {!listed ? null : view === "list" ? (
                 <div className="hz-eps" key={season}>
-                  {shown.map(video => <Episode key={video.id} video={video} meta={meta} next={video.id === target?.videoId} nextLabel={nextLabel} onPlay={play} />)}
+                  {shown.map(video => <Episode key={video.id} video={video} fallback={meta.background} next={video.id === target?.videoId} nextLabel={nextLabel} onPlay={play} onMark={onMark} />)}
                 </div>
               ) : (
                 <div className="hz-tiles" key={season}>
-                  {shown.map(video => <EpisodeTile key={video.id} video={video} meta={meta} next={video.id === target?.videoId} onPlay={play} />)}
+                  {shown.map(video => <EpisodeTile key={video.id} video={video} fallback={meta.background} next={video.id === target?.videoId} onPlay={play} onMark={onMark} />)}
                 </div>
               )}
               {listed && shown.length > 5 ? (

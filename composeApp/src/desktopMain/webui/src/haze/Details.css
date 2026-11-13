@@ -24,6 +24,11 @@
 .hz-seasons { display: flex; gap: 8px; min-width: 0; overflow-x: auto; scrollbar-width: none; padding: 4px 0; }
 .hz-seasons::-webkit-scrollbar { display: none; }
 .hz-seasons .chip { flex: none; }
+.hz-chip-count { font-size: var(--fs-12); font-weight: 600; color: var(--ink-3); }
+.hz-seasons .chip.on .hz-chip-count { color: rgb(255 255 255 / .72); }
+.hz-seasons .chip svg.hz-chip-done { width: 14px; height: 14px; color: rgb(var(--haze-rgb)); }
+.hz-seasons .chip.on svg.hz-chip-done { color: #fff; }
+.hz-season-mark { flex: none; }
 .hz-ep-right { display: flex; align-items: center; gap: 10px; flex: none; }
 .hz-find {
   width: 240px; height: 44px; padding: 0 14px; border-radius: 999px; display: flex; align-items: center; gap: 10px;
@@ -49,6 +54,10 @@
 .hz-ep-toggle[aria-expanded="true"] { background-color: rgb(var(--haze-rgb) / .1); box-shadow: inset 0 0 0 1px rgb(var(--haze-rgb) / .34); }
 .hz-ep-toggle-name { font-size: var(--fs-16); font-weight: 700; letter-spacing: -.01em; }
 .hz-ep-toggle-count { font-size: var(--fs-14); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Seen so far in this season: a thin meter in the title's colour. */
+.hz-ep-toggle-seen { display: inline-flex; align-items: center; gap: 10px; flex: none; font-size: var(--fs-14); color: var(--ink-2); white-space: nowrap; }
+.hz-meter { position: relative; width: 84px; height: 4px; border-radius: 4px; overflow: hidden; background: rgb(255 255 255 / .12); }
+.hz-meter i { position: absolute; inset: 0; border-radius: inherit; transform-origin: left; background: rgb(var(--haze-rgb)); box-shadow: 0 0 10px rgb(var(--haze-rgb) / .6); transition: transform 420ms var(--ease-out); }
 .hz-ep-toggle-act { margin-left: auto; flex: none; font-size: var(--fs-13); font-weight: 600; color: var(--ink-2); }
 .hz-ep-toggle svg { flex: none; width: 18px; height: 18px; transition: transform 280ms var(--ease-out); }
 .hz-ep-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
@@ -71,15 +80,21 @@
 .hz-ep-less svg { width: 16px; height: 16px; }
 
 .hz-eps { display: flex; flex-direction: column; gap: 8px; }
+/* A row is the episode's play button with its watched mark beside it (a sibling, so marking it
+   can't start it). The row draws the surface; only the play button lights the picture up. */
 .hz-ep {
-  position: relative; width: 100%; display: grid; grid-template-columns: 36px 208px minmax(0, 1fr); align-items: center; gap: 18px;
-  padding: 12px 20px 12px 8px; border-radius: 16px; text-align: left;
+  position: relative; border-radius: 16px;
   background: rgb(255 255 255 / .035); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .06);
   transition: background-color var(--t-fast) ease, box-shadow var(--t-med) ease, transform var(--t-fast) var(--ease-soft);
 }
-.hz-ep:hover:not(:disabled), .hz-ep:focus-visible { background-color: rgb(255 255 255 / .07); box-shadow: inset 0 0 0 1px rgb(var(--haze-rgb) / .4); }
-.hz-ep:active:not(:disabled) { transform: scale(.995); }
-.hz-ep:disabled { cursor: default; opacity: .6; }
+.hz-ep-main {
+  width: 100%; display: grid; grid-template-columns: 36px 208px minmax(0, 1fr); align-items: center; gap: 18px;
+  padding: 12px 80px 12px 8px; border-radius: inherit; text-align: left;
+}
+.hz-ep:hover:not(.is-upcoming), .hz-ep:has(> .hz-ep-main:focus-visible) { background-color: rgb(255 255 255 / .07); box-shadow: inset 0 0 0 1px rgb(var(--haze-rgb) / .4); }
+.hz-ep:has(> .hz-ep-main:active:not(:disabled)) { transform: scale(.995); }
+.hz-ep-main:disabled { cursor: default; }
+.hz-ep.is-upcoming .hz-ep-main > * { opacity: .6; }
 /* The one to watch next: its colour washes in from the left, like the best source in the list. */
 .hz-ep.is-next {
   background:
@@ -92,8 +107,8 @@
 .hz-ep.is-next .hz-ep-n { color: #fff; }
 .hz-ep-thumb { position: relative; display: block; width: 208px; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; background: #14161b; outline: 1px solid rgb(255 255 255 / .08); outline-offset: -1px; }
 .hz-ep-thumb img { width: 100%; height: 100%; object-fit: cover; transition: transform 500ms var(--ease-out), opacity var(--t-med) ease; }
-.hz-ep:hover:not(:disabled) .hz-ep-thumb img, .hz-tile:hover:not(:disabled) .hz-ep-thumb img { transform: scale(1.04); }
-.hz-ep.is-watched .hz-ep-thumb img { opacity: .62; }
+:is(.hz-ep-main, .hz-tile-main):hover:not(:disabled) .hz-ep-thumb img { transform: scale(1.04); }
+:is(.hz-ep, .hz-tile).is-watched .hz-ep-thumb img { opacity: .62; }
 .hz-ep-play {
   position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; display: grid; place-items: center; color: #fff;
   background: rgb(var(--haze-rgb) / .36); box-shadow: inset 0 0 0 1px rgb(var(--haze-rgb) / .65), 0 0 24px rgb(var(--haze-rgb) / .4);
@@ -101,9 +116,7 @@
   opacity: 0; transform: scale(.8); transition: opacity var(--t-fast) ease, transform var(--t-med) var(--ease-out);
 }
 .hz-ep-play svg { width: 17px; height: 17px; fill: currentColor; transform: translateX(1px); }
-.hz-ep:hover:not(:disabled) .hz-ep-play, .hz-ep:focus-visible .hz-ep-play, .hz-tile:hover:not(:disabled) .hz-ep-play, .hz-tile:focus-visible .hz-ep-play { opacity: 1; transform: scale(1); }
-.hz-ep-seen { position: absolute; left: 8px; top: 8px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; color: #0a0b0d; background: #fff; }
-.hz-ep-seen svg { width: 13px; height: 13px; }
+:is(.hz-ep-main, .hz-tile-main):is(:hover, :focus-visible):not(:disabled) .hz-ep-play { opacity: 1; transform: scale(1); }
 .hz-ep-text { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .hz-ep-line { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .hz-ep-title { font-size: var(--fs-16); font-weight: 700; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -114,19 +127,32 @@
 .hz-ep-meta > * + *::before { content: "·"; margin: 0 8px; color: var(--ink-3); font-weight: 500; }
 .hz-ep-meta .ep-score::before { margin-right: 6px; }
 
-/* Scores keep their own scale (green is high) whatever the accent. */
-.hz-ep-score { height: 30px; padding: 0 10px 0 8px; border-radius: 9px; display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-13); font-weight: 800; color: rgb(var(--tone)); background: rgb(var(--tone) / .14); }
-.hz-ep-score svg { width: 13px; height: 13px; fill: currentColor; }
-[data-tone="a"] { --tone: 52 194 123; } [data-tone="b"] { --tone: 98 207 134; } [data-tone="c"] { --tone: 151 214 122; }
-[data-tone="d"] { --tone: 205 214 106; } [data-tone="e"] { --tone: 236 199 90; } [data-tone="f"] { --tone: 237 162 87; } [data-tone="g"] { --tone: 232 121 95; }
+/* Watched or not: a ring that fills with the title's colour. In a row it sits at the end; on a
+   tile it is a badge on the picture, shown on hover until the episode is seen. */
+.hz-ep-mark, .hz-tile-mark { position: absolute; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; transition: transform var(--t-fast) var(--ease-soft), opacity var(--t-fast) ease; }
+.hz-ep-mark span, .hz-tile-mark span { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; transition: background-color var(--t-fast) ease, color var(--t-fast) ease, box-shadow var(--t-fast) ease; }
+.hz-ep-mark svg, .hz-tile-mark svg { width: 16px; height: 16px; }
+.hz-ep-mark:active, .hz-tile-mark:active { transform: scale(.96); }
+.hz-ep-mark { right: 18px; top: 50%; margin-top: -20px; }
+.hz-ep-mark span { color: var(--ink-3); box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / .16); }
+.hz-ep:hover .hz-ep-mark span { color: var(--ink-2); box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / .3); }
+.hz-ep-mark:hover span { color: #fff; background-color: rgb(255 255 255 / .1); box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / .45); }
+.hz-ep-mark[aria-pressed="true"] span { color: #fff; background-color: rgb(var(--haze-rgb) / .34); box-shadow: inset 0 0 0 1px rgb(var(--haze-rgb) / .7); }
+.hz-ep-mark[aria-pressed="true"]:hover span { background-color: rgb(var(--haze-rgb) / .48); }
 
 .hz-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 22px 18px; }
-.hz-tile { display: flex; flex-direction: column; gap: 6px; text-align: left; min-width: 0; }
+.hz-tile { position: relative; min-width: 0; }
+.hz-tile-main { width: 100%; display: flex; flex-direction: column; gap: 6px; text-align: left; min-width: 0; }
 .hz-tile .hz-ep-thumb { width: 100%; margin-bottom: 4px; border-radius: 12px; transition: outline-color var(--t-fast) ease, box-shadow var(--t-med) ease; }
-.hz-tile:hover:not(:disabled) .hz-ep-thumb, .hz-tile:focus-visible .hz-ep-thumb, .hz-tile.is-next .hz-ep-thumb { outline: 2px solid rgb(var(--haze-rgb) / .9); outline-offset: -2px; box-shadow: 0 0 30px rgb(var(--haze-rgb) / .28); }
-.hz-tile:disabled { opacity: .6; cursor: default; }
+.hz-tile-main:is(:hover, :focus-visible):not(:disabled) .hz-ep-thumb, .hz-tile.is-next .hz-ep-thumb { outline: 2px solid rgb(var(--haze-rgb) / .9); outline-offset: -2px; box-shadow: 0 0 30px rgb(var(--haze-rgb) / .28); }
+.hz-tile-main:disabled { opacity: .6; cursor: default; }
 .hz-tile-title { font-size: var(--fs-14); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hz-tile-title b { margin-right: 8px; font-weight: 700; color: var(--ink-3); }
+.hz-tile-mark { left: 4px; top: 4px; opacity: 0; }
+.hz-tile-mark span { color: #fff; background-color: rgb(10 11 13 / .66); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .22); }
+.hz-tile:hover .hz-tile-mark, .hz-tile-mark:focus-visible, .hz-tile-mark[aria-pressed="true"] { opacity: 1; }
+.hz-tile-mark:hover span { background-color: rgb(10 11 13 / .86); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .5); }
+.hz-tile-mark[aria-pressed="true"] span { color: #0a0b0d; background-color: #fff; box-shadow: none; }
 
 /* ---- Ratings: every episode on one sheet ------------------------------------------------------ */
 .hz-heat { display: flex; flex-direction: column; gap: 14px; align-items: flex-start; }
@@ -162,7 +188,7 @@ button.hz-heat-cell:active { transform: scale(.98); }
 .hz-facts dd { margin: 0; font-size: var(--fs-15); font-weight: 600; }
 @media (max-width: 1100px) {
   .hz-about { grid-template-columns: 1fr; }
-  .hz-ep { grid-template-columns: 30px 168px minmax(0, 1fr); gap: 14px; }
+  .hz-ep-main { grid-template-columns: 30px 168px minmax(0, 1fr); gap: 14px; }
   .hz-ep-thumb { width: 168px; }
   .hz-find { width: 180px; }
 }

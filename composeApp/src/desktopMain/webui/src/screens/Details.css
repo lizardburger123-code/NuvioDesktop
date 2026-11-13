@@ -48,7 +48,29 @@
 
 .details-episodes { margin-top: 28px; }
 .details-seasons { margin: 0 var(--gutter); }
+.details-seasons svg.details-season-done { width: 15px; height: 15px; color: var(--accent); }
 .details-episodes .row { margin-top: 20px; }
+.details-season-mark { margin-right: 8px; }
+
+/* An episode card: the picture plays it; the corner mark (its own button, beside the picture's,
+   so marking can never start playback) says whether it was seen and changes that. */
+.ep-card-mark {
+  position: absolute; left: 4px; top: 4px; z-index: 3; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+  opacity: 0; transition: opacity var(--t-fast) ease, transform 260ms var(--ease-out);
+}
+.ep-card-mark span {
+  width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: rgb(7 8 10 / .72);
+  transition: background-color var(--t-fast) ease, color var(--t-fast) ease;
+}
+.ep-card-mark svg { width: 16px; height: 16px; }
+.ep-card:hover .ep-card-mark, .ep-card-mark:focus-visible, .ep-card-mark[aria-pressed="true"] { opacity: 1; }
+/* It rides along when the picture lifts. */
+.ep-card:has(> .card-face:hover:not(:disabled)) .ep-card-mark { transform: translate(-3px, -6px); }
+.ep-card-mark:hover span, .ep-card-mark[aria-pressed="true"] span { background: #fff; color: #0a0b0d; }
+.ep-card-mark:active span { transform: scale(.96); }
+.ep-card .card-face:disabled { cursor: default; }
+.ep-card .card-face:disabled:hover { transform: none; outline: 1px solid rgb(255 255 255 / .1); outline-offset: -1px; box-shadow: none; }
+.ep-card .card-face:disabled .wide-play { display: none; }
 
 .person { width: 120px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
 .person img, .person-mono {
