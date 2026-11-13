@@ -14,6 +14,7 @@
 .hz-d-hero .details-logo { max-height: 140px; margin: 2px 0; }
 .hz-d-hero .details-title { font-size: clamp(44px, 5.6vw, 84px); }
 .hz-d-hero .details-desc { font-size: 16px; line-height: 1.55; max-width: 60ch; }
+.hz-d-hero .details-story { max-width: 60ch; }
 .hz-d-hero .details-actions { gap: 10px; margin-top: 8px; }
 .hz-d-tabs { position: relative; z-index: 1; margin: 6px var(--gutter) 0; }
 .hz-d-panel { position: relative; z-index: 1; margin: 22px var(--gutter) 0; }

@@ -15,7 +15,7 @@ import TitleMark from "../components/TitleMark.jsx";
 import Ratings from "../components/Ratings.jsx";
 import Person from "../components/Person.jsx";
 import { useSimilar } from "../lib/similar.js";
-import HazeDetails, { NextEpisode, RangePicker, airDate, airDay, asVideo, rangeOf, rangesOf, sameEpisode, seasonName } from "../haze/Details.jsx";
+import HazeDetails, { Description, NextEpisode, RangePicker, airDate, airDay, asVideo, rangeOf, rangesOf, sameEpisode, seasonName } from "../haze/Details.jsx";
 import { lookOf } from "../lib/look.js";
 import { episodeCode, minutesLeft, year } from "../lib/format.js";
 import "./Details.css";
@@ -396,7 +396,7 @@ const TitlePage = memo(function TitlePage({ state, params }) {
           {metaLine.slice(1).map(item => <span key={item}>{item}</span>)}
         </div>
         <NextEpisode video={nextAir} />
-        {meta.description ? <p className="details-desc" data-rise dir="auto">{meta.description}</p> : null}
+        {meta.description ? <Description text={meta.description} /> : null}
         <div className="details-actions">
           <button data-rise className="btn btn-primary details-play" onClick={() => target && play(target)} disabled={target?.disabled}>
             <LuPlay className="fill" />

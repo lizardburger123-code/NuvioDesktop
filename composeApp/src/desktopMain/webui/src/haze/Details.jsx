@@ -1,4 +1,4 @@
-import { memo, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   LuCalendarClock, LuCheck, LuCheckCheck, LuChevronDown, LuChevronUp, LuClapperboard, LuLayoutGrid, LuList, LuListVideo, LuPlay, LuPlus, LuRotateCcw, LuSearch, LuTrophy,
 } from "react-icons/lu";
@@ -11,6 +11,7 @@ import TitleMark from "../components/TitleMark.jsx";
 import Ratings, { EpisodeScore } from "../components/Ratings.jsx";
 import Person from "../components/Person.jsx";
 import { reduceMotion } from "../lib/motion.js";
+import { useScreenActive } from "../lib/screen.js";
 import { year } from "../lib/format.js";
 import "./Details.css";
 
@@ -86,6 +87,34 @@ export const findEpisodes = (episodes, text) => {
   return [...exact, ...episodes.filter(video => String(video.episode) !== q && (video.title || "").toLowerCase().includes(q))];
 };
 const seasonDone = entry => Boolean(entry) && entry.aired > 0 && entry.watched >= entry.aired;
+
+/** The story, three lines at most in the hero; More shows all of it, wherever it was cut. */
+export function Description({ text }) {
+  const ref = useRef(null);
+  const [open, setOpen] = useState(false);
+  const [cut, setCut] = useState(false);
+  const active = useScreenActive();
+  useEffect(() => { setOpen(false); }, [text]);
+  // Measured only on the screen in view: reading a parked screen's layout would force it to render.
+  useLayoutEffect(() => {
+    const node = ref.current;
+    if (!node || !active) return undefined;
+    const measure = () => { if (node.clientHeight) setCut(node.scrollHeight > node.clientHeight + 1); };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [text, active]);
+  return (
+    // The direction comes from the story itself (the button's own words don't count).
+    <div className="details-story" data-rise dir="auto">
+      <p ref={ref} className={`details-desc${open ? " is-open" : ""}`}>{text}</p>
+      {cut || open ? (
+        <button className="details-more" aria-expanded={open} onClick={() => setOpen(value => !value)}>{open ? "Less" : "More"}</button>
+      ) : null}
+    </div>
+  );
+}
 
 /** A score out of ten as a colour: data, not decoration, so it keeps its own scale in every accent. */
 const scoreTone = rating => (rating >= 9 ? "a" : rating >= 8.5 ? "b" : rating >= 8 ? "c" : rating >= 7.5 ? "d" : rating >= 7 ? "e" : rating >= 6 ? "f" : "g");
@@ -305,7 +334,7 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
           {(meta.genres || []).slice(0, 3).map(genre => <span key={genre} className="hz-genre">{genre}</span>)}
         </div>
         <NextEpisode video={nextAir} />
-        {meta.description ? <p className="details-desc" data-rise dir="auto">{meta.description}</p> : null}
+        {meta.description ? <Description text={meta.description} /> : null}
         <div className="details-actions">
           <button data-rise className="btn btn-primary details-play" onClick={() => target && play(target)} disabled={target?.disabled}>
             <LuPlay className="fill" />

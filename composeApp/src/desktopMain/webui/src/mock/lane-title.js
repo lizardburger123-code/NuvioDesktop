@@ -9,6 +9,8 @@
 //   series:tt-flaky     fails the first time, loads on "Try again"
 //   Slow Horses         still airing: Season 5 has one episode out, the next in a few hours
 //   One Piece           1,151 episodes in one season, seen up to 1,042, the last not out yet
+//   series:tt-ar        an Arabic series without a logo: right-to-left name, story and episodes
+//   movie:tt-long       a film with a very long name and story, without a logo
 // window.__mockFailWatched(n) makes the next n watched.episode / watched.season calls fail.
 import { still } from "./art.js";
 
@@ -52,6 +54,30 @@ const longRun = meta => {
   return { ...meta, videos, status: "Ongoing", resume: { videoId: "kitsu:12:1:1043", season: 1, episode: 1043, positionMs: 504000, durationMs: 1440000 } };
 };
 
+const ARABIC_STORY = "في حيّ قديم على ضفاف النهر، تعود صحفية شابة إلى بيت جدّها بعد غياب طويل لتكتشف رسائل لم تُرسل منذ خمسين عامًا. تقودها الرسائل إلى أسرار عائلات الحيّ، وإلى حكاية حبّ قديمة غيّرت مصير المدينة كلها. بين الماضي والحاضر، تحاول أن تفهم لماذا اختار الجميع الصمت، وما الذي يخشونه إن عادت الحكاية إلى الضوء من جديد.";
+const special = (data, id) => {
+  if (id === "tt-ar") {
+    const base = data.detailsFor("series", "tt1002");
+    const titles = ["الرسالة الأولى", "بيت الجدّ", "صمت الجيران", "الطريق إلى النهر", "ما لم يُقل", "الحكاية كاملة"];
+    return {
+      ...base, id, name: "حكايات المدينة القديمة", logo: null, description: ARABIC_STORY, genres: ["دراما", "غموض"],
+      country: "مصر", language: "العربية",
+      videos: titles.map((title, i) => ({ ...base.videos[i], id: `${id}:1:${i + 1}`, title, season: 1, episode: i + 1, overview: "تجد ليلى رسالة جديدة تحت عتبة الباب، وتبدأ في تتبّع مرسلها." })),
+      cast: base.cast.slice(0, 4).map((person, i) => ({ ...person, name: ["سلمى حداد", "كريم منصور", "نور الشريف", "هالة يوسف"][i], role: ["ليلى", "يوسف", "الجدّ", "أم حسن"][i], photo: null })),
+      resume: null,
+    };
+  }
+  if (id === "tt-long") {
+    const base = data.detailsFor("movie", "tt0003");
+    return {
+      ...base, id, logo: null,
+      name: "The Extraordinarily Long and Winding Chronicle of the Lighthouse Keepers of the Northern Isles",
+      description: "Three generations of one family keep the last manned lighthouse on a chain of islands at the edge of the map. When the board that runs it decides to switch the light to automatic, the youngest keeper has one winter to prove the islands still need people: through storms, a shipwreck nobody reported, a stranger who arrives on the supply boat and will not say why, and a logbook whose oldest pages describe a light that was never built. A slow, patient film about work, weather and the stories families tell to keep going.",
+    };
+  }
+  return null;
+};
+
 export default ctx => {
   const { push, base, data } = ctx;
   let current = null;
@@ -76,6 +102,8 @@ export default ctx => {
     if (id === "tt-missing") return { error: "No addon provides meta for this content." };
     if (failOnce.delete(id)) return { error: "Could not load details from any addon." };
     if (id === "tt-flaky") return { meta: { ...data.detailsFor("movie", "tt0002"), id, name: "The Cycle" } };
+    const made = special(data, id);
+    if (made) return { meta: withMarks(made) };
     return { meta: withMarks(longRun(airing(data.detailsFor(type, id)))) };
   };
 
