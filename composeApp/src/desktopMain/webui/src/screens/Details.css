@@ -60,6 +60,11 @@
 .details-seasons { margin: 0 var(--gutter); }
 .details-seasons svg.details-season-done { width: 15px; height: 15px; color: var(--accent); }
 .details-episodes .row { margin-top: 20px; }
+/* A long season, a hundred episodes at a time. */
+.ep-ranges { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 4px 0; }
+.ep-ranges::-webkit-scrollbar { display: none; }
+.ep-ranges .chip { flex: none; height: 32px; padding: 0 14px; font-size: var(--fs-13); }
+.details-ranges { margin: 16px var(--gutter) 0; }
 .details-season-mark { margin-right: 8px; }
 
 /* An episode card: the picture plays it; the corner mark (its own button, beside the picture's,

@@ -15,7 +15,7 @@ import TitleMark from "../components/TitleMark.jsx";
 import Ratings from "../components/Ratings.jsx";
 import Person from "../components/Person.jsx";
 import { useSimilar } from "../lib/similar.js";
-import HazeDetails, { NextEpisode, airDate, airDay, asVideo, sameEpisode, seasonName } from "../haze/Details.jsx";
+import HazeDetails, { NextEpisode, RangePicker, airDate, airDay, asVideo, rangeOf, rangesOf, sameEpisode, seasonName } from "../haze/Details.jsx";
 import { lookOf } from "../lib/look.js";
 import { episodeCode, minutesLeft, year } from "../lib/format.js";
 import "./Details.css";
@@ -279,6 +279,12 @@ const TitlePage = memo(function TitlePage({ state, params }) {
   const episodes = useMemo(() => videos.filter(video => video.season === season), [videos, season]);
   const shownSeason = useRef(season);
   shownSeason.current = season;
+  // Cinema's row: a long season a hundred at a time, opening on the hundred with the next episode.
+  const [range, setRange] = useState(null);
+  useEffect(() => { setRange(null); }, [season]);
+  const ranges = useMemo(() => rangesOf(episodes), [episodes]);
+  const rangeIndex = ranges ? Math.min(ranges.length - 1, range ?? rangeOf(episodes, target?.videoId)) : 0;
+  const rowEpisodes = ranges ? episodes.slice(ranges[rangeIndex].from, ranges[rangeIndex].to) : episodes;
 
   // Opened from Continue watching / Spotlight "Play": go straight to the source list, once. The
   // topic is pushed again whenever progress or the list changes; that must not reopen it.
@@ -438,17 +444,18 @@ const TitlePage = memo(function TitlePage({ state, params }) {
               );
             })}
           </div>
+          {ranges ? <RangePicker ranges={ranges} value={rangeIndex} onChange={setRange} className="details-ranges" /> : null}
           <Row
             title="Episodes"
             subtitle={`${seasonName(season)} · ${episodes.length} ${episodes.length === 1 ? "episode" : "episodes"}${current.total > current.aired ? ` · ${current.total - current.aired} to come` : ""}${current.watched ? ` · ${seasonDone ? "all watched" : `${current.watched} watched`}` : ""}`}
-            key={season}
+            key={`${season}:${rangeIndex}`}
             action={current.aired ? (
               <button className="btn btn-sm btn-line details-season-mark" onClick={() => markSeason(season, !seasonDone)} aria-label={`Mark all of ${seasonName(season)} as ${seasonDone ? "unwatched" : "watched"}`}>
                 {seasonDone ? <LuRotateCcw /> : <LuCheckCheck />} {seasonDone ? "Mark season unwatched" : "Mark season watched"}
               </button>
             ) : null}
           >
-            {episodes.map(video => <EpisodeCard key={video.id} video={video} fallback={meta.background} onPlay={play} onMark={toggleWatched} />)}
+            {rowEpisodes.map(video => <EpisodeCard key={video.id} video={video} fallback={meta.background} onPlay={play} onMark={toggleWatched} />)}
           </Row>
         </section>
       ) : null}

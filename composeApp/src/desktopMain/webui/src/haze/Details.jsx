@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   LuCalendarClock, LuCheck, LuCheckCheck, LuChevronDown, LuChevronUp, LuClapperboard, LuLayoutGrid, LuList, LuListVideo, LuPlay, LuPlus, LuRotateCcw, LuSearch, LuTrophy,
 } from "react-icons/lu";
@@ -56,6 +56,35 @@ export function NextEpisode({ video }) {
   );
 }
 const upcomingTag = video => (video.airsAt != null ? `Airs ${airDay(video)}` : "Not out yet");
+/** Long seasons (anime run to a thousand episodes) come a hundred at a time, so the list opens fast. */
+export const RANGE = 100;
+export const rangesOf = episodes => {
+  if (episodes.length <= RANGE + RANGE / 5) return null;
+  const ranges = [];
+  for (let from = 0; from < episodes.length; from += RANGE) {
+    const to = Math.min(episodes.length, from + RANGE);
+    ranges.push({ from, to, label: `${episodes[from].episode ?? from + 1}–${episodes[to - 1].episode ?? to}` });
+  }
+  return ranges;
+};
+/** The hundred holding a given episode (the one to watch next), else the first. */
+export const rangeOf = (episodes, id) => Math.max(0, Math.floor(Math.max(0, episodes.findIndex(video => video.id === id)) / RANGE));
+export function RangePicker({ ranges, value, onChange, className = "" }) {
+  return (
+    <div className={`ep-ranges ${className}`} role="group" aria-label="Episodes, a hundred at a time" data-keep-scroll>
+      {ranges.map((range, i) => (
+        <button key={range.from} className="chip num" aria-pressed={i === value} onClick={() => onChange(i)}>{range.label}</button>
+      ))}
+    </div>
+  );
+}
+/** Search: an episode's number exactly, or words from its title. */
+export const findEpisodes = (episodes, text) => {
+  const q = text.trim().toLowerCase();
+  if (!q) return episodes;
+  const exact = episodes.filter(video => String(video.episode) === q);
+  return [...exact, ...episodes.filter(video => String(video.episode) !== q && (video.title || "").toLowerCase().includes(q))];
+};
 const seasonDone = entry => Boolean(entry) && entry.aired > 0 && entry.watched >= entry.aired;
 
 /** A score out of ten as a colour: data, not decoration, so it keeps its own scale in every accent. */
@@ -82,7 +111,7 @@ const Episode = memo(function Episode({ video, fallback, next, nextLabel, onPlay
   return (
     <div className={`hz-ep${next ? " is-next" : ""}${video.watched ? " is-watched" : ""}${video.upcoming ? " is-upcoming" : ""}`}>
       <button className="hz-ep-main" onClick={() => onPlay(asVideo(video))} disabled={video.upcoming}>
-        <span className="hz-ep-n num">{video.episode}</span>
+        <span className={`hz-ep-n num${String(video.episode).length > 3 ? " is-long" : ""}`}>{video.episode}</span>
         <span className="hz-ep-thumb">
           {image ? <img src={image} data-alt={video.thumbnail && fallback ? fallback : undefined} alt="" loading="lazy" decoding="async" /> : null}
           <span className="hz-ep-play" aria-hidden="true"><LuPlay /></span>
@@ -213,7 +242,10 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
   useEffect(() => { if (!tabs.some(t => t.id === tab)) setTab(tabs[0].id); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [tabs.length]);
   const [view, setView] = useState(savedView);
   const [query, setQuery] = useState("");
-  useEffect(() => { setQuery(""); }, [season]);
+  // The list follows the box a beat behind, so typing never waits for a long season to redraw.
+  const search = useDeferredValue(query);
+  const [range, setRange] = useState(null);
+  useEffect(() => { setQuery(""); setRange(null); }, [season]);
   const chooseView = next => { setView(next); try { window.localStorage.setItem(VIEW_KEY, next); } catch { /* a nicety */ } };
 
   // The episode list folds away: a title opens on what to watch next, with the rest of the page
@@ -240,11 +272,11 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
   const progress = stats.get(season) || { total: 0, aired: 0, watched: 0 };
   const done = seasonDone(progress);
 
-  const shown = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return episodes;
-    return episodes.filter(video => String(video.episode) === q || (video.title || "").toLowerCase().includes(q));
-  }, [episodes, query]);
+  const ranges = useMemo(() => rangesOf(episodes), [episodes]);
+  const rangeIndex = ranges ? Math.min(ranges.length - 1, range ?? rangeOf(episodes, lead?.id)) : 0;
+  const found = useMemo(() => findEpisodes(episodes, search), [episodes, search]);
+  const searching = search.trim() !== "";
+  const shown = searching ? found.slice(0, RANGE) : ranges ? episodes.slice(ranges[rangeIndex].from, ranges[rangeIndex].to) : episodes;
 
   const realSeasons = seasons.filter(s => s > 0).length;
   const episodeCount = (meta.videos || []).filter(video => video.season > 0).length;
@@ -365,13 +397,15 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
           ) : null}
           <div id="hz-ep-list" className="hz-ep-fold" data-open={expanded} inert={expanded ? undefined : ""}>
             <div className="hz-ep-fold-in">
-              {listed && shown.length === 0 ? <p className="hz-none">No episode matches “{query}”.</p> : null}
+              {listed && ranges && !searching ? <RangePicker ranges={ranges} value={rangeIndex} onChange={setRange} className="hz-ranges" /> : null}
+              {listed && searching && found.length === 0 ? <p className="hz-none">No episode matches “{search.trim()}”.</p> : null}
+              {listed && searching && found.length > shown.length ? <p className="hz-none num">Showing the first {shown.length} of {found.length} matches. Type more to narrow it down.</p> : null}
               {!listed ? null : view === "list" ? (
-                <div className="hz-eps" key={season}>
+                <div className="hz-eps" key={`${season}:${rangeIndex}`}>
                   {shown.map(video => <Episode key={video.id} video={video} fallback={meta.background} next={video.id === target?.videoId} nextLabel={nextLabel} onPlay={play} onMark={onMark} />)}
                 </div>
               ) : (
-                <div className="hz-tiles" key={season}>
+                <div className="hz-tiles" key={`${season}:${rangeIndex}`}>
                   {shown.map(video => <EpisodeTile key={video.id} video={video} fallback={meta.background} next={video.id === target?.videoId} onPlay={play} onMark={onMark} />)}
                 </div>
               )}

@@ -8,6 +8,7 @@
 //   series:tt-missing   no addon has it ("title not found")
 //   series:tt-flaky     fails the first time, loads on "Try again"
 //   Slow Horses         still airing: Season 5 has one episode out, the next in a few hours
+//   One Piece           1,151 episodes in one season, seen up to 1,042, the last not out yet
 // window.__mockFailWatched(n) makes the next n watched.episode / watched.season calls fail.
 import { still } from "./art.js";
 
@@ -29,6 +30,26 @@ const airing = meta => {
     };
   });
   return { ...meta, videos: [...meta.videos, ...fifth] };
+};
+
+/** A long-running anime as Kitsu lists it: one season of over a thousand weekly episodes. */
+let stills = null;
+const longRun = meta => {
+  if (meta.id !== "kitsu:12") return meta;
+  stills = stills || Array.from({ length: 24 }, (_, i) => still(meta.name, i));
+  const total = 1151;
+  const now = Date.now();
+  const named = { 1: "I'm Luffy! The Man Who Will Become King of the Pirates", 1043: "Rising Above the Clouds", 1150: "Morning Light Over the Harbour" };
+  const videos = Array.from({ length: total }, (_, i) => {
+    const n = i + 1;
+    const at = n === total ? now + 2 * DAY : now - (total - 1 - n) * 7 * DAY - DAY;
+    return {
+      id: `kitsu:12:1:${n}`, title: named[n] || `Episode ${n}`, season: 1, episode: n, runtime: 24,
+      released: new Date(at).toISOString(), thumbnail: n % 9 === 0 ? undefined : stills[n % 24],
+      progress: n === 1043 ? 0.35 : 0, watched: n <= 1042,
+    };
+  });
+  return { ...meta, videos, status: "Ongoing", resume: { videoId: "kitsu:12:1:1043", season: 1, episode: 1043, positionMs: 504000, durationMs: 1440000 } };
 };
 
 export default ctx => {
@@ -55,7 +76,7 @@ export default ctx => {
     if (id === "tt-missing") return { error: "No addon provides meta for this content." };
     if (failOnce.delete(id)) return { error: "Could not load details from any addon." };
     if (id === "tt-flaky") return { meta: { ...data.detailsFor("movie", "tt0002"), id, name: "The Cycle" } };
-    return { meta: withMarks(airing(data.detailsFor(type, id))) };
+    return { meta: withMarks(longRun(airing(data.detailsFor(type, id)))) };
   };
 
   const send = (type, id, delay) => {
