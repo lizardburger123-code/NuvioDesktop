@@ -3,6 +3,7 @@ import { LuPlay } from "react-icons/lu";
 import { EASE } from "../lib/motion.js";
 import { useScreenActive } from "../lib/screen.js";
 import { calm, useLite } from "../lib/lite.js";
+import { softwareRender } from "../lib/session.js";
 import { sized } from "../lib/images.js";
 import { year } from "../lib/format.js";
 import { navigate } from "../lib/router.js";
@@ -64,7 +65,9 @@ function MovingArt({ src, fallback }) {
   useLayoutEffect(() => {
     if (!last.current || calm()) return;
     if (layers.length > 1) last.current.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 1100, easing: EASE.glide });
-    last.current.animate([{ transform: "scale(1)" }, { transform: "scale(1.05)" }], { duration: 14000, easing: "linear", fill: "forwards" });
+    // The drift runs for as long as the picture shows. Drawn on the CPU (software drawing), each of
+    // its frames repaints the whole hero and the glass over it, so there the picture rests.
+    if (!softwareRender()) last.current.animate([{ transform: "scale(1)" }, { transform: "scale(1.05)" }], { duration: 14000, easing: "linear", fill: "forwards" });
   }, [layers]);
   return (
     <div className="showcase-art" aria-hidden="true">
