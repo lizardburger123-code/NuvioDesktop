@@ -1081,6 +1081,23 @@ void notifyWarmupDone(bool ok) {
     gWarmupCv.notify_all();
 }
 
+// Destroy the warm view, if there is one. GTK thread only.
+void destroyWarmView() {
+    if (!gWarmupWindow) return;
+    // Same fatal-X-error exposure as the overlay teardown (see
+    // destroyWebviewOnGtk): the webview's dispose queries the pointer
+    // position while this window is dying.
+    GdkDisplay *d = gtk_widget_get_display(gWarmupWindow);
+    gdk_x11_display_error_trap_push(d);
+    gtk_widget_destroy(gWarmupWindow);
+    gdk_x11_display_error_trap_pop_ignored(d);
+    // The view/ucm die with their window — null them too or the adoption gate
+    // could later read dangling pointers.
+    gWarmupWindow = nullptr;
+    gWarmupView = nullptr;
+    gWarmupUcm = nullptr;
+}
+
 // One web context shared by every controls webview, with a real HTTP disk
 // cache. The page re-fetches the opening artwork on every player open; with
 // the per-player ephemeral context that meant a network round-trip each time —
@@ -1231,6 +1248,7 @@ gboolean createWebviewOnGtk(gpointer data) {
             "web-context", sharedControlsContext(),
             "user-content-manager", ucm,
             nullptr));
+        g_object_unref(ucm);  // the view holds its own reference
         GdkRGBA transparent = {0.0, 0.0, 0.0, 0.0};
         webkit_web_view_set_background_color(wv, &transparent);
 
@@ -1462,7 +1480,14 @@ gboolean applyControlsOnGtk(gpointer data) {
         // out of reach while a film plays, so the mode holds for the whole film:
         // mpv's Lite options are set when it is first seen.
         const bool lite = jsonFlag(u->json, "lite", false);
-        if (lite && !u->player->lite) applyLiteMpvOptions(u->player);
+        if (lite && !u->player->lite) {
+            applyLiteMpvOptions(u->player);
+            // Lite keeps no controls page warm for the next film (the app skips
+            // the warm-up at launch). One is only here if Lite was chosen after
+            // a launch in Full: it would hold its own WebKit processes all along.
+            gWarmupUrl.clear();
+            destroyWarmView();
+        }
         u->player->lite = lite;
         noteOverlayChange(u->player);
         // Chrome visibility travels authoritatively in this state JSON. The
@@ -1638,6 +1663,8 @@ gboolean warmupOnGtk(gpointer data) {
                                                      "web-context", sharedControlsContext(),
                                                      "user-content-manager", ucm,
                                                      nullptr));
+    // The view holds its own reference; gWarmupUcm below lives as long as it.
+    g_object_unref(ucm);
     GdkRGBA transparent = {0.0, 0.0, 0.0, 0.0};
     webkit_web_view_set_background_color(wv, &transparent);
     // Full player-parity settings — this view becomes the player's overlay.
@@ -2228,23 +2255,7 @@ JNIEXPORT void JNICALL NP(shutdownWebView2Warmup)(JNIEnv *, jobject) {
     if (gShuttingDown.load()) return;
     g_main_context_invoke(nullptr,
                           +[](gpointer) -> gboolean {
-                              if (gWarmupWindow) {
-                                  // Same fatal-X-error exposure as the overlay
-                                  // teardown (see destroyWebviewOnGtk): the
-                                  // webview's dispose queries the pointer
-                                  // position while this window is dying.
-                                  GdkDisplay *d =
-                                      gtk_widget_get_display(gWarmupWindow);
-                                  gdk_x11_display_error_trap_push(d);
-                                  gtk_widget_destroy(gWarmupWindow);
-                                  gdk_x11_display_error_trap_pop_ignored(d);
-                                  // The view/ucm die with their window — null
-                                  // them too or the adoption gate could later
-                                  // read dangling pointers.
-                                  gWarmupWindow = nullptr;
-                                  gWarmupView = nullptr;
-                                  gWarmupUcm = nullptr;
-                              }
+                              destroyWarmView();
                               return G_SOURCE_REMOVE;
                           },
                           nullptr);
