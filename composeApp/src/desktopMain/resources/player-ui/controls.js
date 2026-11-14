@@ -2011,7 +2011,7 @@ const appendFilterChip = (container, label, selected, onSelect, isLoading = fals
   chip.addEventListener("click", event => {
     event.stopPropagation();
     if (!selected) {
-      chip.scrollIntoView({ behavior: "smooth", container: "nearest", inline: "start" });
+      chip.scrollIntoView({ behavior: isLite() ? "instant" : "smooth", container: "nearest", inline: "start" });
       onSelect();
     }
   });
