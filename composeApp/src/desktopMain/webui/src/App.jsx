@@ -10,7 +10,7 @@ import { playScreenEntrance } from "./lib/motion.js";
 import { recovered, reloadApp } from "./lib/session.js";
 import { setArtProxy } from "./lib/artColor.js";
 import { switchLook } from "./lib/look.js";
-import { setPerfDevice } from "./lib/perf.js";
+import { isLite, setPerfDevice, usePerf } from "./lib/perf.js";
 import { ScreenActiveContext } from "./lib/screen.js";
 import { SHORTCUTS, focusSearch } from "./lib/nav.js";
 import Shortcuts from "./components/Shortcuts.jsx";
@@ -113,11 +113,13 @@ const USER_MOVES = ["wheel", "pointerdown", "keydown", "touchstart"];
 /**
  * Back to where the page was. A screen built again (or still receiving its data) can be too
  * short at first: follow it as it grows, for a moment, until the user moves it themselves.
- * Returns a function that stops following.
+ * `rows` (a screen Lite built again) puts its rows back too, as they arrive; it answers whether
+ * they all are. Returns a function that stops following.
  */
-const restoreScroll = (host, target) => {
+const restoreScroll = (host, target, rows = null) => {
   window.scrollTo(0, target);
-  if (!host || !target || Math.abs(window.scrollY - target) < 2 || typeof ResizeObserver !== "function") return null;
+  let rowsPlaced = !rows || rows();
+  if (!host || ((!target || Math.abs(window.scrollY - target) < 2) && rowsPlaced) || typeof ResizeObserver !== "function") return null;
   let observer = null;
   let timer = 0;
   const stop = () => {
@@ -127,12 +129,28 @@ const restoreScroll = (host, target) => {
   };
   observer = new ResizeObserver(() => {
     window.scrollTo(0, target);
-    if (Math.abs(window.scrollY - target) < 2) stop();
+    if (!rowsPlaced) rowsPlaced = rows();
+    if (Math.abs(window.scrollY - target) < 2 && rowsPlaced) stop();
   });
   observer.observe(host);
   timer = window.setTimeout(stop, 2500);
   USER_MOVES.forEach(type => window.addEventListener(type, stop, { capture: true, passive: true }));
   return stop;
+};
+
+/** Rows of a screen built again, back where they were (found by their order); true once all are. */
+const placeRows = (host, rows) => {
+  const tracks = host?.querySelectorAll(".row-track, [data-keep-scroll]") || [];
+  let placed = true;
+  rows.forEach(([i, left, top]) => {
+    const el = tracks[i];
+    if (el) {
+      el.scrollLeft = left;
+      el.scrollTop = top;
+    }
+    if (!el || Math.abs(el.scrollLeft - left) > 1 || Math.abs(el.scrollTop - top) > 1) placed = false;
+  });
+  return placed;
 };
 
 /**
@@ -157,9 +175,12 @@ const placeFocus = (host, saved) => {
   if (back) { take(back); return; }
   // A screen still drawing its page has no heading yet, or swaps its loading heading for the
   // page's own (a title page): focus follows the heading there instead of dropping to the body,
-  // for a few seconds, unless the user has moved it meanwhile.
+  // for a few seconds, unless the user has moved it meanwhile. Lite looks ten times a second
+  // rather than on every frame, which would keep a slow computer drawing frames for nothing.
   let held = take(host.querySelector("h1") || host);
   let frames = 0;
+  const lite = isLite();
+  const again = () => (lite ? window.setTimeout(follow, 100) : window.requestAnimationFrame(follow));
   const follow = () => {
     if (host.classList.contains("is-parked")) return;
     const at = document.activeElement;
@@ -170,9 +191,9 @@ const placeFocus = (host, saved) => {
       if (heading) held = take(heading);
       else if (dropped) held = take(host);
     }
-    if (++frames < 300) window.requestAnimationFrame(follow);
+    if (++frames < (lite ? 50 : 300)) again();
   };
-  window.requestAnimationFrame(follow);
+  again();
 };
 
 /**
@@ -186,6 +207,8 @@ const ScreenLayer = memo(function ScreenLayer({ entry, active, nav }) {
   const rowScroll = useRef(new Map());
   const lastFocus = useRef(null);
   const stopRestore = useRef(null);
+  const entryNow = useRef(entry);
+  entryNow.current = entry;
   const Component = SCREENS[entry.name] || Home;
 
   // Parking a screen drops its scrollers' offsets and its focus, so remember them just before leaving.
@@ -193,10 +216,15 @@ const ScreenLayer = memo(function ScreenLayer({ entry, active, nav }) {
     if (!active) return undefined;
     const save = () => {
       const map = new Map();
-      ref.current?.querySelectorAll(".row-track, [data-keep-scroll]").forEach(el => {
-        if (el.scrollLeft || el.scrollTop) map.set(el, [el.scrollLeft, el.scrollTop]);
+      const offsets = [];
+      ref.current?.querySelectorAll(".row-track, [data-keep-scroll]").forEach((el, i) => {
+        if (!el.scrollLeft && !el.scrollTop) return;
+        map.set(el, [el.scrollLeft, el.scrollTop]);
+        offsets.push([i, el.scrollLeft, el.scrollTop]);
       });
       rowScroll.current = map;
+      // A screen Lite lets go of is built again when it comes back: it finds its rows by order.
+      entryNow.current.rows = offsets;
       const focused = document.activeElement;
       lastFocus.current = focused && focused !== ref.current && ref.current?.contains(focused) ? focused : null;
     };
@@ -212,7 +240,9 @@ const ScreenLayer = memo(function ScreenLayer({ entry, active, nav }) {
     }
     if (shown.current) return;
     shown.current = true;
-    stopRestore.current = restoreScroll(ref.current, entry.scroll || 0);
+    const host = ref.current;
+    const rows = !rowScroll.current.size && entry.rows?.length && isLite() ? () => placeRows(host, entry.rows) : null;
+    stopRestore.current = restoreScroll(host, entry.scroll || 0, rows);
     rowScroll.current.forEach(([left, top], el) => {
       if (!el.isConnected) return;
       el.scrollLeft = left;
@@ -243,8 +273,10 @@ const ScreenLayer = memo(function ScreenLayer({ entry, active, nav }) {
 
 function Screens() {
   const router = useRouter();
+  const lite = usePerf() === "lite";
   const top = router.stack[router.stack.length - 1];
-  const alive = useMemo(() => aliveEntries(router), [router]);
+  // Switching to Lite lets go of the screens it doesn't keep at once.
+  const alive = useMemo(() => aliveEntries(router, lite), [router, lite]);
   return alive.map(entry => (
     <ScreenLayer key={entry.key} entry={entry} active={entry.key === top.key} nav={entry.key === top.key ? router.nav : null} />
   ));
@@ -491,12 +523,23 @@ export default function App() {
  */
 function Intro({ ready }) {
   const ref = useRef(null);
-  // No intro over a page that only replaces one lost to a crash.
-  const [done, setDone] = useState(() => recovered || window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const lite = usePerf() === "lite";
+  // No intro over a page that only replaces one lost to a crash, nor in Lite.
+  const [done, setDone] = useState(() => recovered || isLite() || window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const [skipped, setSkipped] = useState(false);
   const shown = useRef(performance.now());
   const timeline = useRef(null);
   const lift = useRef(null);
+
+  // Lite can arrive with the settings while the intro plays (the first launch on a modest
+  // computer): it ends there, and what waits for it to hand over ("Who's watching?") goes on.
+  useEffect(() => {
+    if (!lite || done) return;
+    timeline.current?.kill();
+    lift.current?.kill();
+    setDone(true);
+    window.dispatchEvent(new Event("nuvio:intro-out"));
+  }, [lite, done]);
 
   useEffect(() => {
     if (done) return undefined;
@@ -531,7 +574,7 @@ function Intro({ ready }) {
   }, []);
 
   useEffect(() => {
-    if (!ready || done) return undefined;
+    if (!ready || done || lite) return undefined;
     // Already lifting: a skip only hurries it along.
     if (lift.current) {
       if (skipped) lift.current.timeScale(3);
@@ -548,9 +591,9 @@ function Intro({ ready }) {
       });
     }, wait);
     return () => window.clearTimeout(timer);
-  }, [ready, done, skipped]);
+  }, [ready, done, skipped, lite]);
 
-  if (done) return null;
+  if (done || lite) return null;
   return (
     <div ref={ref} className="intro" aria-hidden="true">
       <div className="intro-glow" />

@@ -1,4 +1,5 @@
 import { useLayoutEffect } from "react";
+import { isLite } from "./perf.js";
 // Motion tokens and helpers shared by the shell.
 //
 // Thesis: navigation is one continuous space. The previous screen dissolves as a snapshot (View
@@ -19,8 +20,14 @@ export const EASE = {
 
 export const DURATION = { press: 120, quick: 180, exit: 200, enter: 560, pill: 520, sheet: 420 };
 
-export const reduceMotion = () =>
-  typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const reducedQuery = typeof window !== "undefined" && window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+
+/**
+ * Motion holds still: the system asks for less of it, or Lite (Settings › Performance) is on.
+ * Everything that animates from script asks this first, and what waits for an animation to end
+ * (a panel closing) then goes on at once.
+ */
+export const reduceMotion = () => isLite() || Boolean(reducedQuery?.matches);
 
 /**
  * A damped spring as a CSS linear() easing, so WAAPI and CSS can use real spring physics.

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { LuCircleAlert } from "react-icons/lu";
 import { useToastControl, useToasts } from "../AppContext.jsx";
 import { EASE, reduceMotion } from "../lib/motion.js";
+import { isLite } from "../lib/perf.js";
 import "./Toasts.css";
 
 // After a pause (pointer or focus on the stack) a note gets at least this long to be read.
@@ -20,7 +21,8 @@ function Toast({ toast, paused, onDismiss }) {
     );
   }, []);
   useLayoutEffect(() => {
-    if (!toast.leaving) return;
+    // In Lite a note that leaves is simply gone (AppContext drops it at once).
+    if (!toast.leaving || isLite()) return;
     ref.current.animate(
       [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translate3d(0, 6px, 0) scale(.98)" }],
       { duration: 220, easing: EASE.exit, fill: "forwards" },

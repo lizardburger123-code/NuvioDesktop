@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { call, setLens } from "./bridge.js";
 import { useTopic } from "./store.js";
 import { navigate } from "./lib/router.js";
+import { isLite } from "./lib/perf.js";
 import { applyAppearance } from "./theme/appearance.js";
 
 const AppContext = createContext(null);
@@ -30,12 +31,15 @@ export function AppProvider({ boot, children }) {
 
   // The list is kept in a ref as well, so toast() can see what is on screen right now.
   const publishToasts = useCallback(next => { toastList.current = next; setToasts(next); }, []);
-  /** Lets a toast animate out, then drops it; its onDone hears whether its button was used. */
+  /** Lets a toast animate out (in Lite it just goes), then drops it; its onDone hears whether its button was used. */
   const dismissToast = useCallback((id, used = false) => {
     const leaving = toastList.current.find(t => t.id === id && !t.leaving);
     if (!leaving) return;
-    publishToasts(toastList.current.map(t => (t.id === id ? { ...t, leaving: true } : t)));
-    window.setTimeout(() => publishToasts(toastList.current.filter(t => t.id !== id)), 240);
+    if (isLite()) publishToasts(toastList.current.filter(t => t.id !== id));
+    else {
+      publishToasts(toastList.current.map(t => (t.id === id ? { ...t, leaving: true } : t)));
+      window.setTimeout(() => publishToasts(toastList.current.filter(t => t.id !== id)), 240);
+    }
     try { leaving.onDone?.(used); } catch (error) { console.error("toast", error); }
   }, [publishToasts]);
 

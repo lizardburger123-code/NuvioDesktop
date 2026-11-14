@@ -2,7 +2,10 @@
  * Tiny spring engine for things you can push around: each body has values that chase targets,
  * one shared animation frame drives every moving body, and bodies at rest cost nothing. Steps
  * are fixed at 60 per second, so a 144 Hz screen moves things at the same speed as a 60 Hz one.
+ * In Lite nothing springs or coasts: every body lands at once (see land).
  */
+import { isLite } from "./perf.js";
+
 const bodies = new Set();
 let frame = 0;
 let last = 0;
@@ -13,6 +16,7 @@ export function spring(initial, paint, tuning = {}) {
 }
 
 export function wake(body) {
+  if (isLite()) { land(body); return; }
   bodies.add(body);
   if (!frame) {
     last = performance.now();
@@ -31,6 +35,26 @@ export function settle(body) {
   body.paint(body.x);
   bodies.delete(body);
   body.onRest?.();
+}
+
+/**
+ * Lite: no frames at all. What a hand holds stays where it put it (a case being spun follows the
+ * pointer exactly); a throw lands on the side it would have come to rest on; the rest is at its
+ * target. A body at rest says so, as after a spring.
+ */
+function land(body) {
+  if (body.coast) {
+    body.t[body.coast.key] = body.coast.land(body.x[body.coast.key]);
+    body.coast = null;
+  }
+  Object.keys(body.t).forEach(key => {
+    if (body.held.has(key)) return;
+    body.x[key] = body.t[key];
+    body.v[key] = 0;
+  });
+  bodies.delete(body);
+  body.paint(body.x);
+  if (!body.held.size) body.onRest?.();
 }
 
 function advance(body) {
