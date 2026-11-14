@@ -79,15 +79,16 @@ struct Player {
     // driver-dependent: on NVIDIA the dmabuf renderer leaves the pixmap empty and
     // the fallback renderer fills the page background opaque, so the overlay
     // either vanishes or blacks out the video underneath.
-    cairo_surface_t *snapSurf = nullptr;      // buffer mpv's overlay points at
-    cairo_surface_t *snapSurfPrev = nullptr;  // kept one push longer: mpv may
-                                              // still sample it mid-frame
+    // The last snapshot handed to mpv, kept only to compare the next one with:
+    // overlay-add copies the pixels before it returns (mpv 0.18.1 and later), so
+    // mpv itself needs none of them afterwards.
+    cairo_surface_t *snapSurf = nullptr;
     bool snapInFlight = false;
     int snapWaitTicks = 0;  // watchdog: ticks spent waiting on the in-flight snapshot
     // Snapshot requests are generation-stamped: a watchdog reset (or teardown)
     // bumps the generation so the abandoned request's late callback is dropped
-    // instead of racing the replacement (double-clearing snapInFlight, pushing
-    // overlays out of order, or rotating a surface mpv's VO still samples).
+    // instead of racing the replacement (double-clearing snapInFlight, or
+    // pushing overlays out of order).
     int snapGen = 0;
     GCancellable *snapCancel = nullptr;  // cancels the in-flight snapshot, owned
     int snapCooldownTicks = 0;  // watchdog backoff before the next request
@@ -111,6 +112,12 @@ struct Player {
     // state JSON so the gate stays open while either is on screen.
     bool skipPromptShown = false;
     bool nextEpisodeShown = false;
+    // Whether the last full check in compositeOverlay found the overlay needed.
+    // While it is not, that check runs every kIdleCheckTicks ticks (idleTicks
+    // counts them) and the page gets the clock once a second (lastUpdateAt).
+    bool gateOpen = false;
+    int idleTicks = 0;
+    gint64 lastUpdateAt = 0;  // monotonic µs of the last playerUpdate
     // X input focus owner before the overlay grabbed it (teardown restores it;
     // 0 = nothing saved). The overlay holds real X focus while the player is
     // attached — WKWebView/WebView2 parity — so the page's own keydown
@@ -519,12 +526,35 @@ void onOverlayDestroyed(GtkWidget *, gpointer data) {
     player->overlayXid = 0;
 }
 
-// Free the snapshot buffers (safe to call with none allocated). Only after
-// overlay-remove or teardown — mpv's overlay points into snapSurf's data.
+// Free the kept snapshot (safe to call with none). After overlay-remove or
+// teardown, so the next snapshot is handed to mpv instead of compared.
 void releaseSnapshots(Player *player) {
     if (player->snapSurf) cairo_surface_destroy(player->snapSurf);
-    if (player->snapSurfPrev) cairo_surface_destroy(player->snapSurfPrev);
-    player->snapSurf = player->snapSurfPrev = nullptr;
+    player->snapSurf = nullptr;
+}
+
+// Whether a new snapshot shows exactly what the last one handed to mpv did.
+// Compared from the bottom up, where the player's chrome changes most (the
+// progress bar and the clock), so a changed frame is usually told apart early.
+bool sameSnapshot(cairo_surface_t *last, cairo_surface_t *next) {
+    if (!last || !next) return false;
+    const int height = cairo_image_surface_get_height(next);
+    const int stride = cairo_image_surface_get_stride(next);
+    if (cairo_image_surface_get_width(last) != cairo_image_surface_get_width(next) ||
+        cairo_image_surface_get_height(last) != height ||
+        cairo_image_surface_get_stride(last) != stride) {
+        return false;
+    }
+    const unsigned char *a = cairo_image_surface_get_data(last);
+    const unsigned char *b = cairo_image_surface_get_data(next);
+    if (!a || !b) return false;
+    constexpr int kBandRows = 64;
+    for (int bottom = height; bottom > 0; bottom -= kBandRows) {
+        const int top = std::max(0, bottom - kBandRows);
+        const size_t offset = static_cast<size_t>(top) * stride;
+        if (memcmp(a + offset, b + offset, static_cast<size_t>(bottom - top) * stride) != 0) return false;
+    }
+    return true;
 }
 
 // Ties a snapshot request to the generation it was issued under, so callbacks
@@ -554,7 +584,7 @@ void onOverlaySnapshot(GObject *src, GAsyncResult *res, gpointer data) {
         // Abandoned request draining late (after a watchdog reset or a
         // cancellation). Touch nothing: clearing snapInFlight here would let
         // requests pile up concurrently, and pushing the (older) pixels would
-        // rewind the overlay and rotate a surface mpv may still be sampling.
+        // rewind the overlay.
         NUVIO_LOG("stale snapshot (gen %d != %d) dropped", gen, player->snapGen);
         if (surf) cairo_surface_destroy(surf);
         return;
@@ -584,6 +614,13 @@ void onOverlaySnapshot(GObject *src, GAsyncResult *res, gpointer data) {
         }
     }
     cairo_surface_flush(surf);
+    // Most snapshots show what the last one did (the chrome sitting still, a
+    // paused film): handing mpv the same picture again would only make it copy
+    // it, upload it and redraw the frame, many times a second.
+    if (player->overlayPushed && sameSnapshot(player->snapSurf, surf)) {
+        cairo_surface_destroy(surf);
+        return;
+    }
     char addr[32], sw[16], sh[16], sstride[16];
     snprintf(addr, sizeof addr, "&%zu",
              (size_t)(uintptr_t)cairo_image_surface_get_data(surf));
@@ -592,12 +629,22 @@ void onOverlaySnapshot(GObject *src, GAsyncResult *res, gpointer data) {
     snprintf(sstride, sizeof sstride, "%d", cairo_image_surface_get_stride(surf));
     const char *cmd[] = {"overlay-add", "0", "0", "0", addr, "0",
                          "bgra", sw, sh, sstride, nullptr};
-    mpv_command(player->mpv, cmd);
+    if (mpv_command(player->mpv, cmd) < 0) {
+        // Not shown, so not what the next snapshot should be compared with.
+        cairo_surface_destroy(surf);
+        return;
+    }
     player->overlayPushed = true;
-    if (player->snapSurfPrev) cairo_surface_destroy(player->snapSurfPrev);
-    player->snapSurfPrev = player->snapSurf;
+    if (player->snapSurf) cairo_surface_destroy(player->snapSurf);
     player->snapSurf = surf;
 }
+
+// While the overlay is not needed, compositeOverlay checks again every this
+// many ticks (33ms each), and the page gets the clock every kHiddenUpdateUs.
+constexpr int kIdleCheckTicks = 6;
+constexpr gint64 kHiddenUpdateUs = 1000 * 1000;
+
+void sendPlayerUpdate(Player *player);  // defined with pushPlayerUpdate below
 
 // Snapshot the controls page (premultiplied BGRA with real alpha) and hand it
 // to mpv as an OSD overlay, so mpv blends the HTML controls over the video in its
@@ -609,6 +656,19 @@ void compositeOverlay(Player *player) {
     GdkWindow *gw = gtk_widget_get_window(player->gtkWindow);
     if (!gw) return;
     Display *dpy = GDK_WINDOW_XDISPLAY(gw);
+    // toastTicks: bounded window for keyboard-feedback toasts; skip prompt /
+    // next-episode card: page elements shown over playing video with the chrome
+    // hidden (always visible on macOS/Windows, whose webviews are real layers).
+    const bool held = player->overlayActive || player->fadeTicks > 0 ||
+                      player->toastTicks > 0 || player->skipPromptShown ||
+                      player->nextEpisodeShown;
+    // Nothing on screen and nothing asking for it (a film playing with the
+    // chrome hidden, most of the time): the rest only has to notice a pause, a
+    // rebuffer or a resize. Its reads go to mpv's core and to the X server
+    // several times over, so they run every kIdleCheckTicks ticks (200ms)
+    // instead of 30 times a second through the whole film.
+    if (!held && !player->gateOpen && ++player->idleTicks < kIdleCheckTicks) return;
+    player->idleTicks = 0;
     // Also composite while loading (before the first frame, or during a rebuffer)
     // so Nuvio's loading screen — poster, title, spinner — shows over mpv's black
     // instead of a bare black screen. mpv is not decoding then, so it is free.
@@ -618,12 +678,7 @@ void compositeOverlay(Player *player) {
     // inactive — the page rendered it but it never reached mpv. mpv is not
     // decoding while paused, so this is free.
     bool paused = mpvGetFlag(player->mpv, "pause");
-    // toastTicks: bounded window for keyboard-feedback toasts; skip prompt /
-    // next-episode card: page elements shown over playing video with the chrome
-    // hidden (always visible on macOS/Windows, whose webviews are real layers).
-    bool active = loading || paused || player->overlayActive || player->fadeTicks > 0 ||
-                  player->toastTicks > 0 || player->skipPromptShown ||
-                  player->nextEpisodeShown;
+    bool active = held || loading || paused;
     // Track the host (video) size BEFORE the activity gate: on resize/fullscreen
     // the host canvas changes size but the overlay does not, so the controls +
     // their click hit-area drift out of alignment. This must also run while the
@@ -676,6 +731,7 @@ void compositeOverlay(Player *player) {
         }
     }
     if (!active) {
+        player->gateOpen = false;
         if (player->overlayPushed) {
             const char *rm[] = {"overlay-remove", "0", nullptr};
             mpv_command(player->mpv, rm);
@@ -683,6 +739,12 @@ void compositeOverlay(Player *player) {
             releaseSnapshots(player);
         }
         return;
+    }
+    if (!player->gateOpen) {
+        player->gateOpen = true;
+        // Off screen the page only got the clock once a second (see
+        // pushPlayerUpdate): bring it up to date before its first snapshot.
+        sendPlayerUpdate(player);
     }
     if (!player->snapInFlight && player->webview) {
         if (player->snapCooldownTicks > 0) {
@@ -875,6 +937,24 @@ gboolean pushPlayerUpdate(gpointer data) {
             if (!onTop) XRaiseWindow(dpy, player->overlayXid);
         }
     }
+    // While the overlay is off screen (the chrome hidden over a playing film)
+    // the page only has to keep its clock roughly right: once a second instead
+    // of five times, track lists included (dozens of reads from mpv to build).
+    // compositeOverlay brings it up to date the moment the overlay is needed.
+    // Without the composite extension the page is a plain window on screen, so
+    // it gets every update.
+    if (player->overlayXid && !player->gateOpen &&
+        g_get_monotonic_time() - player->lastUpdateAt < kHiddenUpdateUs) {
+        return G_SOURCE_CONTINUE;
+    }
+    sendPlayerUpdate(player);
+    return G_SOURCE_CONTINUE;
+}
+
+// native -> JS: the clock, play state, volume and track lists (window.playerUpdate).
+void sendPlayerUpdate(Player *player) {
+    if (!player->webview || !player->mpv) return;
+    player->lastUpdateAt = g_get_monotonic_time();
     double duration = mpvGetDouble(player->mpv, "duration");
     double position = mpvGetDouble(player->mpv, "time-pos");
     double cache = mpvGetDouble(player->mpv, "demuxer-cache-time");
@@ -892,7 +972,6 @@ gboolean pushPlayerUpdate(gpointer data) {
     std::string js = std::string(head) + audioTracks +
                      ",subtitleTracks:" + subtitleTracks + "})";
     evalJs(player->webview, js);
-    return G_SOURCE_CONTINUE;
 }
 
 struct WebviewSetup {
