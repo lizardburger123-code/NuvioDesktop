@@ -14,7 +14,7 @@
 //
 // Protocol (lines of UTF-8 text; JSON never contains a raw newline):
 //   stdin   P<json>   deliver a message to the page
-//           V1 / V0   show / hide
+//           V1 / V0   show / hide (hidden, the page is hidden for WebKit too: it stops painting)
 //           L         match the host window's size now
 //           F         take keyboard focus
 //           Q         quit
@@ -210,10 +210,17 @@ static void set_visible(gboolean visible) {
     // remembers, which are meaningless for a child of the app window.
     if (visible) {
         sync_size(TRUE);
+        if (S.view) gtk_widget_set_child_visible(GTK_WIDGET(S.view), TRUE);
         gdk_window_show(gw);
         gdk_window_raise(gw);
     } else {
         gdk_window_hide(gw);
+        // Hiding the X window alone leaves WebKit sure the page is on screen: behind the player it
+        // would go on painting and running its animations, and the page's own rules for being
+        // hidden (notices wait, the hero stops turning) would never apply. Unmapping the view
+        // makes the page hidden, as WebView2's hidden state does on Windows; the app gives it the
+        // keyboard back ("F") when it shows it again.
+        if (S.view) gtk_widget_set_child_visible(GTK_WIDGET(S.view), FALSE);
     }
 }
 
