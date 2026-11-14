@@ -8,6 +8,8 @@ import "./Cards.css";
 /** A poster: the picture, its name, its year. It lifts a little and takes a white edge on hover. */
 export const PosterCard = memo(function PosterCard({ item, onOpen, onToggleLater, saved, width = 168 }) {
   const lite = useLite();
+  // Lite asks for a smaller copy; should that ever fail, the picture as the addon gave it.
+  const poster = sized(item.poster, "poster", lite);
   // A card that leaves with the keyboard on it (its bookmark took it off My list) hands the
   // keyboard to the same button on the card beside it, rather than dropping it to the page.
   const ref = useRef(null);
@@ -23,7 +25,7 @@ export const PosterCard = memo(function PosterCard({ item, onOpen, onToggleLater
   return (
     <div ref={ref} className="poster" data-card style={{ width }}>
       <button className="card-face" data-hero style={{ height: Math.round(width * 1.5) }} onClick={() => onOpen(item)} aria-label={item.name}>
-        {item.poster ? <img src={sized(item.poster, "poster", lite)} alt="" loading="lazy" decoding="async" /> : <span className="poster-fallback" dir="auto">{item.name}</span>}
+        {item.poster ? <img src={poster} data-alt={poster !== item.poster ? item.poster : undefined} alt="" loading="lazy" decoding="async" /> : <span className="poster-fallback" dir="auto">{item.name}</span>}
       </button>
       {onToggleLater ? (
         <button
@@ -50,10 +52,12 @@ export const WideCard = memo(function WideCard({ image, fallbackImage, logo, tit
   const lite = useLite();
   const picture = sized(image, "still", lite);
   const stand = sized(fallbackImage, "still", lite);
+  // The stand-in the card was given, else (Lite) the picture as the addon gave it.
+  const alt = stand && stand !== picture ? stand : picture !== image ? image : undefined;
   return (
     <div className="wide" data-card style={{ width }}>
       <button className="card-face" data-hero style={{ height: Math.round(width * 9 / 16) }} onClick={onOpen} aria-label={label || title}>
-        {image ? <img src={picture} data-alt={stand && stand !== picture ? stand : undefined} alt="" loading="lazy" decoding="async" /> : null}
+        {image ? <img src={picture} data-alt={alt} alt="" loading="lazy" decoding="async" /> : null}
         <span className="wide-scrim" />
         {logo ? <img className="wide-logo" src={sized(logo, "logo", lite)} alt="" loading="lazy" decoding="async" /> : null}
         {badge ? <span className="wide-badge">{badge}</span> : null}

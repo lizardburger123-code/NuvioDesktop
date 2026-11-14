@@ -4,6 +4,8 @@ import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
 import { useApp } from "../AppContext.jsx";
 import { reduceMotion } from "../lib/motion.js";
+import { useLite } from "../lib/lite.js";
+import { sized } from "../lib/images.js";
 import { navigate } from "../lib/router.js";
 import { level, newlyEarned } from "../lib/trophies.js";
 import "./TrophyToast.css";
@@ -156,6 +158,7 @@ export default function TrophyToast() {
 }
 
 function Pop({ card, onOpen }) {
+  const lite = useLite();
   // Mounted at "in" with the closed styles first, so the landing animates.
   const [mounted, setMounted] = useState(false);
   useEffect(() => { const frame = requestAnimationFrame(() => setMounted(true)); return () => cancelAnimationFrame(frame); }, []);
@@ -164,7 +167,7 @@ function Pop({ card, onOpen }) {
   const open = card.phase === "open";
   const medal = card.kind === "level"
     ? <span className="tpop-level num">{card.level}</span>
-    : (card.kind === "case" || card.kind === "season") && card.image ? <img src={card.image} alt="" /> : <Icon />;
+    : (card.kind === "case" || card.kind === "season") && card.image ? <img src={sized(card.image, "poster", lite)} alt="" /> : <Icon />;
   return (
     <button
       className={`tpop tpop-${card.kind}${card.image ? " has-image" : ""} tier-${card.tier || "gold"}${inView ? " is-in" : ""}${open ? " is-open" : ""}`}

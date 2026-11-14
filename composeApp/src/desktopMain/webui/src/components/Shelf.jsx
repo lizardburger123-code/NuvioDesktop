@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { LuPlay, LuInfo, LuTrash2 } from "react-icons/lu";
 import { year } from "../lib/format.js";
 import { calm, useLite } from "../lib/lite.js";
+import { sized } from "../lib/images.js";
 import { fmtHours } from "../lib/trophies.js";
 import { settle, spring, stop, wake } from "../lib/springs.js";
 import "./Shelf.css";
@@ -19,13 +20,15 @@ const lengthOf = item => (item.type === "series"
 
 /** The faces of a Blu-ray case. The back is only drawn on the one in your hands. */
 function CaseFaces({ item, full }) {
+  const lite = useLite();
+  const cover = sized(item.poster, "poster", lite);
   const meta = [year(item.releaseInfo), lengthOf(item)].filter(Boolean).join(" · ");
   return (
     <>
       <span className="bd-cover">
         <span className="bd-band" />
         <span className="bd-art">
-          {item.poster ? <img src={item.poster} alt="" loading="lazy" decoding="async" draggable="false" /> : <span className="bd-blank" dir="auto">{item.name}</span>}
+          {item.poster ? <img src={cover} data-alt={cover !== item.poster ? item.poster : undefined} alt="" loading="lazy" decoding="async" draggable="false" /> : <span className="bd-blank" dir="auto">{item.name}</span>}
         </span>
       </span>
       <span className="bd-spine"><span dir="auto">{item.name}</span></span>
@@ -37,7 +40,7 @@ function CaseFaces({ item, full }) {
           <span className="bd-back">
             <span className="bd-band" />
             <span className="bd-blurb">
-              {item.poster ? <img className="bd-blurb-art" src={item.poster} alt="" draggable="false" /> : null}
+              {item.poster && !lite ? <img className="bd-blurb-art" src={item.poster} alt="" draggable="false" /> : null}
               <strong dir="auto">{item.name}</strong>
               <span>Finished {finishedOn(item.completedAt || Date.now())}</span>
               {meta ? <span className="num">{meta}</span> : null}
