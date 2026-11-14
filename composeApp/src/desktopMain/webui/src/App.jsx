@@ -11,7 +11,7 @@ import { recovered, reloadApp } from "./lib/session.js";
 import { setArtProxy } from "./lib/artColor.js";
 import { switchLook } from "./lib/look.js";
 import { isLite, setPerfDevice, usePerf } from "./lib/perf.js";
-import { ScreenActiveContext } from "./lib/screen.js";
+import { ScreenActiveContext, usePageHidden } from "./lib/screen.js";
 import { SHORTCUTS, focusSearch } from "./lib/nav.js";
 import Shortcuts from "./components/Shortcuts.jsx";
 import Background from "./components/Background.jsx";
@@ -274,9 +274,24 @@ const ScreenLayer = memo(function ScreenLayer({ entry, active, nav }) {
 function Screens() {
   const router = useRouter();
   const lite = usePerf() === "lite";
+  const hidden = usePageHidden();
   const top = router.stack[router.stack.length - 1];
-  // Switching to Lite lets go of the screens it doesn't keep at once.
-  const alive = useMemo(() => aliveEntries(router, lite), [router, lite]);
+  // Switching to Lite lets go of the screens it doesn't keep at once. Behind the player (the page
+  // hidden), Lite keeps only the screen on display, so the others' pictures are freed for the
+  // whole film; each is built again, at its scroll, only when the user goes back to it.
+  const alone = lite && hidden;
+  const letGo = useRef(new Set());
+  useEffect(() => {
+    if (!lite) letGo.current.clear();
+    else if (alone) aliveEntries(router, true).forEach(entry => { if (entry.key !== top.key) letGo.current.add(entry.key); });
+    else letGo.current.delete(top.key);
+  }, [router, lite, alone, top.key]);
+  const alive = useMemo(
+    () => aliveEntries(router, lite, alone).filter(entry => entry.key === top.key || !letGo.current.has(entry.key)),
+    // letGo only changes in step with these.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [router, lite, alone],
+  );
   return alive.map(entry => (
     <ScreenLayer key={entry.key} entry={entry} active={entry.key === top.key} nav={entry.key === top.key ? router.nav : null} />
   ));
@@ -419,12 +434,16 @@ function Shell() {
   const closeKeys = useCallback(() => setKeysOpen(false), []);
   const compact = top.name !== "home" || scrolled;
   const sceneArt = top.name === "details" ? art : null;
+  // Lite behind the player: the window-sized picture goes too, and comes back with the page.
+  const lite = usePerf() === "lite";
+  const hidden = usePageHidden();
+  const backdropAway = lite && hidden;
 
   // Each piece of the frame fails on its own: a broken backdrop or toast never takes the
   // screens with it, a broken bar leaves a way back, and a broken "Who's watching?" lets you in.
   return (
     <>
-      <Guard name="backdrop"><Background appearance={appearance} featured={NO_FEATURED} art={sceneArt} scrolled={scrolled} /></Guard>
+      {backdropAway ? null : <Guard name="backdrop"><Background appearance={appearance} featured={NO_FEATURED} art={sceneArt} scrolled={scrolled} /></Guard>}
       <Guard name="chrome" fallback={() => <ChromeFallback />}>
         <TopBar route={top} stack={router.stack} profile={useApp().profile} compact={compact} />
       </Guard>

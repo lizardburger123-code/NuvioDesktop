@@ -61,13 +61,17 @@ export const activeSection = stack => {
   return "home";
 };
 
-/** Screens to keep mounted, in creation order so the DOM never reorders (that would lose scroll). */
-export const aliveEntries = (router, lite = isLite()) => {
+/**
+ * Screens to keep mounted, in creation order so the DOM never reorders (that would lose scroll).
+ * `alone`: only the screen on display (Lite while the page is hidden behind the player).
+ */
+export const aliveEntries = (router, lite = isLite(), alone = false) => {
   const map = new Map();
-  if (lite) {
+  if (lite || alone) {
     // Memory first: Home, the screen on display and the one just left (Back, or Forward after a
     // Back, is instant). A screen that isn't on display is never built just to be ready.
-    const keep = new Set([router.sections[0].key, router.stack[router.stack.length - 1].key, router.from]);
+    const shown = router.stack[router.stack.length - 1].key;
+    const keep = new Set(alone ? [shown] : [router.sections[0].key, shown, router.from]);
     [...router.sections, ...router.stack, ...router.future].forEach(entry => { if (keep.has(entry.key)) map.set(entry.key, entry); });
   } else {
     router.sections.forEach(entry => map.set(entry.key, entry));
