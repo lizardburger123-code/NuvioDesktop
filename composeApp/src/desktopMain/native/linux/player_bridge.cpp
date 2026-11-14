@@ -665,6 +665,13 @@ void onOverlaySnapshot(GObject *src, GAsyncResult *res, gpointer data) {
     player->snapInFlight = false;
     player->snapResets = 0;
     if (!surf) return;
+    // The overlay closed while this was being taken (the chrome hid): pushing
+    // it would put the last frame back over the video until a later check
+    // took it down again.
+    if (!player->gateOpen) {
+        cairo_surface_destroy(surf);
+        return;
+    }
     if (cairo_image_surface_get_format(surf) != CAIRO_FORMAT_ARGB32 ||
         cairo_image_surface_get_width(surf) <= 0 ||
         cairo_image_surface_get_height(surf) <= 0 || !player->mpv) {
