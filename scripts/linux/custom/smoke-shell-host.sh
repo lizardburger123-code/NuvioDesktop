@@ -9,7 +9,8 @@
 # 3. The other drawing modes (shm, software): every section in the top bar opens and a case lifts
 #    without the page's process dying.
 # 4. Performance modes (NUVIO_PERFORMANCE_LITE=0/1): the same short visit in each, and the memory
-#    the helper and WebKit's processes hold afterwards (reported, not a gate).
+#    the helper and WebKit's processes hold afterwards, shown and then hidden as behind the
+#    player (reported, not a gate).
 set -uo pipefail
 
 out="${1:-smoke-out}"
@@ -65,6 +66,9 @@ wait_for() { # <log> <pattern> <seconds>
     done
     return 0
 }
+# A line to a helper's stdin on <fd>, in a subshell: writing to one that already ended raises
+# SIGPIPE (or prints a write error where SIGPIPE is ignored), which must not reach this script.
+to_helper() { ( echo "$2" >&"$1" ) 2>/dev/null; }
 wait_for "$out/out1.log" '"event":"loaded"' 40
 echo "E$driver" >&3
 wait_for "$out/out1.log" '^Mstep:gate' 40 && shot 1-gate
@@ -130,7 +134,7 @@ tour_run() { # <tag> [VAR=value...]: a standalone helper with that environment t
     local hp=$!
     exec 5> "$out/in-$tag"
     wait_for "$out/out-$tag.log" '"event":"loaded"' 40
-    echo "E$tour" >&5
+    to_helper 5 "E$tour"
     local n=0
     # Done, or the page's process died on the way (the tour's script dies with it).
     until grep -q '^Mtour:done' "$out/out-$tag.log" 2>/dev/null || grep -q 'web process ended' "$out/err-$tag.log" 2>/dev/null; do
@@ -143,7 +147,7 @@ tour_run() { # <tag> [VAR=value...]: a standalone helper with that environment t
     tour_done="$(grep -m1 '^Mtour:done' "$out/out-$tag.log" 2>/dev/null || true)"
     local sections
     sections="$(grep -c '^Mtour:at' "$out/out-$tag.log" 2>/dev/null || true)"
-    echo "Q" >&5
+    to_helper 5 "Q"
     exec 5>&-
     sleep 1; kill "$hp" 2>/dev/null
     echo "[$tag] sections opened: ${sections:-0}, end: ${tour_done:-not reached}, page process crashed: $tour_crashed"
@@ -205,9 +209,6 @@ mem_line() { # <label> <pid>: the tree's memory in MB, one line; the totals land
     mem_total=$((total / 1024)); mem_pss=$((proportional / 1024))
     echo "$1: $parts MB; together $mem_total MB resident, $mem_pss MB proportional"
 }
-# A line to a helper's stdin on <fd>, in a subshell: writing to one that died raises SIGPIPE,
-# which must end the write, not this script.
-to_helper() { ( echo "$2" >&"$1" ) 2>/dev/null; }
 # Home, then every section in the top bar, then Home again; reports the page's size at each stop.
 visit="(async()=>{const say=m=>window.webkit.messageHandlers.shell.postMessage(m);const till=(f,t=30000)=>new Promise(r=>{const s=Date.now();const i=setInterval(()=>{let v=null;try{v=f()}catch(e){}if(v||Date.now()-s>t){clearInterval(i);r(v)}},250)});const nap=ms=>new Promise(r=>setTimeout(r,ms));const nav=()=>[...document.querySelectorAll('.topbar-nav button, .topbar-nav a')];const size=()=>document.getElementsByTagName('*').length;const gate=await till(()=>document.querySelector('.gate-profile.is-current, .gate-profile'));await nap(1500);gate&&gate.click();await till(()=>nav().length);await nap(6000);say('mem:home:'+size()+':'+(document.documentElement.dataset.perf||'unset'));const names=nav().map(b=>b.textContent.trim()).filter(Boolean);for(const name of names){const b=nav().find(x=>x.textContent.trim()===name);if(!b)continue;b.click();await nap(1600);}const home=nav().find(x=>/Home/.test(x.textContent))||nav()[0];home&&home.click();await nap(5000);say('mem:visited:'+size());})()"
 mem_run() { # <full|lite>: a standalone helper drawing with "shm" (the usual mode) in that performance mode
@@ -218,7 +219,7 @@ mem_run() { # <full|lite>: a standalone helper drawing with "shm" (the usual mod
         < "$out/in-$tag" > "$out/out-$tag.log" 2> "$out/err-$tag.log" &
     hp=$!
     exec 6> "$out/in-$tag"
-    mem_settled=""
+    mem_visible=""; mem_hidden=""
     if wait_for "$out/out-$tag.log" '"event":"loaded"' 40; then
         to_helper 6 "E$visit"
         if wait_for "$out/out-$tag.log" '^Mmem:home' 60; then
@@ -230,7 +231,13 @@ mem_run() { # <full|lite>: a standalone helper drawing with "shm" (the usual mod
             sleep 2
             n="$(grep -m1 '^Mmem:visited' "$out/out-$tag.log" | cut -d: -f3)"
             mem_line "[$perf] after every section and back, $n elements" "$hp"
-            mem_settled="$mem_total $mem_pss"
+            mem_visible="$mem_total $mem_pss"
+            # Then hidden, as behind the player, long enough for WebKit's own memory checks
+            # (every 10 seconds in Lite) to have run; nothing on screen asks for pictures again.
+            to_helper 6 "V0"
+            sleep 15
+            mem_line "[$perf] then hidden for 15 s, as behind the player" "$hp"
+            mem_hidden="$mem_total $mem_pss"
         fi
     else
         echo "FAIL: the page did not load with performance $perf"; fail=1
@@ -246,18 +253,20 @@ mem_run() { # <full|lite>: a standalone helper drawing with "shm" (the usual mod
     return 0
 }
 
+mem_compare() { # <when> <full: "resident proportional"> <lite: the same>
+    local fr fp lr lp
+    if [[ -z "$2" || -z "$3" ]]; then echo "INFO: memory $1, lite vs full: incomplete (a visit did not finish)"; return 0; fi
+    read -r fr fp <<< "$2"
+    read -r lr lp <<< "$3"
+    echo "INFO: memory $1, lite vs full: $lr vs $fr MB resident ($((lr - fr)) MB), $lp vs $fp MB proportional ($((lp - fp)) MB)"
+}
+
 echo "== 4. performance modes: memory after the same visit, full vs lite"
 mem_run full
-full_mem="$mem_settled"
+full_visible="$mem_visible"; full_hidden="$mem_hidden"
 mem_run lite
-lite_mem="$mem_settled"
-if [[ -n "$full_mem" && -n "$lite_mem" ]]; then
-    read -r full_rss full_pss <<< "$full_mem"
-    read -r lite_rss lite_pss <<< "$lite_mem"
-    echo "INFO: memory after the visit, lite vs full: $lite_rss vs $full_rss MB resident ($((lite_rss - full_rss)) MB), $lite_pss vs $full_pss MB proportional ($((lite_pss - full_pss)) MB)"
-else
-    echo "INFO: memory comparison incomplete (a visit did not finish)"
-fi
+mem_compare "after the visit" "$full_visible" "$mem_visible"
+mem_compare "hidden after it" "$full_hidden" "$mem_hidden"
 
 echo "== logs"
 head -c 600 "$out/out2.log"; echo
