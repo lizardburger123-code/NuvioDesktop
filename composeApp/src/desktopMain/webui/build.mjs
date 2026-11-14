@@ -31,11 +31,20 @@ const resolveFrom = name => {
   throw new Error(`Cannot resolve ${name}; set NODE_PATH`);
 };
 
-const { build, context } = require(resolveFrom("esbuild"));
+const { build, context, transform } = require(resolveFrom("esbuild"));
+
+const minify = !watch && !process.env.NO_MINIFY;
 
 const aliasPlugin = {
   name: "nuvio-alias",
   setup(b) {
+    // "./x.css?text": the stylesheet as a string (minified), for a sheet the page switches itself
+    // (Lite's rules, theme/lite.css), instead of joining app.css.
+    b.onResolve({ filter: /\.css\?text$/ }, args => ({ path: join(args.resolveDir, args.path.replace(/\?text$/, "")), namespace: "css-text" }));
+    b.onLoad({ filter: /.*/, namespace: "css-text" }, async args => {
+      const { code } = await transform(readFileSync(args.path, "utf8"), { loader: "css", minify, target: ["chrome120"] });
+      return { contents: code, loader: "text", watchFiles: [args.path] };
+    });
     b.onResolve({ filter: /^gsap$/ }, () => ({ path: join(here, "src/lib/gsap.js") }));
     b.onResolve({ filter: /^gsap\/ScrollTrigger$/ }, () => ({ path: join(here, "src/lib/scrolltrigger.js") }));
     b.onResolve({ filter: /^(react|react-dom|react-dom\/client|react\/jsx-runtime|scheduler)$/ }, args => ({
@@ -54,7 +63,7 @@ const options = {
   format: "iife",
   target: ["chrome120"],
   jsx: "automatic",
-  minify: !watch && !process.env.NO_MINIFY,
+  minify,
   sourcemap: watch ? "inline" : false,
   legalComments: "none",
   define: { "process.env.NODE_ENV": watch ? '"development"' : '"production"' },

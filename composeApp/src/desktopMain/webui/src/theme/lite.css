@@ -5,8 +5,8 @@
    as flat fills: glass becomes an opaque panel of the same colour, a haze wash becomes a tint,
    a glow goes, and nothing animates.
 
-   Every rule here is under html[data-perf="lite"], so Full is untouched. This file comes last
-   (main.jsx), after every look and component. */
+   main.jsx puts this file in a sheet of its own, after every look and component, and switches the
+   sheet off outside Lite; every rule is also under html[data-perf="lite"], so Full is untouched. */
 
 /* ---- Everywhere: what is never needed to read or use the page --------------------------------
    Blur and other filters, backdrop filters, masks, blend modes and compositing hints go; motion

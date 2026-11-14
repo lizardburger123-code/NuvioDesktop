@@ -53,5 +53,8 @@ const subscribe = listener => {
   return () => listeners.delete(listener);
 };
 
+/** Calls listener(mode) whenever the mode in force changes; returns the way to stop. */
+export const onPerfChange = subscribe;
+
 /** The mode in force, re-rendering when it changes. */
 export const usePerf = () => useSyncExternalStore(subscribe, perfMode, () => "full");
