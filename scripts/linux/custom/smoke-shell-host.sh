@@ -8,6 +8,8 @@
 #    and the page's first requests arrive over the protocol.
 # 3. The other drawing modes (shm, software): every section in the top bar opens and a case lifts
 #    without the page's process dying.
+# 4. Performance modes (NUVIO_PERFORMANCE_LITE=0/1): the same short visit in each, and the memory
+#    the helper and WebKit's processes hold afterwards (reported, not a gate).
 set -uo pipefail
 
 out="${1:-smoke-out}"
@@ -89,20 +91,28 @@ mkfifo "$out/in2"
 "$helper" "$xid" "$page" "$out/data2" < "$out/in2" > "$out/out2.log" 2> "$out/err2.log" &
 pid=$!
 exec 4> "$out/in2"
+# The page's own view of being on screen (document.visibilityState), once it reads <expected> or
+# after 5 seconds: "vis:<expected>:<what it reads>".
+vis_probe() { echo "E(async()=>{const s=Date.now();while(document.visibilityState!=='$1'&&Date.now()-s<5000)await new Promise(r=>setTimeout(r,100));window.webkit.messageHandlers.shell.postMessage('vis:$1:'+document.visibilityState)})()"; }
 sleep 2
 shot 5-embedded-hidden
 echo "V1" >&4; echo "F" >&4
 wait_for "$out/out2.log" '"method"' 40
 sleep 6
 shot 6-embedded-shown
+vis_probe visible >&4
 xdotool windowsize "$xid" 1000 640 2>/dev/null
 echo "L" >&4
 sleep 3
 shot 7-embedded-resized
 xwininfo -id "$xid" -children > "$out/tree.txt" 2>&1
 echo "V0" >&4
+vis_probe hidden >&4
 sleep 2
 shot 8-embedded-hidden-again
+wait_for "$out/out2.log" '^Mvis:hidden:' 10
+# Behind the player the page must be hidden for WebKit too, so it stops painting and animating.
+echo "INFO: the page reads visibility '$(grep -m1 '^Mvis:visible:' "$out/out2.log" | cut -d: -f3)' when shown, '$(grep -m1 '^Mvis:hidden:' "$out/out2.log" | cut -d: -f3)' when hidden"
 kill -0 "$pid" 2>/dev/null || { echo "FAIL: embedded helper died"; fail=1; }
 echo "Q" >&4
 exec 4>&-
@@ -151,6 +161,100 @@ tour_run software NUVIO_SHELL_RENDER=software
 # For the record only: software drawing with the page not told, so animated screen changes stay on.
 tour_run software-animated NUVIO_SHELL_RENDER=software NUVIO_SHELL_TEST_KEEP_TRANSITIONS=1
 echo "INFO: software drawing with animated screen changes left on: page process crashed = $tour_crashed"
+
+# Every process in the tree under <pid> (WebKit's page and network processes, and anything they
+# start), one line each: "<name> <resident kB> <proportional kB> <anonymous kB>". Read from /proc,
+# so it needs nothing installed.
+mem_of() {
+    local root="$1" p line all grew name rss pss anon k v
+    local -A parent=()
+    for p in /proc/[0-9]*; do
+        p="${p#/proc/}"
+        { read -r line < "/proc/$p/stat"; } 2>/dev/null || continue
+        set -- ${line##*) }
+        parent[$p]="$2"
+    done
+    all=" $root "
+    grew=1
+    while [[ $grew -eq 1 ]]; do
+        grew=0
+        for p in "${!parent[@]}"; do
+            if [[ "$all" == *" ${parent[$p]} "* && "$all" != *" $p "* ]]; then all+="$p "; grew=1; fi
+        done
+    done
+    for p in $all; do
+        { read -r name < "/proc/$p/comm"; } 2>/dev/null || continue
+        rss=0; pss=0; anon=0
+        while read -r k v _; do [[ "$k" == VmRSS: ]] && rss="$v"; done 2>/dev/null < "/proc/$p/status"
+        while read -r k v _; do
+            case "$k" in Pss:) pss="$v" ;; Anonymous:) anon="$v" ;; esac
+        done 2>/dev/null < "/proc/$p/smaps_rollup"
+        case "$name" in WebKitWebProces*) name=page ;; WebKitNetworkPr*) name=network ;; esac
+        [[ "$p" == "$root" ]] && name=helper
+        echo "$name $rss $pss $anon"
+    done
+}
+mem_line() { # <label> <pid>: the tree's memory in MB, one line; the totals land in mem_total/mem_pss
+    local name rss pss anon parts="" total=0 proportional=0
+    while read -r name rss pss anon; do
+        parts+="${parts:+, }$name $((rss / 1024))"
+        # WebKit's memory limits count the page process's anonymous memory.
+        [[ "$name" == page ]] && parts+=" (anonymous $((anon / 1024)))"
+        total=$((total + rss)); proportional=$((proportional + pss))
+    done < <(mem_of "$2")
+    mem_total=$((total / 1024)); mem_pss=$((proportional / 1024))
+    echo "$1: $parts MB; together $mem_total MB resident, $mem_pss MB proportional"
+}
+# Home, then every section in the top bar, then Home again; reports the page's size at each stop.
+visit="(async()=>{const say=m=>window.webkit.messageHandlers.shell.postMessage(m);const till=(f,t=30000)=>new Promise(r=>{const s=Date.now();const i=setInterval(()=>{let v=null;try{v=f()}catch(e){}if(v||Date.now()-s>t){clearInterval(i);r(v)}},250)});const nap=ms=>new Promise(r=>setTimeout(r,ms));const nav=()=>[...document.querySelectorAll('.topbar-nav button, .topbar-nav a')];const size=()=>document.getElementsByTagName('*').length;const gate=await till(()=>document.querySelector('.gate-profile.is-current, .gate-profile'));await nap(1500);gate&&gate.click();await till(()=>nav().length);await nap(6000);say('mem:home:'+size()+':'+(document.documentElement.dataset.perf||'unset'));const names=nav().map(b=>b.textContent.trim()).filter(Boolean);for(const name of names){const b=nav().find(x=>x.textContent.trim()===name);if(!b)continue;b.click();await nap(1600);}const home=nav().find(x=>/Home/.test(x.textContent))||nav()[0];home&&home.click();await nap(5000);say('mem:visited:'+size());})()"
+mem_run() { # <full|lite>: a standalone helper drawing with "shm" (the usual mode) in that performance mode
+    local perf="$1" flag=0 tag="mem-$1" hp n mode
+    [[ "$perf" == lite ]] && flag=1
+    mkfifo "$out/in-$tag"
+    env NUVIO_SHELL_RENDER=shm NUVIO_PERFORMANCE_LITE="$flag" "$helper" 0 "$page?mock&perf=$perf" "$out/data-$tag" \
+        < "$out/in-$tag" > "$out/out-$tag.log" 2> "$out/err-$tag.log" &
+    hp=$!
+    exec 6> "$out/in-$tag"
+    mem_settled=""
+    if wait_for "$out/out-$tag.log" '"event":"loaded"' 40; then
+        echo "E$visit" >&6
+        if wait_for "$out/out-$tag.log" '^Mmem:home' 60; then
+            # "mem:home:<elements>:<data-perf>"
+            IFS=: read -r _ _ n mode < <(grep -m1 '^Mmem:home' "$out/out-$tag.log")
+            mem_line "[$perf] after Home, $n elements, page in $mode mode" "$hp"
+        fi
+        if wait_for "$out/out-$tag.log" '^Mmem:visited' 60; then
+            sleep 2
+            n="$(grep -m1 '^Mmem:visited' "$out/out-$tag.log" | cut -d: -f3)"
+            mem_line "[$perf] after every section and back, $n elements" "$hp"
+            mem_settled="$mem_total $mem_pss"
+        fi
+    else
+        echo "FAIL: the page did not load with performance $perf"; fail=1
+    fi
+    kill -0 "$hp" 2>/dev/null || { echo "FAIL: the helper died with performance $perf"; fail=1; }
+    grep -q 'web process ended' "$out/err-$tag.log" 2>/dev/null && { echo "FAIL: the page's process died with performance $perf"; fail=1; }
+    grep -q "performance: $perf" "$out/err-$tag.log" 2>/dev/null || { echo "FAIL: the helper did not report performance $perf"; fail=1; }
+    echo "Q" >&6
+    exec 6>&-
+    sleep 1; kill "$hp" 2>/dev/null
+    rm -f "$out/in-$tag"
+    rm -rf "$out/data-$tag"
+    return 0
+}
+
+echo "== 4. performance modes: memory after the same visit, full vs lite"
+mem_run full
+full_mem="$mem_settled"
+mem_run lite
+lite_mem="$mem_settled"
+if [[ -n "$full_mem" && -n "$lite_mem" ]]; then
+    read -r full_rss full_pss <<< "$full_mem"
+    read -r lite_rss lite_pss <<< "$lite_mem"
+    echo "INFO: memory after the visit, lite vs full: $lite_rss vs $full_rss MB resident ($((lite_rss - full_rss)) MB), $lite_pss vs $full_pss MB proportional ($((lite_pss - full_pss)) MB)"
+else
+    echo "INFO: memory comparison incomplete (a visit did not finish)"
+fi
 
 echo "== logs"
 head -c 600 "$out/out2.log"; echo
