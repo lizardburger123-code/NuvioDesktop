@@ -205,6 +205,9 @@ mem_line() { # <label> <pid>: the tree's memory in MB, one line; the totals land
     mem_total=$((total / 1024)); mem_pss=$((proportional / 1024))
     echo "$1: $parts MB; together $mem_total MB resident, $mem_pss MB proportional"
 }
+# A line to a helper's stdin on <fd>, in a subshell: writing to one that died raises SIGPIPE,
+# which must end the write, not this script.
+to_helper() { ( echo "$2" >&"$1" ) 2>/dev/null; }
 # Home, then every section in the top bar, then Home again; reports the page's size at each stop.
 visit="(async()=>{const say=m=>window.webkit.messageHandlers.shell.postMessage(m);const till=(f,t=30000)=>new Promise(r=>{const s=Date.now();const i=setInterval(()=>{let v=null;try{v=f()}catch(e){}if(v||Date.now()-s>t){clearInterval(i);r(v)}},250)});const nap=ms=>new Promise(r=>setTimeout(r,ms));const nav=()=>[...document.querySelectorAll('.topbar-nav button, .topbar-nav a')];const size=()=>document.getElementsByTagName('*').length;const gate=await till(()=>document.querySelector('.gate-profile.is-current, .gate-profile'));await nap(1500);gate&&gate.click();await till(()=>nav().length);await nap(6000);say('mem:home:'+size()+':'+(document.documentElement.dataset.perf||'unset'));const names=nav().map(b=>b.textContent.trim()).filter(Boolean);for(const name of names){const b=nav().find(x=>x.textContent.trim()===name);if(!b)continue;b.click();await nap(1600);}const home=nav().find(x=>/Home/.test(x.textContent))||nav()[0];home&&home.click();await nap(5000);say('mem:visited:'+size());})()"
 mem_run() { # <full|lite>: a standalone helper drawing with "shm" (the usual mode) in that performance mode
@@ -217,7 +220,7 @@ mem_run() { # <full|lite>: a standalone helper drawing with "shm" (the usual mod
     exec 6> "$out/in-$tag"
     mem_settled=""
     if wait_for "$out/out-$tag.log" '"event":"loaded"' 40; then
-        echo "E$visit" >&6
+        to_helper 6 "E$visit"
         if wait_for "$out/out-$tag.log" '^Mmem:home' 60; then
             # "mem:home:<elements>:<data-perf>"
             IFS=: read -r _ _ n mode < <(grep -m1 '^Mmem:home' "$out/out-$tag.log")
@@ -235,7 +238,7 @@ mem_run() { # <full|lite>: a standalone helper drawing with "shm" (the usual mod
     kill -0 "$hp" 2>/dev/null || { echo "FAIL: the helper died with performance $perf"; fail=1; }
     grep -q 'web process ended' "$out/err-$tag.log" 2>/dev/null && { echo "FAIL: the page's process died with performance $perf"; fail=1; }
     grep -q "performance: $perf" "$out/err-$tag.log" 2>/dev/null || { echo "FAIL: the helper did not report performance $perf"; fail=1; }
-    echo "Q" >&6
+    to_helper 6 "Q"
     exec 6>&-
     sleep 1; kill "$hp" 2>/dev/null
     rm -f "$out/in-$tag"
