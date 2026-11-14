@@ -1,7 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { LuPlay } from "react-icons/lu";
-import { EASE, reduceMotion } from "../lib/motion.js";
+import { EASE } from "../lib/motion.js";
 import { useScreenActive } from "../lib/screen.js";
+import { calm, useLite } from "../lib/lite.js";
+import { sized } from "../lib/images.js";
 import { year } from "../lib/format.js";
 import { navigate } from "../lib/router.js";
 import { lookOf } from "../lib/look.js";
@@ -13,9 +15,25 @@ const openDetails = item => navigate("details", { type: item.type, id: item.id, 
 
 /**
  * Backdrop that cross-fades after the next picture has decoded, with a slow drift while it shows.
- * When a picture won't load, its [fallback] takes its place (AniList's own banner, say).
+ * When a picture won't load, its [fallback] takes its place (AniList's own banner, say). In Lite
+ * it is one smaller picture that holds still.
  */
-export function Art({ src, fallback }) {
+export function Art(props) {
+  return useLite() ? <StillArt {...props} /> : <MovingArt {...props} />;
+}
+
+/** Lite: one picture at a modest size, replaced in place (the old one shows until the new one is in). */
+function StillArt({ src, fallback }) {
+  const [broken, setBroken] = useState(null);
+  const shown = broken === src && fallback ? fallback : src;
+  return (
+    <div className="showcase-art" aria-hidden="true">
+      {shown ? <img src={sized(shown, "backdrop", true)} alt="" decoding="async" onError={() => { if (fallback && shown !== fallback) setBroken(src); }} /> : null}
+    </div>
+  );
+}
+
+function MovingArt({ src, fallback }) {
   const [layers, setLayers] = useState(() => (src ? [{ src, fallback, id: 0 }] : []));
   const id = useRef(0);
   const last = useRef(null);
@@ -44,7 +62,7 @@ export function Art({ src, fallback }) {
     setLayers(prev => prev.map(entry => (entry.id === layer.id ? { ...entry, src: entry.fallback, fallback: null } : entry)));
   };
   useLayoutEffect(() => {
-    if (!last.current || reduceMotion()) return;
+    if (!last.current || calm()) return;
     if (layers.length > 1) last.current.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 1100, easing: EASE.glide });
     last.current.animate([{ transform: "scale(1)" }, { transform: "scale(1.05)" }], { duration: 14000, easing: "linear", fill: "forwards" });
   }, [layers]);
@@ -60,7 +78,8 @@ export function Art({ src, fallback }) {
 /** The title as its logo, or in type when there's no logo (or it won't load). */
 export function Title({ item }) {
   const [broken, setBroken] = useState(false);
-  if (item.logo && !broken) return <img className="showcase-logo" src={item.logo} alt={item.name} onError={event => { if (event.currentTarget.dataset.broken) setBroken(true); }} />;
+  const lite = useLite();
+  if (item.logo && !broken) return <img className="showcase-logo" src={sized(item.logo, "logo", lite)} alt={item.name} onError={event => { if (event.currentTarget.dataset.broken) setBroken(true); }} />;
   return <h2 className="showcase-name" dir="auto">{item.name}</h2>;
 }
 
@@ -85,9 +104,11 @@ const ROTATE_MS = 12000;
  * keyboard is on the hero, while the window is hidden and while the screen is parked. The next
  * title's picture and logo load while this one shows, and the move waits for them (a few
  * seconds at most), so the words and the picture change together and the logo never pops in.
+ * In Lite it never moves on by itself (the picker still shows any of them) and nothing loads ahead.
  */
 export function useFeatured(items) {
   const active = useScreenActive();
+  const lite = useLite();
   const [index, setIndex] = useState(0);
   const [hover, setHover] = useState(false);
   const [focus, setFocus] = useState(false);
@@ -99,11 +120,11 @@ export function useFeatured(items) {
   }, []);
   const count = items.length;
   const current = count ? index % count : 0;
-  const held = hover || focus || !shown || !active;
+  const held = lite || hover || focus || !shown || !active;
 
   useEffect(() => {
-    if (count > 1 && active) warmTitle(items[(current + 1) % count]);
-  }, [items, count, current, active]);
+    if (count > 1 && active && !lite) warmTitle(items[(current + 1) % count]);
+  }, [items, count, current, active, lite]);
 
   useEffect(() => {
     if (count < 2 || held) return undefined;
@@ -163,7 +184,7 @@ function CinemaShowcase({ items = [], strip = false, short = false, onPlay, onTo
 
   useLayoutEffect(() => {
     if (first.current) { first.current = false; return undefined; }
-    if (!bodyRef.current || reduceMotion()) return undefined;
+    if (!bodyRef.current || calm()) return undefined;
     const animations = [...bodyRef.current.children].map((part, i) => part.animate(
       [{ opacity: 0, transform: "translate3d(0, 10px, 0)" }, { opacity: 1, transform: "none" }],
       { duration: 520, delay: 120 + i * 50, easing: EASE.out, fill: "backwards" },

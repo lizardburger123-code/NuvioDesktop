@@ -15,3 +15,16 @@
 }
 /* Once the page has moved on from the title, the picture steps back behind what follows. */
 .scene-scrolled.has-art .scene-walls { opacity: .22; }
+
+/* Lite: the room scrolls with the page instead of standing behind it. A fixed picture the size of
+   the window is painted again on every scroll step; this one moves away with the title it belongs
+   to. No blur, no fades, and nothing see-through laid over the whole window. */
+html[data-perf="lite"] .scene { position: absolute; }
+html[data-perf="lite"] .scene-walls { transition: none; }
+html[data-perf="lite"] .scene.has-blur .scene-walls { filter: none; }
+html[data-perf="lite"] .scene-scrolled.has-art .scene-walls { opacity: 1; }
+/* A picture of yours is as dim as in Full, under a flat veil instead of a see-through layer. */
+html[data-perf="lite"] .scene.has-wall:not(.has-art) .scene-walls { opacity: 1; }
+html[data-perf="lite"] .scene.has-wall:not(.has-art) .scene-wash { display: block; position: absolute; inset: 0; background: rgb(7 8 10 / .72); }
+/* With nothing behind the page, the scrims would paint black on black. */
+html[data-perf="lite"] .scene:not(.has-wall) .scene-fade { display: none; }

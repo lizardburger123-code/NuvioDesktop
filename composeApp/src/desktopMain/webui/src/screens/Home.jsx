@@ -10,7 +10,8 @@ import { ContinueCard, PosterCard, SkeletonPosters } from "../components/Cards.j
 import { CatalogRow, useToggleLater } from "../components/RowActions.jsx";
 import AddonShelf from "../components/AddonShelf.jsx";
 import { navigate } from "../lib/router.js";
-import { EASE, reduceMotion } from "../lib/motion.js";
+import { EASE } from "../lib/motion.js";
+import { calm } from "../lib/lite.js";
 import { lookOf } from "../lib/look.js";
 import { useSimilar } from "../lib/similar.js";
 import TopTen from "../haze/TopTen.jsx";
@@ -86,7 +87,7 @@ export default function Home() {
     const onIntroOut = () => {
       const root = rootRef.current;
       // Behind "Who's watching?" the rise would go unseen: it plays when that page lifts.
-      if (played || !root || reduceMotion() || document.querySelector(".gate")) return;
+      if (played || !root || calm() || document.querySelector(".gate")) return;
       played = true;
       const parts = [root.querySelector(".showcase-body"), ...[...root.querySelectorAll(".row")].slice(0, haze ? 2 : 1)].filter(Boolean);
       parts.forEach((part, i) => part.animate(

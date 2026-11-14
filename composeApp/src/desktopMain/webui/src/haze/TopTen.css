@@ -22,3 +22,8 @@
 .hz-top10 .row-track { gap: 18px; padding-bottom: 30px; margin-bottom: -30px; }
 .hz-top10 .row-placeholder { height: 234px; }
 .hz-top10 .row-end-more { height: 234px; margin-left: 16px; }
+
+/* Lite: the hollow numeral without its glow, filled with a flat wash of the accent instead of a
+   gradient cut to the digit's shape. */
+html[data-perf="lite"] .hz-rank-n, html[data-perf="lite"] :is(.hz-rank:hover, .hz-rank:focus-within) .hz-rank-n { filter: none; transition: none; }
+html[data-perf="lite"] .hz-rank-n::after { background: none; -webkit-background-clip: border-box; background-clip: border-box; color: rgb(var(--haze-rgb) / .14); }

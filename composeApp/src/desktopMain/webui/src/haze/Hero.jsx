@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef } from "react";
 import { LuCheck, LuInfo, LuPlay, LuPlus, LuSparkles, LuStar } from "react-icons/lu";
-import { EASE, reduceMotion } from "../lib/motion.js";
+import { EASE } from "../lib/motion.js";
+import { calm, useLite } from "../lib/lite.js";
 import { year } from "../lib/format.js";
 import { navigate } from "../lib/router.js";
 import { useArtColor } from "../lib/artColor.js";
@@ -16,15 +17,18 @@ const openDetails = item => navigate("details", { type: item.type, id: item.id, 
  */
 export default function HazeHero({ items = [], short = false, onPlay, onToggleLater, laterIds }) {
   const { appearance } = useApp();
+  const lite = useLite();
   const { index, show, held, bind } = useFeatured(items);
   const bodyRef = useRef(null);
   const first = useRef(true);
   const item = items[index];
-  const color = useArtColor([item?.banner, item?.poster], appearance?.hazeArt !== false);
+  // Lite reads no colour out of the artwork (that means loading and drawing the picture again):
+  // the hero wears the accent.
+  const color = useArtColor([item?.banner, item?.poster], appearance?.hazeArt !== false && !lite);
 
   useLayoutEffect(() => {
     if (first.current) { first.current = false; return undefined; }
-    if (!bodyRef.current || reduceMotion()) return undefined;
+    if (!bodyRef.current || calm()) return undefined;
     const animations = [...bodyRef.current.children].map((part, i) => part.animate(
       [{ opacity: 0, transform: "translate3d(0, 10px, 0)" }, { opacity: 1, transform: "none" }],
       { duration: 520, delay: 120 + i * 50, easing: EASE.out, fill: "backwards" },
