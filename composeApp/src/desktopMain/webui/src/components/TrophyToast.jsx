@@ -19,26 +19,45 @@ const LEAVE_MS = 360;
 const pct = value => Math.round(Math.max(0, Math.min(1, value)) * 100);
 const MODAL = "[data-modal-open], [aria-modal=\"true\"]";
 
-/** A short two-note chime as the medal lands (three for platinum). */
+/**
+ * A short two-note chime as the medal lands (three for platinum). The sound device is let go once
+ * the last note has ended: an open one keeps an audio thread running for the rest of the session.
+ * The next chime opens it again.
+ */
 let audio = null;
+let chimes = 0;
 function chime(tier) {
   try {
-    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
-    if (audio.state === "suspended") audio.resume();
+    if (!audio || audio.state === "closed") audio = new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === "suspended") audio.resume().catch(() => {});
+    const context = audio;
+    const id = ++chimes;
+    let released = false;
+    // A chime that began since on the same device lets it go itself, when it ends.
+    const release = () => {
+      if (released) return;
+      released = true;
+      if (id !== chimes || context.state === "closed") return;
+      if (audio === context) audio = null;
+      context.close().catch(() => {});
+    };
     const notes = tier === "platinum" ? [659, 880, 1319] : tier === "level" ? [587, 880] : [784, 1175];
     notes.forEach((frequency, i) => {
-      const osc = audio.createOscillator();
-      const gain = audio.createGain();
-      const at = audio.currentTime + i * 0.11;
+      const osc = context.createOscillator();
+      const gain = context.createGain();
+      const at = context.currentTime + i * 0.11;
       osc.type = "sine";
       osc.frequency.value = frequency;
       gain.gain.setValueAtTime(0, at);
       gain.gain.linearRampToValueAtTime(0.12, at + 0.02);
       gain.gain.exponentialRampToValueAtTime(0.001, at + 0.9);
-      osc.connect(gain).connect(audio.destination);
+      osc.connect(gain).connect(context.destination);
       osc.start(at);
       osc.stop(at + 1);
+      if (i === notes.length - 1) osc.onended = release;
     });
+    // A device that never started (sound not allowed yet) never ends a note: let it go anyway.
+    window.setTimeout(release, 5000);
   } catch { /* sound is a nicety */ }
 }
 
