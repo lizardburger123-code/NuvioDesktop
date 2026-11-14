@@ -468,6 +468,8 @@ const setPipLocked = locked => {
 };
 const prefersReducedMotion = window.matchMedia &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+// Lite performance mode (perf.js): no motion and as few writes as possible between state pushes.
+const isLite = () => window.playerPerf.isLite();
 const modalTransitionMs = prefersReducedMotion ? 1 : 240;
 const chromeAutoHideDelayMs = 3500;
 const chromeActivityThrottleMs = 300;
@@ -4289,6 +4291,7 @@ window.playerUpdate = update => {
 };
 
 window.playerControls = nextState => {
+  window.playerPerf.apply(Boolean(nextState && nextState.lite));
   const previousCloseToken = Number(state.closeModalsToken) || 0;
   const previousSubmitIntroSuccessToken = Number(state.submitIntroSuccessToken) || 0;
   const previousNotificationToken = Number(state.notificationToken) || 0;
