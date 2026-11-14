@@ -135,3 +135,20 @@
 @media (prefers-reduced-motion: reduce) {
   .bd-lift-dim, .bd-lift-pool, .bd-info { animation: none; }
 }
+
+/* ---- Lite: flat cases on a flat board -------------------------------------------------------------
+   A case never leans or becomes a box on the shelf, so it is just its cover: no light sliding over
+   the plastic, no blurred shadow under it, no perspective or layer of its own. Picked up, it faces
+   you square on over a plain dim, and turns over at once; the back has no blurred cover behind its
+   words. */
+html[data-perf="lite"] .bd-slot { perspective: none; }
+html[data-perf="lite"] .bd-slot::before { display: none; }
+html[data-perf="lite"] .bd-slot::after { background: rgb(255 255 255 / .12); box-shadow: none; }
+html[data-perf="lite"] .bd-slot:not(.is-moving) .bd-cover { transform: none; }
+html[data-perf="lite"] :is(.bd-cover, .bd-back)::after { display: none; }
+html[data-perf="lite"] .bd-stage .bd-case { will-change: auto; }
+html[data-perf="lite"] .bd-lift-dim { -webkit-backdrop-filter: none; backdrop-filter: none; background: rgb(7 8 10 / .88); animation: none; }
+html[data-perf="lite"] .bd-lift-pool { display: none; }
+html[data-perf="lite"] .bd-info { animation: none; }
+html[data-perf="lite"] :is(.bd-lift.is-down .bd-lift-dim, .bd-lift.is-down .bd-info) { transition: none; }
+html[data-perf="lite"] .bd-blurb .bd-blurb-art { display: none; }

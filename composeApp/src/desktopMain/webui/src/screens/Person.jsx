@@ -6,6 +6,8 @@ import { back, canGoBack, navigate } from "../lib/router.js";
 import { useSegmentPill } from "../lib/motion.js";
 import { year } from "../lib/format.js";
 import { PosterCard, SkeletonPosters } from "../components/Cards.jsx";
+import { useChunks, useLite } from "../lib/lite.js";
+import { sized } from "../lib/images.js";
 import "./Person.css";
 
 const cache = new Map();
@@ -22,6 +24,7 @@ export default function Person({ params }) {
   // The title the name was picked from tells namesakes apart, so it is part of what is cached.
   const key = `${name}|${titleId || ""}`;
   const { openDetails, toggleLater, laterIds } = useApp();
+  const lite = useLite();
   const [state, setState] = useState(() => (cache.has(key) ? { items: cache.get(key) } : { loading: true }));
   const [attempt, setAttempt] = useState(0);
   const [kind, setKind] = useState("all");
@@ -55,6 +58,8 @@ export default function Person({ params }) {
       return sort === "new" ? y - x : x - y;
     });
   }, [items, kind, sort, counts]);
+  // Lite draws a long filmography a few lines at a time; another kind or order starts again.
+  const drawn = useChunks(shown, { resetKey: `${key}:${kind}:${sort}` });
   const chooseSort = next => { setSort(next); try { window.localStorage.setItem(SORT_KEY, next); } catch { /* a nicety */ } };
   const searchName = () => navigate("search", { q: name });
 
@@ -62,7 +67,7 @@ export default function Person({ params }) {
     <main className="screen person-page" aria-busy={state.loading || undefined}>
       <header className="person-head">
         <div className="person-face">
-          {photo && face ? <img src={photo} alt="" onError={event => { if (event.currentTarget.dataset.broken) setFace(false); }} /> : <span>{initialsOf(name)}</span>}
+          {photo && face ? <img src={sized(photo, "face", lite)} alt="" onError={event => { if (event.currentTarget.dataset.broken) setFace(false); }} /> : <span>{initialsOf(name)}</span>}
         </div>
         <div className="person-id">
           <span className="person-kicker">Cast and crew</span>
@@ -87,11 +92,12 @@ export default function Person({ params }) {
       {state.loading ? <div className="person-grid" aria-hidden="true"><SkeletonPosters count={12} /></div> : null}
       {!state.loading && items.length ? (
         <div className="person-grid">
-          {shown.map(item => (
+          {drawn.shown.map(item => (
             <PosterCard key={`${item.type}:${item.id}`} item={item} onOpen={openDetails} onToggleLater={toggleLater} saved={laterIds.has(`${item.type}:${item.id}`)} />
           ))}
         </div>
       ) : null}
+      {!state.loading && drawn.more ? <div ref={drawn.endRef} className="person-more" aria-hidden="true" /> : null}
       {!state.loading && !items.length ? (
         <section className="empty person-empty" role={state.error ? "alert" : undefined}>
           <h2 dir="auto">{state.error ? `Couldn't look up ${name}` : `No films or series found for ${name}`}</h2>

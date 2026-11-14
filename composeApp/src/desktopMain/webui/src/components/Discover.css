@@ -87,3 +87,7 @@
 .discover-search-clear { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; color: var(--ink-2); background: rgb(255 255 255 / .08); }
 .discover-search-clear:hover { background: rgb(255 255 255 / .16); }
 .discover-search-clear svg { width: 14px; height: 14px; }
+
+/* Lite: where the next lines of what has loaded are drawn from (Discover.jsx). */
+.discover-grid-more { height: 1px; }
+html[data-perf="lite"] .discover-source { transition: none; }

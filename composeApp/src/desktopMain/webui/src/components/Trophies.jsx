@@ -5,7 +5,8 @@ import {
 import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
 import { useApp } from "../AppContext.jsx";
-import { EASE, reduceMotion } from "../lib/motion.js";
+import { EASE } from "../lib/motion.js";
+import { calm } from "../lib/lite.js";
 import { badges, fmtHours, level, stats, yearGrid } from "../lib/trophies.js";
 import Reach from "./Reach.jsx";
 import Shelf from "./Shelf.jsx";
@@ -94,7 +95,7 @@ export default function Trophies() {
 
   // The page settles in once: figures, then badges, then the first shelf.
   useLayoutEffect(() => {
-    if (!rootRef.current || reduceMotion()) return undefined;
+    if (!rootRef.current || calm()) return undefined;
     const parts = rootRef.current.querySelectorAll("[data-rise]");
     const animations = [...parts].map((part, i) => part.animate(
       [{ opacity: 0, transform: "translate3d(0, 10px, 0)" }, { opacity: 1, transform: "none" }],

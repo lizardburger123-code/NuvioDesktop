@@ -24,3 +24,5 @@ button.person[data-broken-name]::before { top: 6px; }
 /* Lite: a face in the cast shows hover and focus by its ring alone. */
 html[data-perf="lite"] :is(button.person, button.person img, button.person .person-mono) { transition: none; }
 html[data-perf="lite"] :is(button.person:hover, button.person:focus-visible) :is(img, .person-mono) { box-shadow: none; }
+/* Lite: where the next lines of a long filmography are drawn from (Person.jsx). */
+.person-more { height: 1px; }

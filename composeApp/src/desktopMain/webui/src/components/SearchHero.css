@@ -46,3 +46,8 @@
   transition: color var(--t-fast) ease, background-color var(--t-fast) ease;
 }
 .recent-clear:hover, .recent-clear:focus-visible { color: #fff; background: rgb(255 255 255 / .08); }
+
+/* Lite: the go button is a flat fill (Haze lights it with glass and a glow); nothing moves. */
+html[data-perf="lite"][data-layout="haze"] .search-go { -webkit-backdrop-filter: none; backdrop-filter: none; background: rgb(var(--haze-rgb) / .34); box-shadow: inset 0 0 0 1px rgb(var(--haze-rgb) / .55); text-shadow: none; }
+html[data-perf="lite"][data-layout="haze"] .search-go:hover { background: rgb(var(--haze-rgb) / .46); box-shadow: inset 0 0 0 1px rgb(var(--haze-rgb) / .7); }
+html[data-perf="lite"] :is(.search-form, .search-icon, .search-tool, .search-go, .recent-x, .recent-clear) { transition: none; }

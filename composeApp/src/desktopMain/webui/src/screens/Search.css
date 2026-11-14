@@ -28,3 +28,5 @@
 .search-more span { flex: 1; line-height: 1.5; text-wrap: pretty; }
 .search-more strong { color: #fff; font-weight: 700; }
 .search-more .btn { flex: none; }
+/* Lite: where the next lines of a long grid are drawn from (Search.jsx). */
+.search-grid-more { height: 1px; }

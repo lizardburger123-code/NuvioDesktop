@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { LuArrowRight, LuHistory, LuSearch, LuX } from "react-icons/lu";
-import { EASE, reduceMotion } from "../lib/motion.js";
+import { EASE } from "../lib/motion.js";
+import { calm } from "../lib/lite.js";
 import { clearHistory, removeHistory, useSearchHistory } from "../lib/searchHistory.js";
 import "./SearchHero.css";
 
@@ -31,7 +32,7 @@ const SearchHero = forwardRef(function SearchHero({ autoFocus = false, initial =
   const forget = (event, item) => {
     event.stopPropagation();
     const chip = event.currentTarget.closest(".recent-chip");
-    if (!chip || reduceMotion()) { removeHistory(item); return; }
+    if (!chip || calm()) { removeHistory(item); return; }
     chip.animate(
       [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "scale(.85)" }],
       { duration: 160, easing: EASE.exit, fill: "forwards" },
@@ -39,7 +40,7 @@ const SearchHero = forwardRef(function SearchHero({ autoFocus = false, initial =
   };
   const forgetAll = () => {
     const chips = recentRef.current ? [...recentRef.current.querySelectorAll(".recent-chip")] : [];
-    if (!chips.length || reduceMotion()) { clearHistory(); return; }
+    if (!chips.length || calm()) { clearHistory(); return; }
     const last = chips.map((chip, i) => chip.animate(
       [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translate3d(0, 4px, 0) scale(.9)" }],
       { duration: 180, delay: i * 25, easing: EASE.exit, fill: "forwards" },

@@ -7,6 +7,7 @@ import { ContinueCard, PosterCard, SkeletonPosters } from "../components/Cards.j
 import { goSection, navigate } from "../lib/router.js";
 import { useScreenActive } from "../lib/screen.js";
 import { useSegmentPill } from "../lib/motion.js";
+import { isLite } from "../lib/perf.js";
 import TorboxClear from "../components/TorboxClear.jsx";
 import Downloads from "../components/Downloads.jsx";
 import Trophies from "../components/Trophies.jsx";
@@ -310,21 +311,24 @@ function PosterTab({ items, loading = false, what, empty }) {
 }
 
 const STEP = 60;
+// Lite: fewer at a time, and nearer the window.
+const LITE_STEP = 24;
 
 /** The first cards at once, the rest a screenful ahead of the scroll. */
 function Progressive({ items, render }) {
-  const [count, setCount] = useState(STEP);
+  const [step] = useState(() => (isLite() ? LITE_STEP : STEP));
+  const [count, setCount] = useState(step);
   const endRef = useRef(null);
   const more = items.length > count;
   useEffect(() => {
     const node = endRef.current;
     if (!node || !more) return undefined;
     const observer = new IntersectionObserver(entries => {
-      if (entries.some(entry => entry.isIntersecting)) setCount(n => n + STEP);
-    }, { rootMargin: "1200px 0px" });
+      if (entries.some(entry => entry.isIntersecting)) setCount(n => n + step);
+    }, { rootMargin: step === STEP ? "1200px 0px" : "600px 0px" });
     observer.observe(node);
     return () => observer.disconnect();
-  }, [more, count]);
+  }, [more, count, step]);
   return (
     <>
       <section className="library-grid">{items.slice(0, count).map(render)}</section>
