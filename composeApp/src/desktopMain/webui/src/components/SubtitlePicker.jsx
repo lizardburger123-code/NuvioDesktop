@@ -3,7 +3,8 @@ import { createPortal } from "react-dom";
 import { LuCaptions, LuCaptionsOff, LuDisc3, LuFileVideo, LuLoaderCircle, LuRefreshCw, LuSearch, LuSparkles, LuX } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useApp } from "../AppContext.jsx";
-import { EASE, reduceMotion, useSegmentPill } from "../lib/motion.js";
+import { EASE, useSegmentPill } from "../lib/motion.js";
+import { calm } from "../lib/lite.js";
 import "./SubtitlePicker.css";
 
 const downloads = n => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : n > 0 ? String(n) : "");
@@ -51,7 +52,7 @@ export default function SubtitlePicker({ request, onPlay, onClose }) {
   const close = () => {
     if (closing.current) return;
     closing.current = true;
-    if (!dialogRef.current || reduceMotion()) { onClose(); return; }
+    if (!dialogRef.current || calm()) { onClose(); return; }
     dialogRef.current.animate(
       [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translate3d(0, 8px, 0) scale(.98)" }],
       { duration: 160, easing: EASE.exit, fill: "forwards" },
@@ -83,7 +84,7 @@ export default function SubtitlePicker({ request, onPlay, onClose }) {
 
   useLayoutEffect(() => {
     dialogRef.current?.focus({ preventScroll: true });
-    if (!dialogRef.current || reduceMotion()) return;
+    if (!dialogRef.current || calm()) return;
     dialogRef.current.animate(
       [{ opacity: 0, transform: "translate3d(0, 14px, 0) scale(.97)" }, { opacity: 1, transform: "none" }],
       { duration: 340, easing: EASE.out },
@@ -95,7 +96,7 @@ export default function SubtitlePicker({ request, onPlay, onClose }) {
 
   // Rows settle in once per search; only the first screenful staggers.
   useLayoutEffect(() => {
-    if (loading || !listRef.current || reduceMotion()) return;
+    if (loading || !listRef.current || calm()) return;
     [...listRef.current.querySelectorAll(".sp-row")].slice(0, 10).forEach((row, i) => row.animate(
       [{ opacity: 0, transform: "translate3d(0, 8px, 0)" }, { opacity: 1, transform: "none" }],
       { duration: 320, delay: i * 24, easing: EASE.out, fill: "backwards" },

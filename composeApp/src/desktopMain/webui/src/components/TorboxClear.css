@@ -40,3 +40,7 @@
 .tbx:focus-visible { outline: none; }
 .tbx-code.is-failed { gap: 12px; font-size: var(--fs-14); line-height: 1.5; color: #ffc4be; background: rgb(255 120 110 / .1); }
 .tbx-code.is-failed span { min-width: 0; overflow-wrap: anywhere; }
+
+/* Lite: a solid window, no glass, no big shadow, no fade. */
+html[data-perf="lite"] .tbx { -webkit-backdrop-filter: none; backdrop-filter: none; background: #121318; box-shadow: inset 0 0 0 1px var(--line-strong); }
+html[data-perf="lite"] .tbx-layer::before { animation: none; }

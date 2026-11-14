@@ -282,3 +282,19 @@ button.source-cache:active { transform: translateY(-50%) scale(.96); }
     radial-gradient(90% 180% at 0% 50%, rgb(var(--haze-rgb) / .4), rgb(var(--haze-rgb) / .14) 42%, transparent 72%),
     rgb(255 255 255 / .07);
 }
+
+/* ---- Lite: a solid sheet ------------------------------------------------------------------------
+   No glass (a blur of the whole page behind it) and no big shadow; the scrim doesn't fade in. The
+   strip at the top is a flat wash of each kind's colour, and rows change in place. Spinners turn
+   in steps: the same meaning, a few repaints a second instead of every frame. */
+html[data-perf="lite"] .sources { -webkit-backdrop-filter: none; backdrop-filter: none; background: #0f1014; box-shadow: inset 1px 0 0 var(--line-strong); }
+html[data-perf="lite"] .sources-layer::before { animation: none; transition: none; }
+html[data-perf="lite"] :is(.source-row, .source-go, .source-cache, .source-cache-bar i, .source-dl, .sources-search, .sources-search-clear, .sources-menu select, .sources-retry, .sources-more) { transition: none; }
+html[data-perf="lite"] .source-go { transform: none; }
+html[data-perf="lite"] .source-item.is-pick .source-row { background: rgb(var(--kind) / .12); }
+html[data-perf="lite"] .source-item.is-pick .source-row:is(:hover:not([aria-disabled="true"]), :focus-visible) { background: rgb(var(--kind) / .2); }
+html[data-perf="lite"] .source-item.is-pick[data-kind] .source-q { box-shadow: none; }
+html[data-perf="lite"][data-layout="haze"] .source-item.is-lead .source-row { background: rgb(var(--haze-rgb) / .14); }
+html[data-perf="lite"][data-layout="haze"] .source-item.is-lead .source-row:is(:hover:not([aria-disabled="true"]), :focus-visible) { background: rgb(var(--haze-rgb) / .22); }
+html[data-perf="lite"] .source-cache-bar i { box-shadow: none; }
+html[data-perf="lite"] .spin { animation-timing-function: steps(8, end); }
