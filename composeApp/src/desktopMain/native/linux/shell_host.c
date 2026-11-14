@@ -381,17 +381,21 @@ static gboolean on_stdin(GIOChannel *channel, GIOCondition condition, gpointer d
 
 // ---- setup --------------------------------------------------------------------------------------
 
-// Lite: the page's process starts giving memory back (caches it can rebuild, off-screen pictures'
-// decoded pixels, script code it can compile again) once it holds about a third of this, and
-// harder from half. WebKit's own limit is the computer's memory up to 3 GB, so on a 4 GB computer
-// the page could hold a gigabyte before WebKit tried.
-#define LITE_PAGE_MEMORY_MB 1024
+// Lite: the page's process gives memory back once its own memory passes about a third of this
+// limit (~300 MB: caches it can rebuild) and half of it (~450 MB: also every picture's decoded
+// pixels and compiled script code), checked every 10 seconds. WebKit's own limit is the
+// computer's memory up to 3 GB, checked every 30 seconds, so on a 4 GB computer the page could
+// hold a gigabyte before WebKit tried. Past half, the pictures on screen are decoded again once;
+// behind the player nothing is, so what was freed stays freed while a film plays.
+#define LITE_PAGE_MEMORY_MB 900
+#define LITE_PAGE_MEMORY_CHECK_SECONDS 10.0
 
 static WebKitWebContext *new_context(WebKitWebsiteDataManager *manager) {
 #if WEBKIT_CHECK_VERSION(2, 34, 0)
     if (S.lite) {
         WebKitMemoryPressureSettings *pressure = webkit_memory_pressure_settings_new();
         webkit_memory_pressure_settings_set_memory_limit(pressure, LITE_PAGE_MEMORY_MB);
+        webkit_memory_pressure_settings_set_poll_interval(pressure, LITE_PAGE_MEMORY_CHECK_SECONDS);
         WebKitWebContext *context = WEBKIT_WEB_CONTEXT(g_object_new(
             WEBKIT_TYPE_WEB_CONTEXT, "website-data-manager", manager, "memory-pressure-settings", pressure, NULL));
         webkit_memory_pressure_settings_free(pressure);
