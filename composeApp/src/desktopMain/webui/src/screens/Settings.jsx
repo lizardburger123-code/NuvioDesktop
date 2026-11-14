@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   LuCaptions, LuExternalLink, LuImage, LuKeyRound, LuLoaderCircle, LuPalette, LuPlay, LuPuzzle,
   LuTrash2, LuUser, LuInfo, LuCheck, LuRefreshCw, LuMonitorPlay, LuCamera, LuGlobe, LuShieldCheck, LuCloud, LuPlug, LuPower, LuLock, LuKeyboard,
+  LuGauge, LuCpu, LuFeather, LuSparkles,
 } from "react-icons/lu";
 import { call } from "../bridge.js";
 import AddonStore from "../components/AddonStore.jsx";
@@ -11,12 +12,14 @@ import { navigate } from "../lib/router.js";
 import { useSegmentPill } from "../lib/motion.js";
 import { reloadApp } from "../lib/session.js";
 import { LOOKS, lookOf, switchLook } from "../lib/look.js";
+import { resolvePerf } from "../lib/perf.js";
 import { SHORTCUTS } from "../lib/nav.js";
 import { PROFILE_CARD, initials } from "../components/TopBar.jsx";
 import "./Settings.css";
 
 const SECTIONS = [
   { id: "appearance", label: "Appearance", icon: LuPalette },
+  { id: "performance", label: "Performance", icon: LuGauge },
   { id: "subtitles", label: "Subtitles", icon: LuCaptions },
   { id: "playback", label: "Playback", icon: LuPlay },
   { id: "addons", label: "Addons", icon: LuPuzzle },
@@ -44,6 +47,7 @@ export default function Settings({ params }) {
       <section className="settings-body" key={current.id}>
         <h2>{current.label}</h2>
         {current.id === "appearance" ? <Appearance /> : null}
+        {current.id === "performance" ? <Performance /> : null}
         {current.id === "subtitles" ? <Subtitles /> : null}
         {current.id === "playback" ? <Playback /> : null}
         {current.id === "addons" ? <Addons /> : null}
@@ -250,6 +254,64 @@ function Appearance() {
       <SiteRatings />
       <HomeRows />
     </>
+  );
+}
+
+/* ---------------------------------------------------------------- Performance */
+
+const PERF_CHOICES = [
+  { id: "auto", icon: LuCpu, title: "Auto", text: "Lite on a modest computer, Full on anything newer." },
+  { id: "lite", icon: LuFeather, title: "Lite", text: "Flat and still: no blur, glass, shadows or motion." },
+  { id: "full", icon: LuSparkles, title: "Full", text: "Every effect as designed: glass, blur and motion." },
+];
+const PERF_NAMES = { auto: "Auto", lite: "Lite", full: "Full" };
+
+/** The app's reason for Lite ("4 GB of memory") as the end of a sentence about this computer. */
+const because = reason => (/^(drawing|painting)\b/i.test(reason) ? `Nuvio is ${reason}` : `it has ${reason}`);
+
+/** Auto / Lite / Full, and what Auto makes of this computer. Applies at once, no restart. */
+function Performance() {
+  const { appearance, setAppearance, boot } = useApp();
+  const [saved, stamp] = useSaved();
+  const device = boot.device || null;
+  const choice = PERF_NAMES[appearance.performance] ? appearance.performance : "auto";
+  const fixed = device?.overridden === true;
+  const autoMode = resolvePerf("auto", device);
+
+  const choose = id => {
+    if (fixed || id === choice) return;
+    applyAppearance({ ...appearance, performance: id });
+    setAppearance({ performance: id }).then(ok => { if (ok) stamp("mode"); });
+  };
+
+  const reason = autoMode === "lite" && device?.reason ? `: ${because(device.reason)}` : "";
+  const verdict = choice === "auto"
+    ? `Auto is using ${PERF_NAMES[autoMode]} on this computer${reason}.`
+    : `On this computer Auto would use ${PERF_NAMES[autoMode]}${reason}.`;
+  const held = `NUVIO_PERFORMANCE is set on this computer, so the choice stays at ${PERF_NAMES[choice]}.`;
+  const note = !fixed ? verdict : choice === "auto" ? `${held} ${verdict}` : held;
+  return (
+    <Panel
+      title="Effects"
+      description="Lite is a flat, still version of the same interface for modest computers, and keeps fewer pages open in memory. Every feature stays, and a change applies at once."
+      saved={saved === "mode"}
+    >
+      <div className="net-modes perf-modes" role="radiogroup" aria-label="Performance">
+        {PERF_CHOICES.map(item => {
+          const Icon = item.icon;
+          return (
+            <button key={item.id} role="radio" aria-checked={choice === item.id} className="net-mode" disabled={fixed} onClick={() => choose(item.id)}>
+              <span className="net-mode-icon"><Icon aria-hidden="true" /></span>
+              <span className="net-mode-text">
+                <strong>{item.title}</strong>
+                <small>{item.text}</small>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="perf-note">{note}</p>
+    </Panel>
   );
 }
 
