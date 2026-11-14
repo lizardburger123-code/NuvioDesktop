@@ -1,0 +1,211 @@
+/*
+ * Lite performance mode for the player overlay: html[data-perf="lite"] (perf.js, from state.lite).
+ *
+ * On Linux this page is painted in software and copied into the video about 30 times a second
+ * while it shows, and every effect is paid again on every copy. Lite is the same overlay, flat
+ * and still: no blur, no blurred shadows or glows, no motion, no extra layers, and one bottom
+ * scrim as the only large gradient. Glass becomes a dark fill that stays readable over bright
+ * video. Loaded last; nothing here applies in Full.
+ */
+
+/* ---- Nothing moves, nothing is blurred, nothing asks for its own layer ---------------------- */
+
+html[data-perf="lite"] *,
+html[data-perf="lite"] *::before,
+html[data-perf="lite"] *::after {
+  transition: none !important;
+  animation: none !important;
+  will-change: auto !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  filter: none !important;
+  text-shadow: none !important;
+}
+
+/* Buttons and rows sit on translateZ(0) layers for their press transition. Lite keeps the press
+   (instant), drops the hover zoom and the layers. Cards and prompts rest where they land. */
+html[data-perf="lite"] :is(.header-button, .opening-button, .side-control, .play-control, .action, .panel-button, .filter-chip, .capture-button, .subtitle-tab, .round-step, .swatch, .sync-cue, .track-row, .segment-button, .volume-button, .skip-prompt, .next-episode-card) {
+  transform: none;
+}
+
+html[data-perf="lite"] :is(.header-button, .opening-button, .side-control, .play-control, .action, .panel-button, .filter-chip, .capture-button, .subtitle-tab, .round-step, .swatch, .sync-cue, .track-row, .segment-button, .volume-button, .skip-prompt, .next-episode-card.playable):is(:active, .is-pressed):not(:disabled) {
+  transform: scale(.96);
+}
+
+/* vision.js moves these with GSAP in Full; in Lite they stay put whatever was left inline. */
+html[data-perf="lite"] :is(.ornament, .progress .metadata, .header-actions) {
+  transform: none !important;
+}
+
+html[data-perf="lite"] .player-toast {
+  transform: translateX(-50%) !important;
+}
+
+html[data-perf="lite"] .scrub-bubble {
+  transform: translateX(-50%) !important;
+}
+
+html[data-perf="lite"] .party-pill {
+  transform: translateX(-50%);
+}
+
+/* ---- Glass becomes a flat, dark fill ------------------------------------------------------ */
+
+html[data-perf="lite"] {
+  --v-mat: rgba(16, 17, 21, .8);
+  --v-mat-raised: rgba(17, 18, 23, .88);
+  --v-sheen: none;
+  /* The long lift shadow under every panel and capsule: a zero shadow is not drawn. */
+  --v-lift: 0 0 transparent;
+}
+
+html[data-perf="lite"] :is(.scrub-bubble, .skip-prompt, .next-episode-card) {
+  box-shadow: var(--v-edge);
+}
+
+html[data-perf="lite"] :is(.track-panel.submit, .pip-lock-badge, .party-confirm-card, .end-card-button.primary, .source-row.is-pick[data-kind] .source-plate, .source-row.is-pick[data-kind] .source-plate.q-4k) {
+  box-shadow: none;
+}
+
+/* The panels' own scrims cover the whole window; a dark panel needs none. */
+html[data-perf="lite"] :is(.player-rail-modal, .player-side-modal) {
+  background: none;
+}
+
+/* ---- Scrims: one at the bottom, where the title and the bar sit ---------------------------- */
+
+/* The title has no blurred halo in Lite, so the scrim reaches a little higher and darker: white
+   text keeps about 7:1 over a white picture at 720p to 1080p (Full's scrim alone gives 2:1). */
+html[data-perf="lite"] .bottom-gradient {
+  height: max(340px, 42vh);
+  background: linear-gradient(to top, rgba(7, 8, 10, .94) 0%, rgba(7, 8, 10, .82) 34%, rgba(7, 8, 10, .62) 58%, rgba(7, 8, 10, .24) 82%, rgba(7, 8, 10, 0) 100%);
+}
+
+/* The header buttons carry their own dark disc instead of a second scrim across the top. */
+html[data-perf="lite"] .top-gradient {
+  display: none;
+}
+
+html[data-perf="lite"] .header-button {
+  background: rgba(16, 17, 21, .62);
+}
+
+html[data-perf="lite"] .header-button:hover {
+  background: rgba(46, 48, 56, .82);
+}
+
+/* Paused, with the controls away: the picture dims evenly behind what you are watching. */
+html[data-perf="lite"] .pause-metadata-overlay {
+  background: rgba(7, 8, 10, .72);
+}
+
+html[data-perf="lite"] .opening-scrim {
+  background: rgba(0, 0, 0, .62);
+}
+
+html[data-perf="lite"] .end-card-shade {
+  background: rgba(4, 7, 11, .72);
+}
+
+/* Without the glow, the watch-party line needs a fill to read over the picture. */
+html[data-perf="lite"] .party-pill {
+  background: rgba(16, 17, 21, .72);
+}
+
+/* ---- Loading placeholders and sweeps: a still frame shows nothing; the fill behind it does --- */
+
+html[data-perf="lite"] :is(.next-episode-thumb, .episode-thumb, .opening-overlay)::before,
+html[data-perf="lite"] :is(.end-card-case, .tpop-medal)::after {
+  display: none;
+}
+
+/* Spoiler-safe thumbnails are hidden behind their frame's fill instead of blurred. */
+html[data-perf="lite"] .episode-thumb.blurred img,
+html[data-perf="lite"] .next-episode-card.blur-thumb .next-episode-thumb img {
+  visibility: hidden;
+}
+
+/* The opening status line is plain text, not a shimmer (vision.js leaves it alone in Lite). */
+html[data-perf="lite"] .v-shiny {
+  background-image: none !important;
+  -webkit-text-fill-color: currentColor;
+}
+
+/* ---- Rows in the Sources list: the release colours as flat tints -------------------------- */
+
+html[data-perf="lite"] .track-row.source-row.is-pick,
+html[data-perf="lite"] .track-row.source-row.is-pick:hover:not(:disabled),
+html[data-perf="lite"] .track-row.source-row.is-pick:focus-visible {
+  background: rgb(var(--kind) / .16);
+}
+
+html[data-perf="lite"] .track-row.source-row.is-match {
+  background: rgb(var(--theme-accent-rgb, 255 255 255) / .14);
+}
+
+html[data-perf="lite"] .subtitle-option-row.is-disc:not(.selected) {
+  background: rgba(143, 227, 168, .12);
+}
+
+/* ---- Film end card: its parts appear in their final state --------------------------------- */
+
+html[data-perf="lite"] .end-card-body > *,
+html[data-perf="lite"] .end-card-ring,
+html[data-perf="lite"] .end-card-trophy-label {
+  opacity: 1;
+  transform: none;
+}
+
+html[data-perf="lite"] .end-card-ring {
+  transform: rotate(-90deg);
+}
+
+html[data-perf="lite"] .end-card-ring-fill {
+  stroke-dashoffset: 0;
+}
+
+html[data-perf="lite"] .end-card-case {
+  opacity: 1;
+  transform: translate(-50%, -50%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18);
+}
+
+html[data-perf="lite"] :is(.end-card-chip, .end-card-next, .end-card-button:not(.primary)) {
+  background: rgba(10, 18, 26, .66);
+}
+
+html[data-perf="lite"] .end-card-button:not(.primary):hover {
+  background: rgba(40, 60, 78, .78);
+}
+
+/* Coloured buttons brighten on hover in Full (a filter); in Lite they take a light inner ring. */
+html[data-perf="lite"] :is(.end-card-button.primary, .party-button.primary, .party-button.danger):hover:not(:disabled) {
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .45);
+}
+
+html[data-perf="lite"] .end-card-chip::before {
+  box-shadow: none;
+}
+
+/* The auto-return line drains with each state push (controls.js), not on its own. */
+html[data-perf="lite"] .end-card.visible .end-card-button.primary::after {
+  transform: scaleX(var(--end-drain, 1));
+}
+
+/* ---- Trophy pop-up ------------------------------------------------------------------------- */
+
+html[data-perf="lite"] .tpop {
+  background: rgb(14 16 19 / .92);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .16);
+  scale: 1;
+}
+
+html[data-perf="lite"] .tpop:not(.is-in) {
+  visibility: hidden;
+}
+
+/* ---- Subtitles drawn by the page (Windows): a crisp shadow, not a blurred one ------------------ */
+
+html[data-perf="lite"] .sub-box {
+  text-shadow: 0 .04em 0 rgba(0, 0, 0, .55) !important;
+}

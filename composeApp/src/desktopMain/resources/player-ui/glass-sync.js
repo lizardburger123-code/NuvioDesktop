@@ -101,7 +101,21 @@
     previous = spec;
   };
 
-  window.setInterval(tick, POLL_MS);
+  // Lite (perf.js) has no glass: the poll stops and mpv is told to stop blurring.
+  const isLite = () => Boolean(window.playerPerf && window.playerPerf.isLite());
+  let poll = 0;
+  const sync = () => {
+    if (!isLite()) {
+      if (!poll) poll = window.setInterval(tick, POLL_MS);
+      return;
+    }
+    window.clearInterval(poll);
+    poll = 0;
+    previous = "";
+    if (sent) post("");
+  };
+  sync();
+  if (window.playerPerf) window.playerPerf.onChange(sync);
   window.addEventListener("resize", () => { previous = ""; });
   window.addEventListener("pagehide", () => post(""));
 })();
