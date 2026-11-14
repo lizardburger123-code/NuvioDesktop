@@ -353,6 +353,13 @@ bool liteSnapshotDue(Player *player, bool loading) {
     return true;
 }
 
+// Ticks (33ms) the overlay stays composited after the chrome hides, and for a
+// keyboard toast. Full renders the page's CSS fades (about half a second, and
+// the toast's 1400ms plus its fade); Lite's page has no fades, so a hide only
+// needs a moment to land and a toast only its 1400ms.
+int fadeOutTicks(const Player *player) { return player->lite ? 2 : 18; }
+int toastHoldTicks(const Player *player) { return player->lite ? 45 : 55; }
+
 // What mpv gives up in Lite, little of it visible: sharper scalers and their
 // linear-light passes (plain bilinear instead), debanding, frame interpolation,
 // HDR peak measuring (a compute pass per frame), exact decoding in favour of
@@ -546,8 +553,8 @@ void onPlayerMessage(WebKitUserContentManager *, WebKitJavascriptResult *js, gpo
             // overlayActive (nothing would ever unlatch it — hideChrome only
             // fires when visible chrome fades) nor touch the cursor (a keypress
             // must not un-hide it). Composite through a bounded window covering
-            // the toast's 1400ms + fade at the 33ms tick.
-            player->toastTicks = 55;
+            // the toast's 1400ms (+ its fade in Full) at the 33ms tick.
+            player->toastTicks = toastHoldTicks(player);
         } else if (strcmp(type, "overlayHold") == 0) {
             // Nuvio fork: the page is showing something over the video while the chrome is
             // hidden (trophy pop-up, end card) and asks to be composited for `value` ms more.
@@ -560,7 +567,7 @@ void onPlayerMessage(WebKitUserContentManager *, WebKitJavascriptResult *js, gpo
             // the subtitles itself. Must not latch the composite gate open.
         } else if (strcmp(type, "hideChrome") == 0) {
             player->overlayActive = false;
-            player->fadeTicks = 18;  // keep compositing ~0.5s to render the fade-out
+            player->fadeTicks = fadeOutTicks(player);  // keep compositing to render the fade-out
             // Cursor follows chrome: hidden on hideChrome, back on any activity
             // (cursorActivity also re-shows the chrome via the Kotlin side).
             setOverlayCursorHidden(player, true);
@@ -1522,7 +1529,7 @@ gboolean applyControlsOnGtk(gpointer data) {
                 u->player->fadeTicks = 0;
             } else if (u->player->overlayActive) {
                 u->player->overlayActive = false;
-                u->player->fadeTicks = 18;  // render the fade-out, like hideChrome
+                u->player->fadeTicks = fadeOutTicks(u->player);  // render the fade-out, like hideChrome
             }
         }
         // Skip-intro prompt and next-episode card show over playing video with
