@@ -382,12 +382,14 @@ static gboolean on_stdin(GIOChannel *channel, GIOCondition condition, gpointer d
 // ---- setup --------------------------------------------------------------------------------------
 
 // Lite: the page's process gives memory back once its own memory passes about a third of this
-// limit (~300 MB: caches it can rebuild) and half of it (~450 MB: also every picture's decoded
-// pixels and compiled script code), checked every 10 seconds. WebKit's own limit is the
+// limit (~300 MB: caches it can rebuild) and two thirds of it (~600 MB: also every picture's
+// decoded pixels and compiled script code), checked every 10 seconds. WebKit's own limit is the
 // computer's memory up to 3 GB, checked every 30 seconds, so on a 4 GB computer the page could
-// hold a gigabyte before WebKit tried. Past half, the pictures on screen are decoded again once;
-// behind the player nothing is, so what was freed stays freed while a film plays.
+// hold a gigabyte before WebKit tried. The higher mark sits above what the page keeps while in
+// use (WebKit's default half would be crossed at every check, wiping the pictures on screen each
+// time), so it only acts once memory has piled up; behind the player nothing is redrawn after.
 #define LITE_PAGE_MEMORY_MB 900
+#define LITE_PAGE_MEMORY_STRICT 0.66
 #define LITE_PAGE_MEMORY_CHECK_SECONDS 10.0
 
 static WebKitWebContext *new_context(WebKitWebsiteDataManager *manager) {
@@ -395,6 +397,8 @@ static WebKitWebContext *new_context(WebKitWebsiteDataManager *manager) {
     if (S.lite) {
         WebKitMemoryPressureSettings *pressure = webkit_memory_pressure_settings_new();
         webkit_memory_pressure_settings_set_memory_limit(pressure, LITE_PAGE_MEMORY_MB);
+        // Above the default conservative third (0.33), as WebKit requires.
+        webkit_memory_pressure_settings_set_strict_threshold(pressure, LITE_PAGE_MEMORY_STRICT);
         webkit_memory_pressure_settings_set_poll_interval(pressure, LITE_PAGE_MEMORY_CHECK_SECONDS);
         WebKitWebContext *context = WEBKIT_WEB_CONTEXT(g_object_new(
             WEBKIT_TYPE_WEB_CONTEXT, "website-data-manager", manager, "memory-pressure-settings", pressure, NULL));
