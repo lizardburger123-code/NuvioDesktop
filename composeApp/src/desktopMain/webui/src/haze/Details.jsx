@@ -10,7 +10,8 @@ import { PosterCard, WideCard } from "../components/Cards.jsx";
 import TitleMark from "../components/TitleMark.jsx";
 import Ratings, { EpisodeScore } from "../components/Ratings.jsx";
 import Person from "../components/Person.jsx";
-import { reduceMotion } from "../lib/motion.js";
+import { scrollMotion, useChunks, useLite } from "../lib/lite.js";
+import { sized } from "../lib/images.js";
 import { useScreenActive } from "../lib/screen.js";
 import { year } from "../lib/format.js";
 import "./Details.css";
@@ -174,13 +175,15 @@ function WatchedMark({ video, onMark, className }) {
 }
 
 const Episode = memo(function Episode({ video, fallback, next, nextLabel, onPlay, onMark }) {
-  const image = video.thumbnail || fallback;
+  const lite = useLite();
+  const image = sized(video.thumbnail || fallback, "still", lite);
+  const stand = sized(fallback, "still", lite);
   return (
     <div className={`hz-ep${next ? " is-next" : ""}${video.watched ? " is-watched" : ""}${video.upcoming ? " is-upcoming" : ""}`}>
       <button className="hz-ep-main" onClick={() => onPlay(asVideo(video))} disabled={video.upcoming}>
         <span className={`hz-ep-n num${String(video.episode).length > 3 ? " is-long" : ""}`}>{video.episode}</span>
         <span className="hz-ep-thumb">
-          {image ? <img src={image} data-alt={video.thumbnail && fallback ? fallback : undefined} alt="" loading="lazy" decoding="async" /> : null}
+          {image ? <img src={image} data-alt={video.thumbnail && fallback ? stand : undefined} alt="" loading="lazy" decoding="async" /> : null}
           <span className="hz-ep-play" aria-hidden="true"><LuPlay /></span>
           {video.progress > 0 ? <span className="wide-progress"><span style={{ width: `${Math.min(100, Math.round(video.progress * 100))}%` }} /></span> : null}
         </span>
@@ -204,12 +207,14 @@ const Episode = memo(function Episode({ video, fallback, next, nextLabel, onPlay
 }, sameRow);
 
 const EpisodeTile = memo(function EpisodeTile({ video, fallback, next, onPlay, onMark }) {
-  const image = video.thumbnail || fallback;
+  const lite = useLite();
+  const image = sized(video.thumbnail || fallback, "still", lite);
+  const stand = sized(fallback, "still", lite);
   return (
     <div className={`hz-tile${next ? " is-next" : ""}${video.watched ? " is-watched" : ""}`}>
       <button className="hz-tile-main" onClick={() => onPlay(asVideo(video))} disabled={video.upcoming}>
         <span className="hz-ep-thumb">
-          {image ? <img src={image} data-alt={video.thumbnail && fallback ? fallback : undefined} alt="" loading="lazy" decoding="async" /> : null}
+          {image ? <img src={image} data-alt={video.thumbnail && fallback ? stand : undefined} alt="" loading="lazy" decoding="async" /> : null}
           <span className="hz-ep-play" aria-hidden="true"><LuPlay /></span>
           {video.progress > 0 ? <span className="wide-progress"><span style={{ width: `${Math.min(100, Math.round(video.progress * 100))}%` }} /></span> : null}
         </span>
@@ -303,7 +308,9 @@ function RatingsSheet({ meta, seasons, onPlay }) {
 /** A title's page in the Haze look. The data and the play logic come from Details; this is the furniture. */
 export default function HazeDetails({ meta, topic, seasons, season, setSeason, episodes, target, nextAir, similar, stats, onMark, onMarkSeason, play, openSources, saved, heroRef }) {
   const { appearance, laterIds, toggleLater, openDetails, toast } = useApp();
-  const color = useArtColor([meta.background, meta.banner, meta.poster], appearance?.hazeArt !== false);
+  const lite = useLite();
+  // Lite reads no colour out of the artwork: the page wears the accent.
+  const color = useArtColor([meta.background, meta.banner, meta.poster], appearance?.hazeArt !== false && !lite);
   const series = seasons.length > 0;
   const hasRatings = useMemo(() => (meta.videos || []).some(video => video.season > 0 && video.rating), [meta.videos]);
   const tabs = [
@@ -331,18 +338,20 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
   const [open, setOpen] = useState(false);
   useEffect(() => { setOpen(false); }, [meta.id]);
   const expanded = open || query.trim() !== "";
-  // The list stays in the page for the length of its closing move, then leaves it.
+  // The list stays in the page for the length of its closing move, then leaves it (at once in
+  // Lite, which has no move).
   const [listed, setListed] = useState(false);
   useEffect(() => {
     if (expanded) { setListed(true); return undefined; }
+    if (lite) { setListed(false); return undefined; }
     const timer = window.setTimeout(() => setListed(false), 380);
     return () => window.clearTimeout(timer);
-  }, [expanded]);
+  }, [expanded, lite]);
   const toggleRef = useRef(null);
   const fold = () => {
     setOpen(false);
     setQuery("");
-    toggleRef.current?.scrollIntoView({ block: "center", behavior: reduceMotion() ? "auto" : "smooth" });
+    toggleRef.current?.scrollIntoView({ block: "center", behavior: scrollMotion() });
   };
   // Folded, the season shows the episode to watch next: the main button's when it is in this
   // season, else this season's first one not yet seen.
@@ -355,6 +364,8 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
   const found = useMemo(() => findEpisodes(episodes, search), [episodes, search]);
   const searching = search.trim() !== "";
   const shown = searching ? found.slice(0, RANGE) : ranges ? episodes.slice(ranges[rangeIndex].from, ranges[rangeIndex].to) : episodes;
+  // Lite draws the open list twenty episodes at a time, more as its end comes near.
+  const drawn = useChunks(shown, { first: 20, step: 20, resetKey: `${season}:${rangeIndex}:${search}:${view}:${expanded}` });
 
   const realSeasons = seasons.filter(s => s > 0).length;
   const episodeCount = (meta.videos || []).filter(video => video.season > 0).length;
@@ -489,13 +500,14 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
               {listed && searching && found.length > shown.length ? <p className="hz-none num">Showing the first {shown.length} of {found.length} matches. Type more to narrow it down.</p> : null}
               {!listed ? null : view === "list" ? (
                 <div className="hz-eps" key={`${season}:${rangeIndex}`}>
-                  {shown.map(video => <Episode key={video.id} video={video} fallback={meta.background} next={video.id === target?.videoId} nextLabel={nextLabel} onPlay={play} onMark={onMark} />)}
+                  {drawn.shown.map(video => <Episode key={video.id} video={video} fallback={meta.background} next={video.id === target?.videoId} nextLabel={nextLabel} onPlay={play} onMark={onMark} />)}
                 </div>
               ) : (
                 <div className="hz-tiles" key={`${season}:${rangeIndex}`}>
-                  {shown.map(video => <EpisodeTile key={video.id} video={video} fallback={meta.background} next={video.id === target?.videoId} onPlay={play} onMark={onMark} />)}
+                  {drawn.shown.map(video => <EpisodeTile key={video.id} video={video} fallback={meta.background} next={video.id === target?.videoId} onPlay={play} onMark={onMark} />)}
                 </div>
               )}
+              {listed && drawn.more ? <div ref={drawn.endRef} className="hz-ep-more" aria-hidden="true" /> : null}
               {listed && shown.length > 5 ? (
                 <button className="hz-ep-less" onClick={fold}><LuChevronUp aria-hidden="true" /> Hide episodes</button>
               ) : null}

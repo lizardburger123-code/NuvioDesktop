@@ -20,3 +20,7 @@ button.person:focus-visible { outline: none; }
 [data-layout="haze"] button.person:hover img, [data-layout="haze"] button.person:hover .person-mono,
 [data-layout="haze"] button.person:focus-visible img, [data-layout="haze"] button.person:focus-visible .person-mono { outline-color: rgb(var(--haze-rgb) / .9); box-shadow: 0 0 26px rgb(var(--haze-rgb) / .3); }
 button.person[data-broken-name]::before { top: 6px; }
+
+/* Lite: a face in the cast shows hover and focus by its ring alone. */
+html[data-perf="lite"] :is(button.person, button.person img, button.person .person-mono) { transition: none; }
+html[data-perf="lite"] :is(button.person:hover, button.person:focus-visible) :is(img, .person-mono) { box-shadow: none; }
