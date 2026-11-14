@@ -74,8 +74,8 @@ html[data-perf="lite"][data-layout="haze"] .btn-primary:disabled { box-shadow: i
 html[data-perf="lite"][data-layout="haze"] .btn-glass { background: rgb(255 255 255 / .14); }
 html[data-perf="lite"][data-layout="haze"] .btn-glass:hover { background: rgb(255 255 255 / .22); }
 
-/* What is switched on: a flat tint under the same ring. A segmented control's sliding pill
-   carries it for its group, so the pressed button there stays clear. */
+/* What is switched on: a flat tint under the same ring. In Lite a segmented control has no
+   sliding pill (lib/motion.js): its pressed button wears the tint itself. */
 html[data-perf="lite"][data-layout="haze"] :is(
   .btn-glass.is-on, .chip[aria-pressed="true"], .chip.on, .seg:not(.has-pill) button[aria-pressed="true"], .preset[aria-pressed="true"],
   .discover-source[aria-pressed="true"], .addons-chip[aria-pressed="true"], .poster-save.is-saved, .poster-save:hover, .wide-remove:hover, .seg-pill
@@ -105,6 +105,10 @@ html[data-perf="lite"] .keys-sheet { box-shadow: inset 0 0 0 1px var(--line-stro
 /* ---- Who's watching: the ring marks the profile under the pointer or the keyboard; it doesn't rise. */
 html[data-perf="lite"] .gate-profile:hover:not(:disabled) .gate-ring,
 html[data-perf="lite"] .gate-profile:focus-visible .gate-ring { transform: none; }
+
+/* ---- Long lists: the Store's community list grows page by page into hundreds of cards; only
+   those near the window are laid out and drawn. */
+html[data-perf="lite"] .store-card { content-visibility: auto; contain-intrinsic-size: auto 176px; }
 
 /* ---- Settings: the look you have is ringed, not lit; the drawings and the subtitle preview's
    picture keep their shapes without the glow. */

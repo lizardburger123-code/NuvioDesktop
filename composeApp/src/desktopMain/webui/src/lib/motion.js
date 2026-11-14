@@ -97,13 +97,19 @@ const SEG_SPRING = spring({ stiffness: 360, damping: 30 });
 
 /**
  * Sliding selection for a `.seg` group: one white pill glides to the pressed button instead of
- * the background jumping. Call with the group's ref and the selected value.
+ * the background jumping. Call with the group's ref and the selected value. In Lite the pressed
+ * button wears the same fill itself, so nothing is measured after each render.
  */
 export const useSegmentPill = ref => {
   useLayoutEffect(() => {
     const group = ref.current;
     // Parked screens are skipped by rendering; measuring them would force a hidden layout.
     if (!group || group.closest(".is-parked")) return;
+    if (isLite()) {
+      group.querySelector(":scope > .seg-pill")?.remove();
+      group.classList.remove("has-pill");
+      return;
+    }
     let pill = group.querySelector(":scope > .seg-pill");
     if (!pill) {
       pill = document.createElement("span");
