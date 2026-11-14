@@ -1346,6 +1346,9 @@ compose.desktop {
                 "java.net.http",
                 "jdk.accessibility",
                 "jdk.httpserver",
+                // How much memory the computer has, on Windows (Settings › Performance, Auto):
+                // com.sun.management's view of the system lives in this module.
+                "jdk.management",
                 "jdk.unsupported",
             )
             macOS {
