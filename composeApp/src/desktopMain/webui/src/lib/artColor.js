@@ -1,7 +1,10 @@
 // The colour of a picture, for the Haze look: the accent on a title's page is that title's own
 // colour, washed in like light through haze. A poster is drawn small, its vivid pixels are
 // averaged, and the result is lifted until it reads on the dark ground.
+//
+// Lite reads no pictures (no extra fetch, no canvas): every title wears the accent.
 import { useEffect, useState } from "react";
+import { isLite, usePerf } from "./perf.js";
 
 const cache = new Map(); // url -> "r g b" | null
 const waiting = new Map(); // url -> Promise
@@ -87,7 +90,7 @@ const readable = url => {
 };
 
 export const artColor = url => {
-  if (!url) return Promise.resolve(null);
+  if (!url || isLite()) return Promise.resolve(null);
   if (cache.has(url)) return Promise.resolve(cache.get(url));
   if (waiting.has(url)) return waiting.get(url);
   const src = readable(url);
@@ -129,11 +132,13 @@ const known = urls => { for (const url of urls) { if (!cache.has(url)) return un
  * so moving between titles glides from one colour to the other instead of blinking to the accent.
  */
 export const useArtColor = (pictures, enabled = true) => {
+  const lite = usePerf() === "lite";
+  const on = enabled && !lite;
   const urls = (Array.isArray(pictures) ? pictures : [pictures]).filter(Boolean);
   const key = urls.join("|");
-  const [color, setColor] = useState(() => (enabled ? known(urls) ?? null : null));
+  const [color, setColor] = useState(() => (on ? known(urls) ?? null : null));
   useEffect(() => {
-    if (!enabled || !urls.length) { setColor(null); return undefined; }
+    if (!on || !urls.length) { setColor(null); return undefined; }
     let alive = true;
     const ready = known(urls);
     if (ready !== undefined) { setColor(ready); return undefined; }
@@ -143,6 +148,7 @@ export const useArtColor = (pictures, enabled = true) => {
     if (retry) proxyWaiters.add(retry);
     return () => { alive = false; if (retry) proxyWaiters.delete(retry); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, enabled]);
-  return color;
+  }, [key, on]);
+  // Off (or Lite just switched on): the accent at once, not the last title's colour.
+  return on ? color : null;
 };

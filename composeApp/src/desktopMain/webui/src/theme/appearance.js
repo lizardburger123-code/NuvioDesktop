@@ -2,6 +2,7 @@
 // Everything visual that depends on the user's colours reads these variables, so a change
 // repaints the whole app in one frame.
 import { applyLook, lookOf } from "../lib/look.js";
+import { applyPerf, forcedPerf, perfDevice, resolvePerf } from "../lib/perf.js";
 
 export const DEFAULT_APPEARANCE = {
   colors: ["#1d2b64", "#6b3fa0", "#e0607e"],
@@ -11,6 +12,7 @@ export const DEFAULT_APPEARANCE = {
   animate: true,
   blurArt: false,
   profileGate: true,
+  performance: "auto",
 };
 
 /** Cinema accents: one colour each (stored three times, the shape the settings file already has). */
@@ -104,5 +106,7 @@ export const applyAppearance = appearance => {
   root.setProperty("--wall-blur", `${Math.max(0, Math.min(40, Number(value.blur) || 0))}px`);
   document.documentElement.dataset.animate = value.animate === false ? "off" : "on";
   applyLook(lookOf(value), value.hazeArt);
+  // Lite or Full follows the choice at once, without a restart.
+  applyPerf(forcedPerf() || resolvePerf(value.performance, perfDevice()));
   return { ...value, colors, accent };
 };

@@ -3,14 +3,17 @@
 //
 // Screens are kept alive: home always, the last few sections you visited, and the screens under
 // the top of the stack. Going back or returning to a tab reveals the screen as you left it (same
-// scroll, same row positions, nothing reloads) instead of rebuilding it.
+// scroll, same row positions, nothing reloads) instead of rebuilding it. Lite keeps three at most
+// (see aliveEntries); a screen it let go of is built again when it comes back, at its scroll.
 //
 // Every move runs as a View Transition: the old view becomes a snapshot that dissolves over the
 // live new one (see base.css), the nav pill stays live on top, and a card you opened launches
 // toward you (and lands back when you return). Clicks pass straight through the transition.
+// Lite, reduced motion and software painting just change screens.
 import { useSyncExternalStore } from "react";
 import { flushSync } from "react-dom";
 import { reduceMotion } from "./motion.js";
+import { isLite } from "./perf.js";
 import { rememberSection, savedSection, softwareRender } from "./session.js";
 
 /** Order of the sections in the top bar; screen motion follows it left/right. */
@@ -58,13 +61,24 @@ export const activeSection = stack => {
   return "home";
 };
 
-/** Screens to keep mounted, in creation order so the DOM never reorders (that would lose scroll). */
-export const aliveEntries = router => {
+/**
+ * Screens to keep mounted, in creation order so the DOM never reorders (that would lose scroll).
+ * `alone`: only the screen on display (Lite while the page is hidden behind the player).
+ */
+export const aliveEntries = (router, lite = isLite(), alone = false) => {
   const map = new Map();
-  router.sections.forEach(entry => map.set(entry.key, entry));
-  router.stack.slice(-1 - KEEP_UNDER).forEach(entry => map.set(entry.key, entry));
-  // The page you just went back from stays ready, so Forward is instant too.
-  router.future.slice(0, 1).forEach(entry => map.set(entry.key, entry));
+  if (lite || alone) {
+    // Memory first: Home, the screen on display and the one just left (Back, or Forward after a
+    // Back, is instant). A screen that isn't on display is never built just to be ready.
+    const shown = router.stack[router.stack.length - 1].key;
+    const keep = new Set(alone ? [shown] : [router.sections[0].key, shown, router.from]);
+    [...router.sections, ...router.stack, ...router.future].forEach(entry => { if (keep.has(entry.key)) map.set(entry.key, entry); });
+  } else {
+    router.sections.forEach(entry => map.set(entry.key, entry));
+    router.stack.slice(-1 - KEEP_UNDER).forEach(entry => map.set(entry.key, entry));
+    // The page you just went back from stays ready, so Forward is instant too.
+    router.future.slice(0, 1).forEach(entry => map.set(entry.key, entry));
+  }
   return [...map.values()].sort((a, b) => a.key - b.key);
 };
 
@@ -110,12 +124,15 @@ const clearHero = () => {
 export const BEFORE_NAV = "nuvio:before-nav";
 const beforeNav = () => window.dispatchEvent(new Event(BEFORE_NAV));
 
-const commit = next => {
+const commit = move => {
   const root = document.documentElement;
+  // The screen on display before this move (Lite keeps it, and nothing older).
+  const next = { ...move, from: top().key };
   // View Transitions need the web view's compositor: painted on the CPU, the screens just change.
   const animate = next.nav.kind !== "replace"
     && typeof document.startViewTransition === "function"
     && !softwareRender()
+    && !isLite()
     && !reduceMotion()
     && document.visibilityState === "visible";
   if (!animate) {

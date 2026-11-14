@@ -4,6 +4,7 @@
 // very first frame (the intro) already wear it.
 import { flushSync } from "react-dom";
 import { reduceMotion } from "./motion.js";
+import { isLite } from "./perf.js";
 import { softwareRender } from "./session.js";
 
 export const LOOKS = [
@@ -30,7 +31,7 @@ export const applyLook = (id, artColor = true) => {
   return look;
 };
 
-/** Change look with a dissolve (the whole page is the old picture, the new one shows through). */
+/** Change look with a dissolve (the whole page is the old picture, the new one shows through); in Lite, at once. */
 export const switchLook = (id, commit) => {
   const before = document.activeElement;
   // The page must be in its new look before the transition takes its picture of it.
@@ -48,7 +49,7 @@ export const switchLook = (id, commit) => {
     }
     heading.focus({ preventScroll: true });
   };
-  if (typeof document.startViewTransition !== "function" || reduceMotion() || softwareRender()) { run(); return; }
+  if (typeof document.startViewTransition !== "function" || isLite() || reduceMotion() || softwareRender()) { run(); return; }
   const root = document.documentElement;
   root.dataset.nav = "look";
   const transition = document.startViewTransition(run);

@@ -122,6 +122,7 @@ let appearance = {
   blur: 0,
   animate: true,
   profileGate: true,
+  performance: "auto",
 };
 
 let subtitles = {

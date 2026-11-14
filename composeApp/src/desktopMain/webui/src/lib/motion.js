@@ -1,4 +1,5 @@
 import { useLayoutEffect } from "react";
+import { isLite } from "./perf.js";
 // Motion tokens and helpers shared by the shell.
 //
 // Thesis: navigation is one continuous space. The previous screen dissolves as a snapshot (View
@@ -19,8 +20,14 @@ export const EASE = {
 
 export const DURATION = { press: 120, quick: 180, exit: 200, enter: 560, pill: 520, sheet: 420 };
 
-export const reduceMotion = () =>
-  typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const reducedQuery = typeof window !== "undefined" && window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+
+/**
+ * Motion holds still: the system asks for less of it, or Lite (Settings › Performance) is on.
+ * Everything that animates from script asks this first, and what waits for an animation to end
+ * (a panel closing) then goes on at once.
+ */
+export const reduceMotion = () => isLite() || Boolean(reducedQuery?.matches);
 
 /**
  * A damped spring as a CSS linear() easing, so WAAPI and CSS can use real spring physics.
@@ -90,13 +97,19 @@ const SEG_SPRING = spring({ stiffness: 360, damping: 30 });
 
 /**
  * Sliding selection for a `.seg` group: one white pill glides to the pressed button instead of
- * the background jumping. Call with the group's ref and the selected value.
+ * the background jumping. Call with the group's ref and the selected value. In Lite the pressed
+ * button wears the same fill itself, so nothing is measured after each render.
  */
 export const useSegmentPill = ref => {
   useLayoutEffect(() => {
     const group = ref.current;
     // Parked screens are skipped by rendering; measuring them would force a hidden layout.
     if (!group || group.closest(".is-parked")) return;
+    if (isLite()) {
+      group.querySelector(":scope > .seg-pill")?.remove();
+      group.classList.remove("has-pill");
+      return;
+    }
     let pill = group.querySelector(":scope > .seg-pill");
     if (!pill) {
       pill = document.createElement("span");
