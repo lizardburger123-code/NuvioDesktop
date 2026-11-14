@@ -409,6 +409,7 @@ let skipPromptWasDismissed = false;
 let skipPromptAutoHidden = false;
 let skipPromptAutoHideTimer = 0;
 let skipPromptAutoHideActive = false;
+let skipPromptAutoHideStartedAt = 0;
 let skipPromptLiftTimer = 0;
 let pauseMetadataReady = false;
 let pauseMetadataTimer = 0;
@@ -693,6 +694,18 @@ const renderParentalGuideRows = warnings => {
 const runParentalGuideAnimation = async (warnings, key, runId) => {
   renderParentalGuideRows(warnings);
   parentalGuide.setAttribute("aria-hidden", "false");
+  if (isLite()) {
+    // Lite: the guide appears whole, stays, and goes, instead of drawing itself row by row.
+    root.classList.add("parental-visible", "parental-line-visible");
+    parentalGuideList.querySelectorAll(".parental-guide-row").forEach(row => row.classList.add("visible"));
+    await new Promise(resolve => window.setTimeout(resolve, 6000));
+    if (runId !== parentalGuideRunId) return;
+    root.classList.remove("parental-visible", "parental-line-visible");
+    parentalGuide.setAttribute("aria-hidden", "true");
+    parentalGuideCompletedKey = key;
+    send("parentalGuideComplete", 0);
+    return;
+  }
   root.classList.add("parental-visible");
   await animationDelay(300);
   if (runId !== parentalGuideRunId) return;
@@ -819,10 +832,17 @@ let shownProgress = "";
 let shownBufferProgress = "";
 
 const setProgress = (positionMs, durationMs, bufferedPositionMs) => {
-  const percent = durationMs > 0 ? Math.max(0, Math.min(100, positionMs / durationMs * 100)) : 0;
+  const lite = isLite();
+  let percent = durationMs > 0 ? Math.max(0, Math.min(100, positionMs / durationMs * 100)) : 0;
   // With no duration yet there is nothing to measure the buffer against (it used to fill the bar).
-  const bufferPercent = durationMs > 0 && bufferedPositionMs > 0 ?
+  let bufferPercent = durationMs > 0 && bufferedPositionMs > 0 ?
     Math.max(0, Math.min(100, bufferedPositionMs / durationMs * 100)) : 0;
+  if (lite) {
+    // Lite: the bar moves in steps of 1/2000 of its length (under a pixel on a bar up to 2000 px
+    // wide), so most pushes leave it as it is instead of restyling it for a fraction of a pixel.
+    percent = Math.round(percent * 20) / 20;
+    bufferPercent = Math.round(bufferPercent * 20) / 20;
+  }
   // The bar has 100000 steps: with 1000, a click on a two-hour film landed up to 7 s from the time
   // the bubble showed.
   const value = String(Math.round(percent / 100 * (Number(seek.max) || 1)));
@@ -837,6 +857,8 @@ const setProgress = (positionMs, durationMs, bufferedPositionMs) => {
     shownBufferProgress = bufferProgress;
     seek.style.setProperty("--bufferProgress", bufferProgress);
   }
+  // These three labels are never shown by the vision skin (vision.css); Lite stops writing them.
+  if (lite) return;
   setTextIfChanged(positionLabel, formatTime(positionMs));
   setTextIfChanged(durationLabel, formatTime(durationMs));
   if (timeLabel) {
@@ -1296,6 +1318,11 @@ const setModalVisibility = (modal, visible, animated = true) => {
     modal.dataset.modalState = "open";
     modal.hidden = false;
     modal.classList.remove("modal-closing");
+    // Lite has no fade to start from the hidden state: the panel is shown at once.
+    if (isLite()) {
+      modal.classList.add("modal-visible");
+      return;
+    }
     window.requestAnimationFrame(() => {
       if (modal.dataset.modalState === "open") {
         modal.classList.add("modal-visible");
@@ -1306,7 +1333,7 @@ const setModalVisibility = (modal, visible, animated = true) => {
 
   modal.dataset.modalState = "closed";
   modal.classList.remove("modal-visible");
-  if (!animated || modal.hidden) {
+  if (!animated || modal.hidden || isLite()) {
     modal.hidden = true;
     modal.classList.remove("modal-closing");
     return;
@@ -2995,27 +3022,43 @@ const resetSkipPromptAutoHide = () => {
   skipPromptAutoHideTimer = 0;
   skipPromptAutoHideActive = false;
   skipPromptAutoHidden = false;
+  skipPromptAutoHideStartedAt = 0;
   skipPromptProgress.style.transition = "none";
   skipPromptProgress.style.transform = "scaleX(0)";
 };
+
+const skipPromptAutoHideMs = prefersReducedMotion ? 1 : 10000;
 
 const startSkipPromptAutoHide = () => {
   if (skipPromptAutoHideActive || skipPromptAutoHidden) return;
   skipPromptAutoHideActive = true;
   skipPromptProgress.style.transition = "none";
   skipPromptProgress.style.transform = "scaleX(0)";
-  // The countdown line grows by transform, not width: no layout on each of its frames.
-  window.requestAnimationFrame(() => {
+  if (isLite()) {
+    // Lite: no ten-second transition; the line grows with each state push (stepSkipCountdown).
+    skipPromptAutoHideStartedAt = window.performance.now();
+  } else {
+    // The countdown line grows by transform, not width: no layout on each of its frames.
     window.requestAnimationFrame(() => {
-      skipPromptProgress.style.transition = `transform ${prefersReducedMotion ? 1 : 10000}ms linear`;
-      skipPromptProgress.style.transform = "scaleX(1)";
+      window.requestAnimationFrame(() => {
+        skipPromptProgress.style.transition = `transform ${skipPromptAutoHideMs}ms linear`;
+        skipPromptProgress.style.transform = "scaleX(1)";
+      });
     });
-  });
+  }
   skipPromptAutoHideTimer = window.setTimeout(() => {
     skipPromptAutoHideActive = false;
     skipPromptAutoHidden = true;
+    skipPromptAutoHideStartedAt = 0;
     renderNativePlaybackPrompts();
-  }, prefersReducedMotion ? 1 : 10000);
+  }, skipPromptAutoHideMs);
+};
+
+const stepSkipCountdown = () => {
+  if (!skipPromptAutoHideActive || !skipPromptAutoHideStartedAt) return;
+  const done = Math.min(1, (window.performance.now() - skipPromptAutoHideStartedAt) / skipPromptAutoHideMs);
+  const transform = `scaleX(${(Math.round(done * 50) / 50).toFixed(2)})`;
+  if (skipPromptProgress.style.transform !== transform) skipPromptProgress.style.transform = transform;
 };
 
 // The lift only depends on these; working it out reads layout, so it is done when one changes,
@@ -3354,6 +3397,8 @@ const END_CARD_SECONDS = 20;
 let endCardShown = false;
 let endCardTimer = 0;
 let endCardDismissed = false;
+let endCardShownAt = 0;
+let endCardDrainShown = "";
 
 const endCardDue = () => Boolean(state.endCardEnabled) && Boolean(state.isEnded) && !state.isLoading && state.durationMs > 0;
 
@@ -3401,8 +3446,22 @@ const renderEndCard = () => {
   void endCard.offsetWidth;
   endCard.classList.add("visible");
   root.classList.add("end-card-active");
+  endCardShownAt = window.performance.now();
+  if (isLite()) stepEndCardDrain();
   window.clearTimeout(endCardTimer);
   endCardTimer = window.setTimeout(() => { if (endCardShown) runEndAction(endCardPrimary.dataset.endAction); }, (END_CARD_SECONDS + 1.2) * 1000);
+};
+
+// Lite: the auto-return line under the primary button drains with each state push (lite.css reads
+// --end-drain) instead of running a twenty-second animation.
+const stepEndCardDrain = () => {
+  if (!endCardShown) return;
+  const elapsed = (window.performance.now() - endCardShownAt) / 1000 - 1.2;
+  const left = 1 - Math.min(1, Math.max(0, elapsed / END_CARD_SECONDS));
+  const drain = left.toFixed(2);
+  if (drain === endCardDrainShown) return;
+  endCardDrainShown = drain;
+  endCard.style.setProperty("--end-drain", drain);
 };
 
 // A quiet two-note chime as the ring closes: the moment should be heard as well as seen, once.
@@ -4264,8 +4323,11 @@ window.playerUpdate = update => {
     subtitleTracks,
   };
   if (onlyTimeMoved) {
-    if (!isScrubbing) setProgress(positionMs, durationMs, bufferedPositionMs);
+    // Lite does no work for a bar nobody sees: renderChrome draws it from state when it comes back.
+    const barHidden = isLite() && root.classList.contains("chrome-hidden");
+    if (!isScrubbing && !barHidden) setProgress(positionMs, durationMs, bufferedPositionMs);
     syncCurrentChapterRow();
+    if (isLite()) stepWithStatePush();
     return;
   }
   if (!appliedRememberedVolume) {
@@ -4288,7 +4350,17 @@ window.playerUpdate = update => {
       (subtitleTracksChanged && activeModal === "subtitles")) {
     renderActiveModal();
   }
+  if (isLite()) stepWithStatePush();
 };
+
+// Lite: what spins or counts down moves one step with each state push (five a second) instead of
+// on animation frames of its own, so between pushes the page does not change.
+function stepWithStatePush() {
+  openingLoadingIndicator.step();
+  bufferingLoadingIndicator.step();
+  stepSkipCountdown();
+  stepEndCardDrain();
+}
 
 window.playerControls = nextState => {
   window.playerPerf.apply(Boolean(nextState && nextState.lite));

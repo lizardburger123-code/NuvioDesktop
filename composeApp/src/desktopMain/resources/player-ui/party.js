@@ -505,7 +505,7 @@ const updatePartyChatNewButton = () => {
 const scrollPartyChatToBottom = smooth => {
   window.cancelAnimationFrame(partyChatScrollFrame);
   const target = () => partyChatScroll.scrollHeight - partyChatScroll.clientHeight;
-  if (!smooth || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+  if (!smooth || isLite() || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
     partyChatScroll.scrollTop = target();
     return;
   }
@@ -593,7 +593,8 @@ const syncPartyChatRows = messages => {
     seen.add(key);
     const expected = partyChatList.children[index] || null;
     if (expected !== row.el) partyChatList.insertBefore(row.el, expected);
-    if (created && !firstRender) {
+    // Lite (no animations): the row arrives as it is, with no class waiting for an animationend.
+    if (created && !firstRender && !isLite()) {
       row.el.classList.add("entering");
       row.el.addEventListener("animationend", () => row.el.classList.remove("entering"), { once: true });
     }
@@ -604,7 +605,7 @@ const syncPartyChatRows = messages => {
     partyChatRows.delete(key);
   });
 
-  if (!firstRender && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+  if (!firstRender && !isLite() && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
     partyChatRows.forEach((row, key) => {
       const top = tops.get(key);
       if (top === undefined) return;

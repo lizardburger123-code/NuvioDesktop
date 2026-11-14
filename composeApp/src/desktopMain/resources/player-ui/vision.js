@@ -21,6 +21,9 @@
   const gsap = hasGsap ? window.gsap : null;
   const reduceQuery = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
   const reduced = () => Boolean(reduceQuery && reduceQuery.matches);
+  // Lite performance mode (perf.js): nothing here moves, and nothing runs between state pushes.
+  const isLite = () => Boolean(window.playerPerf && window.playerPerf.isLite());
+  const still = () => reduced() || isLite();
 
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
   const TAU = Math.PI * 2;
@@ -65,6 +68,8 @@
     if (scrubRow) scrubRow.classList.toggle("has-hours", durationSec >= 3600);
   };
 
+  // Lite leaves the labels alone while the controls are hidden and catches up when they come back.
+  const timesHidden = () => isLite() && root.classList.contains("chrome-hidden");
   const originalUpdate = window.playerUpdate;
   if (typeof originalUpdate === "function") {
     window.playerUpdate = update => {
@@ -72,13 +77,19 @@
       try {
         durationSec = Math.max(0, Number(update && update.duration) || 0);
         positionSec = Math.max(0, Number(update && update.position) || 0);
-        renderTimes();
+        if (!timesHidden()) renderTimes();
       } catch (error) {
         console.error("vision times", error);
       }
       return result;
     };
   }
+  let timesWereHidden = false;
+  new MutationObserver(() => {
+    const hidden = timesHidden();
+    if (timesWereHidden && !hidden) renderTimes();
+    timesWereHidden = hidden;
+  }).observe(root, { attributes: true, attributeFilter: ["class"] });
 
   // ---- Elastic slider driver -----------------------------------------------------------------
 
@@ -136,7 +147,23 @@
       if (!settled || dragging) m.raf = requestAnimationFrame(frame);
     };
 
+    // Lite: no spring and no rubber band; the bar takes its new thickness at once.
+    const settleNow = () => {
+      if (m.raf) cancelAnimationFrame(m.raf);
+      m.raf = 0;
+      m.a = m.goal;
+      m.va = 0;
+      m.s = 0;
+      m.vs = 0;
+      m.held = false;
+      paint();
+    };
+
     const kick = () => {
+      if (isLite()) {
+        settleNow();
+        return;
+      }
       if (m.raf) return;
       m.last = performance.now();
       m.raf = requestAnimationFrame(frame);
@@ -148,7 +175,7 @@
     };
 
     const onWindowMove = event => {
-      if (!dragging) return;
+      if (!dragging || isLite()) return;
       const rect = input.getBoundingClientRect();
       const fraction = (event.clientX - rect.left) / Math.max(1, rect.width);
       const over = fraction < 0 ? -fraction * rect.width : fraction > 1 ? (fraction - 1) * rect.width : 0;
@@ -223,9 +250,18 @@
     const x = clamp(fraction * width, half, Math.max(half, width - half));
     bubble.style.left = `${x.toFixed(1)}px`;
   };
+  // GSAP owns the bubble's transform once it has given it its resting place: at load in Full, or
+  // the first time Full shows the bubble after Lite. Lite never hands it over; lite.css centres it.
+  let bubbleTakenOver = false;
+  const takeOverBubble = () => {
+    if (bubbleTakenOver || !gsap || !bubble) return;
+    bubbleTakenOver = true;
+    gsap.set(bubble, { x: 0, xPercent: -50, y: 4, scale: 0.92 });
+  };
   const bubbleVisible = visible => {
     if (!bubble) return;
-    if (gsap && !reduced()) {
+    if (gsap && !still()) {
+      takeOverBubble();
       gsap.to(bubble, {
         opacity: visible ? 1 : 0,
         y: visible ? 0 : 4,
@@ -241,7 +277,7 @@
   };
 
   if (seek) {
-    if (gsap && bubble) gsap.set(bubble, { x: 0, xPercent: -50, y: 4, scale: 0.92 });
+    if (!isLite()) takeOverBubble();
     elastic(seek, {
       cssVar: "--scrub-h",
       originVar: "--scrub-origin",
@@ -299,7 +335,9 @@
     const ease = t => 0.5 - Math.cos(Math.PI * t) / 2;
     let start = 0;
     let raf = 0;
-    let still = false;
+    let resting = false;
+    // Lite parks the loop (lite.css shows plain text); it starts again if Full comes back.
+    let parked = false;
     const paint = pos => {
       const half = width / 2;
       const core = half * (1 - softness);
@@ -311,18 +349,22 @@
     const tick = now => {
       raf = 0;
       if (!element.isConnected) return;
+      if (isLite()) {
+        parked = true;
+        return;
+      }
       // Class and attribute checks only: this runs every half second for the whole session, and
       // reading offsetParent here forced a layout each time.
       const visible = root.classList.contains("opening-active") && !element.closest("[hidden]");
       if (!visible || reduced()) {
-        if (!still) {
-          still = true;
+        if (!resting) {
+          resting = true;
           element.style.backgroundImage = `linear-gradient(${base}, ${base})`;
         }
-        window.setTimeout(() => { if (!raf) raf = requestAnimationFrame(tick); }, 500);
+        window.setTimeout(() => { if (!raf && !parked) raf = requestAnimationFrame(tick); }, 500);
         return;
       }
-      still = false;
+      resting = false;
       if (!start) start = now;
       const cycle = (speed + delay) * 1000;
       const t = ((now - start) % cycle) / (speed * 1000);
@@ -330,11 +372,29 @@
       raf = requestAnimationFrame(tick);
     };
     element.classList.add("v-shiny");
-    raf = requestAnimationFrame(tick);
+    if (isLite()) parked = true;
+    else raf = requestAnimationFrame(tick);
+    if (window.playerPerf) {
+      window.playerPerf.onChange(lite => {
+        if (lite || !parked) return;
+        parked = false;
+        if (!raf) raf = requestAnimationFrame(tick);
+      });
+    }
   };
   shine(document.getElementById("openingMessage"));
 
   if (!gsap) return;
+
+  // GSAP's ticker asks for animation frames for two seconds after it loads and after every tween.
+  // Lite runs no tweens: whatever was running ends where it was going, and the ticker sleeps until
+  // Full starts one again.
+  const quietGsap = () => {
+    gsap.globalTimeline.getChildren(false, true, true).forEach(child => child.progress(1));
+    gsap.ticker.sleep();
+  };
+  if (isLite()) quietGsap();
+  if (window.playerPerf) window.playerPerf.onChange(lite => { if (lite) quietGsap(); });
 
   // ---- GSAP: chrome reveal ---------------------------------------------------------------------
 
@@ -344,13 +404,13 @@
   let chromeHidden = root.classList.contains("chrome-hidden");
 
   const revealChrome = () => {
-    if (reduced()) return;
+    if (still()) return;
     gsap.fromTo(ornament, { y: 16, scale: 0.985 }, { y: 0, scale: 1, duration: 0.55, ease: "expo.out", overwrite: "auto" });
     gsap.fromTo(metadata, { y: 10 }, { y: 0, duration: 0.55, delay: 0.04, ease: "expo.out", overwrite: "auto" });
     gsap.fromTo(headerActions, { y: -10 }, { y: 0, duration: 0.5, ease: "expo.out", overwrite: "auto" });
   };
   const hideChrome = () => {
-    if (reduced()) return;
+    if (still()) return;
     gsap.to(ornament, { y: 8, scale: 0.995, duration: 0.24, ease: "power2.out", overwrite: "auto" });
     gsap.to(metadata, { y: 6, duration: 0.24, ease: "power2.out", overwrite: "auto" });
     gsap.to(headerActions, { y: -6, duration: 0.24, ease: "power2.out", overwrite: "auto" });
@@ -359,7 +419,7 @@
   // ---- GSAP: panels ---------------------------------------------------------------------------
 
   const animatePanel = layer => {
-    if (reduced()) return;
+    if (still()) return;
     const panel = layer.querySelector(".track-panel, .player-side-panel");
     if (!panel) return;
     const rows = Array.from(layer.querySelectorAll(".track-header, .subtitle-rail-title, .track-row, .style-section"))
@@ -391,7 +451,7 @@
     const href = toggleIcon.getAttribute("href");
     if (href === lastToggleHref) return;
     lastToggleHref = href;
-    if (reduced() || !toggleSvg) return;
+    if (still() || !toggleSvg) return;
     gsap.fromTo(toggleSvg,
       { scale: 0.25, opacity: 0, filter: "blur(4px)" },
       { scale: 1, opacity: 1, filter: "blur(0px)", duration: 0.3, ease: "power2.out", overwrite: "auto", clearProps: "filter" });
@@ -402,7 +462,7 @@
   const toast = document.getElementById("playerToast");
   let toastShown = toast ? toast.classList.contains("visible") : false;
   const popToast = () => {
-    if (reduced()) return;
+    if (still()) return;
     toast.classList.add("v-animating");
     gsap.fromTo(toast, { y: -8, scale: 0.94 }, {
       y: 0, scale: 1, duration: 0.4, ease: "back.out(1.6)", overwrite: "auto",
@@ -422,13 +482,18 @@
     const chromeShown = !root.classList.contains("chrome-hidden") && !root.classList.contains("opening-active") &&
       !root.classList.contains("panel-covers-bar");
     if (chromeShown && box.dataset.empty !== "true" && !box.classList.contains("sub-dragging")) {
-      const currentY = Number(gsap.getProperty(layer, "y")) || 0;
+      // Lite moves the layer itself (below), so its offset is the last lift, not GSAP's record.
+      const currentY = isLite() ? -subLift : Number(gsap.getProperty(layer, "y")) || 0;
       const boxBottom = box.getBoundingClientRect().bottom - currentY;
       const controlsTop = progress.getBoundingClientRect().top;
       target = Math.max(0, Math.round(boxBottom - controlsTop + 16));
     }
     if (target === subLift) return;
     subLift = target;
+    if (isLite()) {
+      layer.style.transform = target ? `translate(0px, ${-target}px)` : "";
+      return;
+    }
     gsap.to(layer, {
       y: -target,
       duration: reduced() ? 0 : (target > 0 ? 0.5 : 0.35),
@@ -470,13 +535,24 @@
     let visible = layer.classList.contains("modal-visible");
     new MutationObserver(() => {
       const now = layer.classList.contains("modal-visible") && !layer.classList.contains("modal-closing");
-      if (now && !visible) requestAnimationFrame(() => animatePanel(layer));
+      if (now && !visible && !isLite()) requestAnimationFrame(() => animatePanel(layer));
       visible = now;
     }).observe(layer, { attributes: true, attributeFilter: ["class"] });
   });
 
   if (toggleIcon) {
     new MutationObserver(swapToggle).observe(toggleIcon, { attributes: true, attributeFilter: ["href"] });
+  }
+
+  // Lite moves the subtitle layer without GSAP: hand the offset over whichever way the mode changes.
+  if (window.playerPerf) {
+    window.playerPerf.onChange(lite => {
+      const layer = document.querySelector(".sub-layer");
+      if (!layer) return;
+      gsap.killTweensOf(layer);
+      if (lite) layer.style.transform = subLift ? `translate(0px, ${-subLift}px)` : "";
+      else gsap.set(layer, { y: -subLift });
+    });
   }
 
   if (toast) {

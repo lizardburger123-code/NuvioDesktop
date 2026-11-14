@@ -8,6 +8,7 @@
   const TROPHY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 4h8v5a4 4 0 0 1-8 0V4Z"/><path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8.5 20h7M10 17h4"/></svg>';
   const FRESH_MS = 30000;
   const reduce = () => window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const isLite = () => Boolean(window.playerPerf && window.playerPerf.isLite());
   const wait = ms => new Promise(resolve => setTimeout(resolve, reduce() ? Math.min(ms, 80) : ms));
   const esc = text => String(text == null ? "" : text).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -66,6 +67,15 @@
         ${card.sub ? `<span class="tpop-sub" dir="auto">${esc(card.sub)}</span>` : ""}
       </span></span>
       ${card.to != null ? `<span class="tpop-xp"><i style="--from:${Number(card.from) || 0}%;--to:${Number(card.to) || 0}%"></i></span>` : ""}`;
+    if (isLite()) {
+      // Lite: the card shows whole, for as long as Full's opens and holds, then goes.
+      pop.classList.add("is-in", "is-open");
+      holdWhileShowing();
+      if (card.sound !== false) chime(card.kind === "level" ? "level" : card.tier);
+      await new Promise(resolve => setTimeout(resolve, 4720));
+      pop.classList.remove("is-in", "is-open");
+      return;
+    }
     void pop.offsetWidth;
     pop.classList.add("is-in");
     if (card.sound !== false) chime(card.kind === "level" ? "level" : card.tier);
@@ -101,11 +111,31 @@
   // the time asked, and this renews it while they are up).
   const composited = Boolean(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.player)
     && !(window.chrome && window.chrome.webview);
+  // Full asks every 400 ms for the whole session. Lite (perf.js) asks only while a pop-up or the end
+  // card is up, so nothing runs between state pushes the rest of the time.
+  let holdTimer = 0;
+  const hold = () => {
+    const showing = document.querySelector(".tpop.is-in, #endCard.visible");
+    if (showing) send("overlayHold", 900);
+    else if (isLite()) {
+      window.clearInterval(holdTimer);
+      holdTimer = 0;
+    }
+  };
+  const holdWhileShowing = () => {
+    if (!composited || typeof send !== "function" || holdTimer) return;
+    hold();
+    holdTimer = window.setInterval(hold, 400);
+  };
   if (composited && typeof send === "function") {
-    window.setInterval(() => {
-      const showing = document.querySelector(".tpop.is-in, #endCard.visible");
-      if (showing) send("overlayHold", 900);
-    }, 400);
+    if (!isLite()) holdTimer = window.setInterval(hold, 400);
+    if (window.playerPerf) window.playerPerf.onChange(lite => { if (!lite) holdWhileShowing(); });
+    const endCard = document.getElementById("endCard");
+    if (endCard) {
+      new MutationObserver(() => {
+        if (isLite() && endCard.classList.contains("visible")) holdWhileShowing();
+      }).observe(endCard, { attributes: true, attributeFilter: ["class"] });
+    }
   }
 
   const previous = window.playerControls;
