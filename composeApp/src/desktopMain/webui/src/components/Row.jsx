@@ -81,7 +81,13 @@ export default function Row({ title, subtitle, action, children, className = "",
   // Read by the scroll handler, which stays the same function.
   const moreRef = useRef(more);
   moreRef.current = more && near;
-  const grow = useCallback(() => setLimit(n => n + LITE_STEP), []);
+  // One step at a time: scroll events keep coming before the next cards are drawn.
+  const growing = useRef(false);
+  const grow = useCallback(() => {
+    if (growing.current) return;
+    growing.current = true;
+    setLimit(n => n + LITE_STEP);
+  }, []);
 
   useEffect(() => {
     const node = rowRef.current;
@@ -123,6 +129,7 @@ export default function Row({ title, subtitle, action, children, className = "",
   // Measure when the row (or its content) resizes, or more of it is drawn. Never while the
   // screen is parked: reading layout there would force a hidden screen to render.
   useEffect(() => {
+    growing.current = false;
     const track = trackRef.current;
     if (!track || !active) return undefined;
     measure();
