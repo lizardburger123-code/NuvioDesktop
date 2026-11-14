@@ -3,7 +3,8 @@ import { createPortal } from "react-dom";
 import { LuCloudDownload, LuCopy, LuExternalLink, LuLoaderCircle, LuRefreshCw, LuTrash2, LuX } from "react-icons/lu";
 import { call } from "../bridge.js";
 import { useApp } from "../AppContext.jsx";
-import { EASE, reduceMotion } from "../lib/motion.js";
+import { EASE } from "../lib/motion.js";
+import { calm } from "../lib/lite.js";
 import "./TorboxClear.css";
 
 const size = bytes => (bytes >= 1e12 ? `${(bytes / 1e12).toFixed(1)} TB` : bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`);
@@ -67,7 +68,7 @@ export default function TorboxClear({ onClose, onCleared, mode = "clear", onConn
   const close = () => {
     if (closing.current) return;
     closing.current = true;
-    if (!ref.current || reduceMotion()) { onClose(); return; }
+    if (!ref.current || calm()) { onClose(); return; }
     ref.current.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "scale(.97)" }], { duration: 150, easing: EASE.exit, fill: "forwards" }).onfinish = onClose;
   };
 
@@ -81,7 +82,7 @@ export default function TorboxClear({ onClose, onCleared, mode = "clear", onConn
 
   useLayoutEffect(() => {
     ref.current?.focus({ preventScroll: true });
-    if (!ref.current || reduceMotion()) return;
+    if (!ref.current || calm()) return;
     ref.current.animate([{ opacity: 0, transform: "translate3d(0, 12px, 0) scale(.97)" }, { opacity: 1, transform: "none" }], { duration: 320, easing: EASE.out });
   }, []);
 

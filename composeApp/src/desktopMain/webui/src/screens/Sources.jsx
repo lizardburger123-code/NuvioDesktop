@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { DURATION, EASE, reduceMotion, useSegmentPill } from "../lib/motion.js";
+import { DURATION, EASE, useSegmentPill } from "../lib/motion.js";
+import { calm } from "../lib/lite.js";
 import { holdAmbient } from "../lib/hold.js";
 import { LuChevronDown, LuCloudDownload, LuDownload, LuExternalLink, LuLoaderCircle, LuMaximize, LuPlay, LuRefreshCw, LuSearch, LuX, LuZap } from "react-icons/lu";
 import { navigate } from "../lib/router.js";
@@ -172,7 +173,7 @@ export default function Sources({ meta, video, onClose }) {
   useLayoutEffect(() => {
     if (!panelRef.current) return;
     panelRef.current.focus({ preventScroll: true });
-    if (reduceMotion()) return;
+    if (calm()) return;
     panelRef.current.animate(
       [{ opacity: 0, transform: "translate3d(64px, 0, 0)" }, { opacity: 1, transform: "none" }],
       { duration: DURATION.sheet + 100, easing: EASE.out },
@@ -182,7 +183,7 @@ export default function Sources({ meta, video, onClose }) {
   const close = useCallback(() => {
     if (closingRef.current) return;
     closingRef.current = true;
-    if (!panelRef.current || reduceMotion()) { onCloseRef.current(); return; }
+    if (!panelRef.current || calm()) { onCloseRef.current(); return; }
     setClosing(true);
     const exit = panelRef.current.animate(
       [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translate3d(32px, 0, 0)" }],
@@ -521,7 +522,7 @@ export default function Sources({ meta, video, onClose }) {
   useLayoutEffect(() => {
     if (settled.current || !total || !listRef.current) return;
     settled.current = true;
-    if (reduceMotion()) return;
+    if (calm()) return;
     const rows = [...listRef.current.querySelectorAll(".source-item")].slice(0, 10);
     rows.forEach((row, i) => row.animate(
       [{ opacity: 0, transform: "translate3d(0, 10px, 0)" }, { opacity: 1, transform: "none" }],

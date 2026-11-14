@@ -60,3 +60,11 @@ body:has(.toasts > .toast + .toast + .toast) .tpop { translate: 0 -112px; }
 @media (prefers-reduced-motion: reduce) {
   .tpop, .tpop-text, .tpop-in, .tpop-xp i, .tpop.is-open .tpop-medal::after { transition-duration: .01s !important; transition-delay: 0s !important; }
 }
+
+/* Lite: a solid pill that appears and opens without blur, glass, a big shadow or a light sweep; the
+   level bar shows where it ends up. */
+html[data-perf="lite"] .tpop { -webkit-backdrop-filter: none; backdrop-filter: none; background: #121418; box-shadow: inset 0 0 0 1px var(--line-strong); transition: none; }
+html[data-perf="lite"] :is(.tpop, .tpop.is-in) { filter: none; }
+html[data-perf="lite"] .tpop:hover { background: #1b1e23; }
+html[data-perf="lite"] :is(.tpop-text, .tpop-in, .tpop-xp, .tpop-xp i) { transition: none; }
+html[data-perf="lite"] .tpop-medal::after { display: none; }

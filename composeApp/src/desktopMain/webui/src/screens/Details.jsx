@@ -7,7 +7,9 @@ import { useTopic } from "../store.js";
 import { useApp } from "../AppContext.jsx";
 import { back, canGoBack, navigate } from "../lib/router.js";
 import { useScreenActive } from "../lib/screen.js";
-import { EASE, reduceMotion } from "../lib/motion.js";
+import { EASE } from "../lib/motion.js";
+import { calm, useLite } from "../lib/lite.js";
+import { sized } from "../lib/images.js";
 import Row from "../components/Row.jsx";
 import { PosterCard, WideCard } from "../components/Cards.jsx";
 import Sources from "./Sources.jsx";
@@ -137,12 +139,14 @@ const withToken = (marks, token, change) => {
 
 /** An episode in Cinema's row: the picture plays it; the corner mark says (and sets) whether it was seen. */
 const EpisodeCard = memo(function EpisodeCard({ video, fallback, onPlay, onMark }) {
+  const lite = useLite();
   const name = video.title || `Episode ${video.episode}`;
-  const image = video.thumbnail || fallback;
+  const image = sized(video.thumbnail || fallback, "still", lite);
+  const stand = sized(fallback, "still", lite);
   return (
     <div className={`wide ep-card${video.watched ? " is-watched" : ""}`} data-card style={{ width: 300 }}>
       <button className="card-face" data-hero style={{ height: 169 }} onClick={() => onPlay(asVideo(video))} disabled={video.upcoming} aria-label={`Episode ${video.episode}: ${name}`}>
-        {image ? <img src={image} data-alt={fallback && fallback !== image ? fallback : undefined} alt="" loading="lazy" decoding="async" /> : null}
+        {image ? <img src={image} data-alt={stand && stand !== image ? stand : undefined} alt="" loading="lazy" decoding="async" /> : null}
         <span className="wide-scrim" />
         {video.upcoming ? <span className="wide-badge">{video.airsAt != null ? `Airs ${airDay(video)}` : "Not out yet"}</span> : null}
         <span className="wide-play" aria-hidden="true"><LuPlay /></span>
@@ -304,7 +308,7 @@ const TitlePage = memo(function TitlePage({ state, params }) {
   // The hero writes itself in once the title has loaded. Each part fades on its own element:
   // fading a wrapper would cut the glass buttons inside it off from the backdrop they blur.
   useLayoutEffect(() => {
-    if (!heroRef.current || reduceMotion()) return undefined;
+    if (!heroRef.current || calm()) return undefined;
     const parts = [...heroRef.current.querySelectorAll("[data-rise]")];
     const animations = parts.map((part, i) => part.animate(
       [{ opacity: 0, transform: "translate3d(0, 18px, 0)" }, { opacity: 1, transform: "none" }],

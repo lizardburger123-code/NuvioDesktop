@@ -140,3 +140,8 @@
 
 /* A title that didn't load or that no addon has: what happened, and the ways forward. */
 .details-problem-text { max-width: 60ch; font-size: var(--fs-16); line-height: 1.55; color: var(--ink-2); }
+
+/* Lite: the logo stands on the scrim without a blurred shadow; marks and links change in place. */
+html[data-perf="lite"] .details-logo { filter: none; }
+html[data-perf="lite"] :is(.details-more, .ep-card-mark, .ep-card-mark span) { transition: none; }
+html[data-perf="lite"] .ep-card:has(> .card-face:hover:not(:disabled)) .ep-card-mark { transform: none; }

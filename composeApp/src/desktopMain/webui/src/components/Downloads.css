@@ -41,3 +41,8 @@
 .dl-actions :disabled { opacity: .45; cursor: progress; }
 .dl-actions .btn { margin-right: 8px; }
 @media (max-width: 900px) { .dl-item { grid-template-columns: 96px minmax(0, 1fr); } .dl-actions { grid-column: 1 / -1; justify-content: flex-end; } .dl-art { width: 96px; } }
+
+/* Lite: the bar steps to each new figure instead of gliding between them (a transfer updates it
+   twice a second, so the glide never stopped), and has no glow. */
+html[data-perf="lite"] .dl-progress i { transition: none; box-shadow: none; }
+html[data-perf="lite"] .dl-icon { transition: none; }

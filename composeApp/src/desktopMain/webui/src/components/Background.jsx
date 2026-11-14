@@ -1,14 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { EASE, reduceMotion } from "../lib/motion.js";
+import { useLite } from "../lib/lite.js";
+import { sized } from "../lib/images.js";
 import "./Background.css";
 
 /**
  * The scene behind every screen: a wallpaper (the user's image, the featured title's artwork,
  * or none) washed with the user's three gradient colours, over a slow grainy gradient
  * (React Bits Grainient) in the same colours. A screen can lend its own artwork (a title's
- * backdrop on its details page), which cross-fades in.
+ * backdrop on its details page), which cross-fades in. In Lite it is one smaller picture, still,
+ * swapped without a fade (and Background.css lets it scroll with the page).
  */
 export default function Background({ appearance, featured, art, scrolled }) {
+  const lite = useLite();
   const colors = appearance?.colors || ["#1d2b64", "#6b3fa0", "#e0607e"];
   const mode = appearance?.wallpaper?.mode || "featured";
   const custom = appearance?.wallpaper?.image || null;
@@ -17,18 +21,18 @@ export default function Background({ appearance, featured, art, scrolled }) {
   const featuredList = useMemo(() => (featured || []).map(item => item.banner).filter(Boolean), [featured]);
   const [featuredIndex, setFeaturedIndex] = useState(0);
   useEffect(() => {
-    if (mode !== "featured" || featuredList.length < 2 || art) return undefined;
+    if (lite || mode !== "featured" || featuredList.length < 2 || art) return undefined;
     const timer = window.setInterval(() => setFeaturedIndex(i => (i + 1) % featuredList.length), 14000);
     return () => window.clearInterval(timer);
-  }, [mode, featuredList.length, art]);
+  }, [mode, featuredList.length, art, lite]);
 
   const wallpaper = art || (mode === "custom" ? custom : mode === "featured" ? featuredList[featuredIndex % Math.max(1, featuredList.length)] : null);
 
   // Two stacked images cross-fade whenever the source changes.
-  const [layers, setLayers] = useState([{ src: wallpaper, id: 0 }]);
+  const [layers, setLayers] = useState(() => (lite ? [] : [{ src: wallpaper, id: 0 }]));
   const idRef = useRef(0);
   useEffect(() => {
-    if (!wallpaper) {
+    if (!wallpaper || lite) {
       setLayers([]);
       return;
     }
@@ -43,7 +47,7 @@ export default function Background({ appearance, featured, art, scrolled }) {
     };
     (img.decode ? img.decode() : Promise.resolve()).then(swap, swap);
     return () => { alive = false; };
-  }, [wallpaper]);
+  }, [wallpaper, lite]);
 
   const lastLayerRef = useRef(null);
   useEffect(() => {
@@ -65,7 +69,7 @@ export default function Background({ appearance, featured, art, scrolled }) {
   return (
     <div className={`scene${scrolled ? " scene-scrolled" : ""}${wallpaper ? " has-wall" : ""}${art ? " has-art" : ""}${blurred ? " has-blur" : ""}`} aria-hidden="true">
       <div className="scene-walls">
-        {layers.map((layer, i) => (
+        {lite ? (wallpaper ? <img className="scene-wall" src={sized(wallpaper, "backdrop", true)} alt="" decoding="async" /> : null) : layers.map((layer, i) => (
           <img
             key={layer.id}
             ref={i === layers.length - 1 ? lastLayerRef : undefined}

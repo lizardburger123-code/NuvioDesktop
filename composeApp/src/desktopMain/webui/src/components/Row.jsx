@@ -1,9 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Children, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { LuArrowRight, LuChevronLeft, LuChevronRight } from "react-icons/lu";
 import { useScreenActive } from "../lib/screen.js";
 import { BEFORE_NAV } from "../lib/router.js";
-import { reduceMotion } from "../lib/motion.js";
+import { scrollMotion, useLite } from "../lib/lite.js";
 import "./Row.css";
+
+// Lite draws a row's first cards, and more as it is scrolled (or its keyboard focus moves)
+// toward its end: a catalog of a hundred titles costs a dozen cards until someone looks further.
+const LITE_FIRST = 12;
+const LITE_STEP = 12;
 
 // The card each screen was left from, so coming back puts the keyboard where it was.
 const leftFrom = new WeakMap();
@@ -19,7 +24,7 @@ if (typeof window !== "undefined") {
 const stopOf = item => (item.matches("button, a") ? item : item.querySelector(".card-face, button, a"));
 const goTo = target => {
   target.focus({ preventScroll: true });
-  target.scrollIntoView({ block: "nearest", inline: "nearest", behavior: reduceMotion() ? "auto" : "smooth" });
+  target.scrollIntoView({ block: "nearest", inline: "nearest", behavior: scrollMotion() });
 };
 
 /**
@@ -59,13 +64,30 @@ const moveWithin = (track, event) => {
   goTo(stopOf(target));
 };
 
-/** A titled horizontal shelf. Children render only once the row nears the viewport. */
+/**
+ * A titled horizontal shelf. Children render only once the row nears the viewport; in Lite only
+ * its first cards do, and the rest as the row is scrolled toward them.
+ */
 export default function Row({ title, subtitle, action, children, className = "", empty, onMore, moreLabel = "See all" }) {
   const rowRef = useRef(null);
   const trackRef = useRef(null);
   const [near, setNear] = useState(false);
   const [edges, setEdges] = useState({ start: true, end: false });
   const active = useScreenActive();
+  const lite = useLite();
+  const [limit, setLimit] = useState(LITE_FIRST);
+  const items = lite ? Children.toArray(children) : null;
+  const more = lite && items.length > limit;
+  // Read by the scroll handler, which stays the same function.
+  const moreRef = useRef(more);
+  moreRef.current = more && near;
+  // One step at a time: scroll events keep coming before the next cards are drawn.
+  const growing = useRef(false);
+  const grow = useCallback(() => {
+    if (growing.current) return;
+    growing.current = true;
+    setLimit(n => n + LITE_STEP);
+  }, []);
 
   useEffect(() => {
     const node = rowRef.current;
@@ -75,19 +97,24 @@ export default function Row({ title, subtitle, action, children, className = "",
         setNear(true);
         observer.disconnect();
       }
-    }, { rootMargin: "600px 0px" });
+    }, { rootMargin: lite ? "300px 0px" : "600px 0px" });
     observer.observe(node);
     return () => observer.disconnect();
+    // Where a row starts drawing is decided once, when it is made.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const measure = useCallback(() => {
     const track = trackRef.current;
     if (!track) return;
     const start = track.scrollLeft < 8;
-    const end = track.scrollLeft + track.clientWidth >= track.scrollWidth - 8;
+    const atEnd = track.scrollLeft + track.clientWidth >= track.scrollWidth - 8;
+    // Lite: within a window's width of the last card drawn, draw the next ones.
+    if (moreRef.current && track.scrollLeft + track.clientWidth * 2 >= track.scrollWidth) grow();
+    const end = atEnd && !moreRef.current;
     // Scroll fires every frame: only re-render when an arrow actually changes state.
     setEdges(prev => (prev.start === start && prev.end === end ? prev : { start, end }));
-  }, []);
+  }, [grow]);
 
   // Back on this screen: the card it was left from has the keyboard again.
   useEffect(() => {
@@ -99,9 +126,10 @@ export default function Row({ title, subtitle, action, children, className = "",
     if (card.isConnected && (document.activeElement === document.body || !document.activeElement)) card.focus({ preventScroll: true });
   }, [active]);
 
-  // Measure when the row (or its content) resizes. Never while the screen is parked: reading
-  // layout there would force a hidden screen to render.
+  // Measure when the row (or its content) resizes, or more of it is drawn. Never while the
+  // screen is parked: reading layout there would force a hidden screen to render.
   useEffect(() => {
+    growing.current = false;
     const track = trackRef.current;
     if (!track || !active) return undefined;
     measure();
@@ -109,12 +137,37 @@ export default function Row({ title, subtitle, action, children, className = "",
     observer.observe(track);
     if (track.firstElementChild) observer.observe(track.firstElementChild);
     return () => observer.disconnect();
-  }, [measure, near, active]);
+  }, [measure, near, active, limit]);
+
+  // Lite: End asked for the last card before it was drawn; it has the keyboard once it is.
+  const endPending = useRef(false);
+  useLayoutEffect(() => {
+    if (!endPending.current || more) return;
+    endPending.current = false;
+    const stops = [...(trackRef.current?.children || [])].filter(item => stopOf(item));
+    if (stops.length) goTo(stopOf(stops[stops.length - 1]));
+  }, [limit, more]);
+
+  const onKeyDown = event => {
+    if (more && event.key === "End" && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && trackRef.current?.contains(document.activeElement)) {
+      event.preventDefault();
+      endPending.current = true;
+      setLimit(Infinity);
+      return;
+    }
+    moveWithin(trackRef.current, event);
+  };
+  // Lite: the keyboard nearing the last cards drawn draws the next ones.
+  const onFocus = event => {
+    if (!moreRef.current) return;
+    const at = [...trackRef.current.children].findIndex(item => item.contains(event.target));
+    if (at >= limit - 4) grow();
+  };
 
   const page = direction => {
     const track = trackRef.current;
     if (!track || (direction < 0 ? edges.start : edges.end)) return;
-    track.scrollBy({ left: direction * Math.max(320, track.clientWidth * 0.82), behavior: "smooth" });
+    track.scrollBy({ left: direction * Math.max(320, track.clientWidth * 0.82), behavior: lite ? "auto" : "smooth" });
   };
 
   // At an end the arrow is marked unavailable rather than disabled: a disabled button drops the
@@ -139,9 +192,9 @@ export default function Row({ title, subtitle, action, children, className = "",
           )}
         </div>
       </header>
-      <div className="row-track" ref={trackRef} onScroll={measure} onKeyDown={event => moveWithin(trackRef.current, event)}>
-        {near ? children : <div className="row-placeholder" />}
-        {near && onMore ? (
+      <div className="row-track" ref={trackRef} onScroll={measure} onKeyDown={onKeyDown} onFocus={lite ? onFocus : undefined}>
+        {!near ? <div className="row-placeholder" /> : lite ? items.slice(0, limit) : children}
+        {near && onMore && !more ? (
           <button className="row-end-more" onClick={onMore} aria-label={`${moreLabel}: ${title}`}>
             <span className="row-end-more-icon"><LuArrowRight /></span>
             <span>{moreLabel}</span>

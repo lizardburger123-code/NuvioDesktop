@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
+import { useLite } from "../lib/lite.js";
+import { sized } from "../lib/images.js";
 
 /** A title page's name: its logo, or the name in type when there is no logo or it won't load. */
 export default function TitleMark({ meta }) {
   const [broken, setBroken] = useState(false);
+  const lite = useLite();
   useEffect(() => { setBroken(false); }, [meta.logo]);
   if (!meta.logo || broken) {
     // Long names step down a size so they stay a title, not a paragraph.
@@ -13,7 +16,7 @@ export default function TitleMark({ meta }) {
   return (
     <>
       {/* App.jsx retries a failed picture first; it marks the element once nothing more can be tried. */}
-      <img className="details-logo" data-rise src={meta.logo} alt={meta.name} onError={event => { if (event.currentTarget.dataset.broken) setBroken(true); }} />
+      <img className="details-logo" data-rise src={sized(meta.logo, "logo", lite)} alt={meta.name} onError={event => { if (event.currentTarget.dataset.broken) setBroken(true); }} />
       <h1 className="sr-only">{meta.name}</h1>
     </>
   );

@@ -10,7 +10,8 @@ import { navigate } from "../lib/router.js";
 import { useScreenActive } from "../lib/screen.js";
 import { recovered } from "../lib/session.js";
 import { loadHistory, recordSearch } from "../lib/searchHistory.js";
-import { EASE, reduceMotion, useSegmentPill } from "../lib/motion.js";
+import { EASE, useSegmentPill } from "../lib/motion.js";
+import { calm, scrollMotion, useChunks } from "../lib/lite.js";
 import "./Search.css";
 
 const TYPING_MS = 300; // a pause this long in typing runs the search
@@ -276,7 +277,7 @@ export default function Search({ params }) {
       const top = bar.getBoundingClientRect().top + window.scrollY - 96;
       if (window.scrollY > top) window.scrollTo(0, Math.max(0, top));
     }
-    if (reduceMotion() || !resultsRef.current) return;
+    if (calm() || !resultsRef.current) return;
     [...resultsRef.current.querySelectorAll(":scope > .row, :scope > .search-group")].slice(0, 4).forEach((node, i) => node.animate(
       [{ opacity: 0, transform: "translate3d(0, 8px, 0)" }, { opacity: 1, transform: "none" }],
       { duration: 260, delay: i * 40, easing: EASE.out, fill: "backwards" },
@@ -297,7 +298,7 @@ export default function Search({ params }) {
   }, []);
   const toField = () => {
     heroRef.current?.focus();
-    if (window.scrollY > 0) window.scrollTo({ top: 0, behavior: reduceMotion() ? "auto" : "smooth" });
+    if (window.scrollY > 0) window.scrollTo({ top: 0, behavior: scrollMotion() });
   };
   const onResultsKey = event => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
@@ -425,6 +426,17 @@ function NoResults({ query, onSuggest }) {
   );
 }
 
+/** All of one kind, as a grid; Lite draws it a few lines at a time as it is scrolled. */
+function ResultGrid({ items, card }) {
+  const { shown, more, endRef } = useChunks(items);
+  return (
+    <>
+      <div className="search-grid">{shown.map(card)}</div>
+      {more ? <div ref={endRef} className="search-grid-more" aria-hidden="true" /> : null}
+    </>
+  );
+}
+
 /**
  * What was found. Everything: a row per kind, and the person the query names. One kind: all of
  * it in a grid. Kept apart from the screen so a search topic push for another query, or a
@@ -461,7 +473,7 @@ const Results = memo(function Results({ query, current, groups, kind, person, la
     return (
       <section key={`${query}:${group.kind}`} className="search-group">
         <h2 className="row-title">{group.label} <span className="search-count num">{group.items.length}</span></h2>
-        <div className="search-grid">{group.items.map(card)}</div>
+        <ResultGrid items={group.items} card={card} />
       </section>
     );
   }

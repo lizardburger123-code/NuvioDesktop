@@ -53,3 +53,8 @@
 @container (max-height: 700px) {
   .showcase-desc { display: none; }
 }
+
+/* Lite: the picture holds still (Showcase.jsx), and the logo stands on the scrim without its own
+   shadow, which would be blurred again on every repaint. */
+html[data-perf="lite"] .showcase-logo { filter: none; }
+html[data-perf="lite"] .showcase-dots button::after { transition: none; }

@@ -202,3 +202,17 @@ button.hz-heat-cell:active { transform: scale(.98); }
   .hz-ep-thumb { width: 168px; }
   .hz-find { width: 180px; }
 }
+
+/* ---- Lite: the same page, flat -----------------------------------------------------------------
+   No glow behind the hero, no glass on the play marks, no picture zooming, nothing lit; the list
+   opens and closes at once, and the score squares mark the one in focus with a plain ring. */
+html[data-perf="lite"] .hz-d-glow { display: none; }
+html[data-perf="lite"] .hz-ep-fold { transition: none; }
+html[data-perf="lite"] :is(.hz-ep, .hz-ep-toggle, .hz-ep-toggle svg, .hz-ep-less, .hz-find, .hz-ep-thumb img, .hz-ep-play, .hz-meter i, .hz-ep-mark, .hz-ep-mark span, .hz-tile-mark, .hz-tile-mark span, .hz-tile .hz-ep-thumb, .hz-heat-cell) { transition: none; }
+html[data-perf="lite"] .hz-ep.is-next { background: rgb(var(--haze-rgb) / .14); }
+html[data-perf="lite"] :is(.hz-ep-main, .hz-tile-main):hover:not(:disabled) .hz-ep-thumb img { transform: none; }
+html[data-perf="lite"] .hz-ep-play { -webkit-backdrop-filter: none; backdrop-filter: none; background: rgb(var(--haze-rgb) / .5); box-shadow: inset 0 0 0 1px rgb(var(--haze-rgb) / .7); transform: none; }
+html[data-perf="lite"] :is(.hz-tile-main:is(:hover, :focus-visible):not(:disabled) .hz-ep-thumb, .hz-tile.is-next .hz-ep-thumb) { box-shadow: none; }
+html[data-perf="lite"] .hz-meter i { box-shadow: none; }
+html[data-perf="lite"] :is(button.hz-heat-cell:hover, button.hz-heat-cell:focus-visible) { transform: none; box-shadow: 0 0 0 2px #fff; }
+html[data-perf="lite"] .hz-ep-more { height: 1px; }

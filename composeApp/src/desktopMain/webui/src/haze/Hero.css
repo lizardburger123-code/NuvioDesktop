@@ -73,3 +73,11 @@
     linear-gradient(0deg, var(--ground) 0%, rgb(7 8 10 / .84) 14%, rgb(7 8 10 / 0) 44%);
 }
 .hz-hero.is-short .hz-hero-body, .hz-hero.is-short .hz-hero-dots { bottom: 36px; }
+
+/* Lite: the same hero, flat. No pooled glow, no glass behind the tags, no lit marker; the hero
+   wears the accent (no colour is read out of the artwork). */
+html[data-perf="lite"] .hz-hero-glow { display: none; }
+html[data-perf="lite"] .hz-tag { -webkit-backdrop-filter: none; backdrop-filter: none; }
+html[data-perf="lite"] .hz-tag.is-haze { background: rgb(var(--haze-rgb) / .3); box-shadow: inset 0 0 0 1px rgb(var(--haze-rgb) / .55); }
+html[data-perf="lite"] .hz-hero-dots button, html[data-perf="lite"] .hz-hero-dots button::after { transition: none; }
+html[data-perf="lite"] .hz-hero-dots button[aria-current="true"]::after { box-shadow: none; }

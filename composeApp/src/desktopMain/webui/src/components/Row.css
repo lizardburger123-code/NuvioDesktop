@@ -56,3 +56,6 @@
 .row-end-more:hover { color: #fff; background: var(--surface-1); }
 .row-end-more:hover .row-end-more-icon { transform: translateX(3px); background: #fff; color: #0a0b0d; }
 .row-end-more:active { transform: scale(.98); }
+
+/* Lite: the row's tools appear and change without moving. */
+html[data-perf="lite"] :is(.row-title-link, .row-title-link svg, .row-arrow, .row-hide, .row-end-more, .row-end-more-icon) { transition: none; }

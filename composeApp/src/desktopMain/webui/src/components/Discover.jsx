@@ -4,7 +4,8 @@ import { call } from "../bridge.js";
 import { useApp } from "../AppContext.jsx";
 import { PosterCard, SkeletonPosters } from "./Cards.jsx";
 import { useToggleLater } from "./RowActions.jsx";
-import { EASE, reduceMotion } from "../lib/motion.js";
+import { EASE } from "../lib/motion.js";
+import { calm, useChunks } from "../lib/lite.js";
 import { useScreenActive } from "../lib/screen.js";
 import "./Discover.css";
 
@@ -42,6 +43,8 @@ export function CatalogGrid({ source, filters, onFilters, emptyText }) {
     return out;
   }, [filters, source]);
   const waitingForQuery = Boolean(source?.searchOnly && !effective.search);
+  // Lite draws what has loaded a few lines at a time; the next page is asked for once all of it is drawn.
+  const drawn = useChunks(items, { resetKey: `${source?.id}:${JSON.stringify(effective)}` });
 
   // Search as you type (debounced) for catalogs that can search.
   useEffect(() => { setText(filters?.search || ""); }, [source?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -106,14 +109,14 @@ export function CatalogGrid({ source, filters, onFilters, emptyText }) {
   // After a failed page it waits for "Try again" instead of asking again by itself.
   useEffect(() => {
     const node = sentinel.current;
-    if (!node || !active || loading || error || next <= 0) return undefined;
+    if (!node || !active || loading || error || next <= 0 || drawn.more) return undefined;
     const observer = new IntersectionObserver(entries => {
       if (entries.some(e => e.isIntersecting)) load(false);
     }, { rootMargin: "900px 0px" });
     observer.observe(node);
     return () => observer.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, loading, error, next, source?.id]);
+  }, [active, loading, error, next, source?.id, drawn.more]);
 
   // New results settle in; only the first screenful staggers.
   const shown = useRef(0);
@@ -121,7 +124,7 @@ export function CatalogGrid({ source, filters, onFilters, emptyText }) {
     const grid = gridRef.current;
     if (!grid) return;
     if (items.length < shown.current || !items.length) shown.current = 0;
-    if (!reduceMotion() && shown.current < 18) {
+    if (!calm() && shown.current < 18) {
       [...grid.children].slice(shown.current, 18).forEach((node, i) => node.animate(
         [{ opacity: 0, transform: "translate3d(0, 12px, 0)" }, { opacity: 1, transform: "none" }],
         { duration: 380, delay: i * 18, easing: EASE.out, fill: "backwards" },
@@ -165,10 +168,11 @@ export function CatalogGrid({ source, filters, onFilters, emptyText }) {
       ) : null}
 
       <div ref={gridRef} className="discover-grid">
-        {items.map(item => (
+        {drawn.shown.map(item => (
           <PosterCard key={`${item.type}:${item.id}`} item={item} onOpen={openDetails} onToggleLater={toggleLater} saved={laterIds.has(`${item.type}:${item.id}`)} />
         ))}
       </div>
+      {drawn.more ? <div ref={drawn.endRef} className="discover-grid-more" aria-hidden="true" /> : null}
       {loading && !items.length ? <div className="discover-grid"><SkeletonPosters count={12} /></div> : null}
       {waitingForQuery ? <p className="discover-note">This catalog only answers searches. Type what you're looking for above.</p> : null}
       {!loading && !items.length && source && !waitingForQuery ? (

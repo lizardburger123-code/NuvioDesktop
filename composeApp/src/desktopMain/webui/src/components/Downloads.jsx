@@ -3,7 +3,9 @@ import { LuCircleAlert, LuFolderOpen, LuPause, LuPlay, LuRotateCw, LuTrash2 } fr
 import { call } from "../bridge.js";
 import { useTopic } from "../store.js";
 import { useApp } from "../AppContext.jsx";
-import { EASE, reduceMotion } from "../lib/motion.js";
+import { EASE } from "../lib/motion.js";
+import { calm, useLite } from "../lib/lite.js";
+import { sized } from "../lib/images.js";
 import { episodeCode } from "../lib/format.js";
 import "./Downloads.css";
 
@@ -27,6 +29,7 @@ const nameOf = item => `${item.title}${item.season != null ? ` ${episodeCode(ite
  */
 export default function Downloads({ gone, onGone }) {
   const { toast } = useApp();
+  const lite = useLite();
   const items = useTopic("downloads", NONE);
   const listRef = useRef(null);
   // Per file: the action on its way (its buttons wait), and files deleted but still undoable.
@@ -44,7 +47,7 @@ export default function Downloads({ gone, onGone }) {
   }, [items, toast]);
 
   useLayoutEffect(() => {
-    if (!listRef.current || reduceMotion()) return;
+    if (!listRef.current || calm()) return;
     [...listRef.current.children].slice(0, 10).forEach((node, i) => node.animate(
       [{ opacity: 0, transform: "translate3d(0, 8px, 0)" }, { opacity: 1, transform: "none" }],
       { duration: 320, delay: i * 30, easing: EASE.out, fill: "backwards" },
@@ -124,7 +127,7 @@ export default function Downloads({ gone, onGone }) {
           const label = nameOf(item);
           return (
             <li key={item.id} className={`dl-item is-${item.status}`} aria-busy={wait || undefined}>
-              <span className="dl-art">{item.thumbnail || item.poster ? <img src={item.thumbnail || item.poster} alt="" loading="lazy" decoding="async" /> : null}</span>
+              <span className="dl-art">{item.thumbnail || item.poster ? <img src={sized(item.thumbnail || item.poster, "still", lite)} alt="" loading="lazy" decoding="async" /> : null}</span>
               <span className="dl-main">
                 <strong dir="auto">{item.title}{item.season != null ? <em className="num"> {episodeCode(item.season, item.episode)}</em> : null}</strong>
                 <span className="dl-file" title={item.fileName} dir="auto">{item.fileName}</span>

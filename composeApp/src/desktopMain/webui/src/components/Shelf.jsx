@@ -2,12 +2,13 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import { LuPlay, LuInfo, LuTrash2 } from "react-icons/lu";
 import { year } from "../lib/format.js";
-import { reduceMotion } from "../lib/motion.js";
+import { calm, useLite } from "../lib/lite.js";
+import { sized } from "../lib/images.js";
 import { fmtHours } from "../lib/trophies.js";
 import { settle, spring, stop, wake } from "../lib/springs.js";
 import "./Shelf.css";
 
-/** The angle a picked-up case rests at: turned a little, so its spine shows. */
+/** The angle a picked-up case rests at: turned a little, so its spine shows (in Lite, square on). */
 const FACE = -20;
 const LEAN = { ry: { k: 0.11, d: 0.74 }, ty: { k: 0.12, d: 0.72 } };
 const LIFT = { all: { k: 0.1, d: 0.72 }, rx: { k: 0.12, d: 0.7 }, ry: { k: 0.09, d: 0.76 } };
@@ -19,13 +20,15 @@ const lengthOf = item => (item.type === "series"
 
 /** The faces of a Blu-ray case. The back is only drawn on the one in your hands. */
 function CaseFaces({ item, full }) {
+  const lite = useLite();
+  const cover = sized(item.poster, "poster", lite);
   const meta = [year(item.releaseInfo), lengthOf(item)].filter(Boolean).join(" · ");
   return (
     <>
       <span className="bd-cover">
         <span className="bd-band" />
         <span className="bd-art">
-          {item.poster ? <img src={item.poster} alt="" loading="lazy" decoding="async" draggable="false" /> : <span className="bd-blank" dir="auto">{item.name}</span>}
+          {item.poster ? <img src={cover} data-alt={cover !== item.poster ? item.poster : undefined} alt="" loading="lazy" decoding="async" draggable="false" /> : <span className="bd-blank" dir="auto">{item.name}</span>}
         </span>
       </span>
       <span className="bd-spine"><span dir="auto">{item.name}</span></span>
@@ -37,7 +40,7 @@ function CaseFaces({ item, full }) {
           <span className="bd-back">
             <span className="bd-band" />
             <span className="bd-blurb">
-              {item.poster ? <img className="bd-blurb-art" src={item.poster} alt="" draggable="false" /> : null}
+              {item.poster && !lite ? <img className="bd-blurb-art" src={item.poster} alt="" draggable="false" /> : null}
               <strong dir="auto">{item.name}</strong>
               <span>Finished {finishedOn(item.completedAt || Date.now())}</span>
               {meta ? <span className="num">{meta}</span> : null}
@@ -78,7 +81,7 @@ function ShelfRow({ items, away, onLift }) {
   useEffect(() => { spots.current = null; }, [items]);
 
   const lean = event => {
-    if (away || reduceMotion() || event.pointerType === "touch") return;
+    if (away || calm() || event.pointerType === "touch") return;
     if (!spots.current) {
       spots.current = [...(rowRef.current?.querySelectorAll(".bd-slot") || [])].map(el => {
         const r = el.getBoundingClientRect();
@@ -138,6 +141,9 @@ function ShelfRow({ items, away, onLift }) {
 /** The case in your hands: drag to spin it, click it to turn it over, click outside to put it back. */
 function Lifted({ lift, onClose, onPlay, onDetails, onRemove }) {
   const { item, slot, rect, lean } = lift;
+  // Lite: the case is simply there, facing you; turning it over is instant and it doesn't spin.
+  const lite = useLite();
+  const face = lite ? 0 : FACE;
   const stageRef = useRef(null);
   const caseRef = useRef(null);
   const primaryRef = useRef(null);
@@ -172,9 +178,9 @@ function Lifted({ lift, onClose, onPlay, onDetails, onRemove }) {
     Object.assign(b.t, {
       tx: layout.cx - (rect.left + rect.width / 2),
       ty: layout.cy - (rect.top + rect.height / 2),
-      sc: layout.sc, rx: 5, ry: FACE,
+      sc: layout.sc, rx: lite ? 0 : 5, ry: face,
     });
-    if (reduceMotion()) settle(b); else wake(b);
+    if (calm()) settle(b); else wake(b);
     primaryRef.current?.focus({ preventScroll: true });
     return () => stop(b);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -190,7 +196,7 @@ function Lifted({ lift, onClose, onPlay, onDetails, onRemove }) {
     b.x.ry = (((b.x.ry % 360) + 540) % 360) - 180; // home by the short way round
     Object.assign(b.t, { tx: now.left - rect.left, ty: now.top - rect.top, sc: 1, rx: 0, ry: 0 });
     b.onRest = () => { b.onRest = null; onClose(); };
-    if (reduceMotion()) settle(b); else wake(b);
+    if (calm()) settle(b); else wake(b);
   }, [phase, slot, rect, onClose]);
 
   useEffect(() => {
@@ -217,7 +223,7 @@ function Lifted({ lift, onClose, onPlay, onDetails, onRemove }) {
   // Drag to spin; a throw keeps turning and lands on the front or the back.
   const drag = useRef(null);
   const down = event => {
-    if (event.button || phase === "down") return;
+    if (event.button || phase === "down" || lite) return;
     drag.current = { x: event.clientX, y: event.clientY, last: event.clientX, moved: false, rx: body.current.x.rx };
     caseRef.current?.setPointerCapture(event.pointerId);
     body.current.coast = null;
@@ -234,6 +240,13 @@ function Lifted({ lift, onClose, onPlay, onDetails, onRemove }) {
     b.x.rx = Math.max(-28, Math.min(28, d.rx - (event.clientY - d.y) * 0.2));
     d.last = event.clientX;
     wake(b);
+  };
+  // Lite: a click, Enter or an arrow key turns it over at once.
+  const turn = () => {
+    if (phase === "down") return;
+    const b = body.current;
+    b.t.ry = Math.round(b.x.ry / 180) * 180 + 180;
+    settle(b);
   };
   const up = () => {
     const d = drag.current;
@@ -271,8 +284,14 @@ function Lifted({ lift, onClose, onPlay, onDetails, onRemove }) {
           onPointerMove={move}
           onPointerUp={up}
           onPointerCancel={up}
-          onKeyDown={event => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); body.current.t.ry += event.key === "ArrowLeft" ? -45 : 45; wake(body.current); } }}
-          onClick={event => { if (event.detail === 0) up(); }}
+          onKeyDown={event => {
+            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+            event.preventDefault();
+            if (lite) { turn(); return; }
+            body.current.t.ry += event.key === "ArrowLeft" ? -45 : 45;
+            wake(body.current);
+          }}
+          onClick={event => { if (lite) turn(); else if (event.detail === 0) up(); }}
         >
           <CaseFaces item={item} full />
         </button>
@@ -286,7 +305,7 @@ function Lifted({ lift, onClose, onPlay, onDetails, onRemove }) {
           <button className="btn btn-glass" onClick={() => { onClose(); onDetails(item); }}><LuInfo /> Details</button>
           <button className="btn btn-glass btn-icon bd-info-remove" aria-label={`Remove ${item.name} from trophies`} title="Remove from trophies" onClick={() => { onClose(); onRemove(item); }}><LuTrash2 /></button>
         </div>
-        <span className="bd-info-tip">Drag to spin · click to turn over · Esc to put back</span>
+        <span className="bd-info-tip">{lite ? "Click to turn over · Esc to put back" : "Drag to spin · click to turn over · Esc to put back"}</span>
       </div>
     </div>,
     document.body,

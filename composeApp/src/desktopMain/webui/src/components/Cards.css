@@ -79,3 +79,14 @@
 .wide:hover .wide-remove, .wide-remove:focus-visible { opacity: 1; }
 .wide:hover .wide-remove { transform: translateY(-4px); }
 .wide-remove:hover { background: #fff; color: #0a0b0d; }
+
+/* Lite: a card shows hover and focus by its edge alone. Nothing lifts, grows, glows or waits; the
+   play mark and the buttons appear without moving. */
+html[data-perf="lite"] :is(.card-face, .poster-save, .wide-play, .wide-remove) { transition: none; }
+html[data-perf="lite"] :is(.card-face:hover, .card-face:focus-visible, :is(.poster, .wide, .hz-rank):hover > .card-face) { transform: none; box-shadow: none; }
+html[data-perf="lite"] :is(.card-face:active, :is(.poster, .wide, .hz-rank):hover > .card-face:active) { transform: scale(.98); }
+html[data-perf="lite"] :is(.poster:hover .poster-save, .wide:hover .wide-remove) { transform: none; }
+html[data-perf="lite"] .wide-play { transform: none; }
+html[data-perf="lite"][data-layout="haze"] .wide-play { -webkit-backdrop-filter: none; backdrop-filter: none; background: rgb(var(--haze-rgb) / .5); box-shadow: inset 0 0 0 1px rgb(var(--haze-rgb) / .7); }
+html[data-perf="lite"] .wide-progress span { box-shadow: none; }
+html[data-perf="lite"] .wide-logo { filter: none; }

@@ -186,3 +186,13 @@
 .sp-row.is-disc .sp-release { font-weight: 700; }
 .sp-label-inside { background: rgb(255 255 255 / .14); color: #fff; }
 .sp-label-inside.is-disc { background: #8fe3a8; color: #0b1f12; }
+
+/* Lite: a solid window without glass or a big shadow; the disc row is a flat wash and the
+   best-match label a flat tag. */
+html[data-perf="lite"] .sp { -webkit-backdrop-filter: none; backdrop-filter: none; background: #0f1014; box-shadow: inset 0 0 0 1px var(--line-strong); }
+html[data-perf="lite"] .sp-layer::before { animation: none; }
+html[data-perf="lite"] :is(.sp-row, .sp-search) { transition: none; }
+html[data-perf="lite"] .sp-row.is-disc { background: rgb(143 227 168 / .1); }
+html[data-perf="lite"] .sp-row.is-disc:hover:not([aria-disabled="true"]) { background: rgb(143 227 168 / .16); }
+html[data-perf="lite"] .sp-row.is-disc .sp-inside { box-shadow: none; }
+html[data-perf="lite"][data-layout="haze"] .sp-best { -webkit-backdrop-filter: none; backdrop-filter: none; background: rgb(var(--haze-rgb) / .3); box-shadow: inset 0 0 0 1px rgb(var(--haze-rgb) / .52); text-shadow: none; }
