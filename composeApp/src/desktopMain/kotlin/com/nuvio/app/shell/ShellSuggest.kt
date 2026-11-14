@@ -136,7 +136,11 @@ internal object ShellSimilar {
                 })
             }
         }
-        if (result.isNotEmpty()) cache[key] = result
+        if (result.isNotEmpty()) {
+            // One entry per title opened: keep a bounded number.
+            if (cache.size >= 64) cache.clear()
+            cache[key] = result
+        }
         return result
     }
 }
@@ -248,7 +252,11 @@ internal object ShellPeople {
                 }
             })
         }
-        if (works.isNotEmpty()) cache[cacheKey] = result
+        if (works.isNotEmpty()) {
+            // One entry per person opened, up to 200 titles each: keep a bounded number.
+            if (cache.size >= 32) cache.clear()
+            cache[cacheKey] = result
+        }
         return result
     }
 }

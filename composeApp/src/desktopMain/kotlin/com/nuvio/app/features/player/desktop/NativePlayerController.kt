@@ -37,6 +37,7 @@ import com.nuvio.app.features.autosync.AutoSyncSubtitleCandidate
 import com.nuvio.app.features.autosync.DesktopAutoSync
 import com.nuvio.app.core.ui.AppPresenceState
 import com.nuvio.app.core.ui.PresenceSnapshot
+import com.nuvio.app.shell.ShellPerformance
 import com.nuvio.app.shell.ShellSubtitleStore
 import com.nuvio.app.shell.SubtitleQuery
 import com.nuvio.app.shell.ShellSubtitlePicker
@@ -467,10 +468,13 @@ internal class NativePlayerController(
         currentVolumeLevel = stateWithVolume.volumeLevel ?: currentVolumeLevel
         controlsState = stateWithVolume
         val isFullscreen = isDesktopAppFullscreen(SwingUtilities.getWindowAncestor(host))
+        // Settings › Performance, read on every push: a change reaches an overlay that is already open.
+        val lite = ShellPerformance.isLite()
         val structureKey = NativeControlsStructureKey(
             state = stateWithVolume.nativeControlsStructureKey(),
             isFullscreen = isFullscreen,
             isInPip = DesktopPlayerPictureInPicture.isEnabled,
+            lite = lite,
         )
         if (structureKey == lastSentControlsStructureKey) return
         lastSentControlsStructureKey = structureKey
@@ -480,7 +484,7 @@ internal class NativePlayerController(
                 "speed=${stateWithVolume.playbackSpeedLabel} audioLabel=${stateWithVolume.audioLabel} " +
                 "subsLabel=${stateWithVolume.subtitlesLabel} fullscreen=$isFullscreen"
         }
-        NativePlayerBridge.updateControls(current, stateWithVolume.toControlsJson(isFullscreen, ::refreshControlsForImage))
+        NativePlayerBridge.updateControls(current, stateWithVolume.toControlsJson(isFullscreen, lite, ::refreshControlsForImage))
     }
 
     private fun refreshControlsForImage() {
@@ -1867,9 +1871,10 @@ private data class NativeControlsStructureKey(
     val state: PlayerControlsState,
     val isFullscreen: Boolean,
     val isInPip: Boolean,
+    val lite: Boolean,
 )
 
-private fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageReady: () -> Unit): String =
+private fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, lite: Boolean, onImageReady: () -> Unit): String =
     buildString {
         append('{')
         appendJsonField("title", title)
@@ -1904,6 +1909,9 @@ private fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageRea
         appendJsonField("holdToSpeedValue", holdToSpeedValue)
         append(',')
         appendJsonField("isFullscreen", isFullscreen)
+        append(',')
+        // Performance mode: the overlay leaves out its blur, shadows and motion (state.lite).
+        appendJsonField("lite", lite)
         append(',')
         appendJsonField("volumeLevel", volumeLevel)
         append(',')

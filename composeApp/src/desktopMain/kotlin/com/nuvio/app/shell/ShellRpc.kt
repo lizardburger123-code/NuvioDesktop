@@ -47,6 +47,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -54,6 +55,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
@@ -81,6 +84,9 @@ internal interface ShellHost {
 
 /** How long unmarking an episode can still bring back the resume point that marking it cleared. */
 private const val KEEP_CLEARED_PROGRESS_MS = 10 * 60 * 1000L
+
+/** Lite: the shortest time between two sends of one topic (see watch). */
+private const val LITE_TOPIC_SPACING_MS = 400L
 
 /**
  * Answers the page's requests from the app's repositories and pushes their state as topics.
@@ -150,6 +156,11 @@ internal class ShellRpc(private val host: ShellHost) {
                 } ?: return@collect
                 last = data
                 push(topic, data)
+                // Lite: a topic that changes in bursts (Home and Search as each addon answers, the
+                // sources as they arrive) is sent at most every LITE_TOPIC_SPACING_MS, so the page
+                // redraws long lists less often. The flow is conflated: the latest value still
+                // follows once this wait is over.
+                if (ShellPerformance.isLite()) delay(LITE_TOPIC_SPACING_MS)
             }
         }
     }
@@ -424,8 +435,9 @@ internal class ShellRpc(private val host: ShellHost) {
         val avatars = state.profiles.associate { profile ->
             profile.profileIndex to (if (profile.profileIndex == active?.profileIndex) avatar else runCatching { ShellProfiles.avatarFor(profile) }.getOrNull())
         }
-        // The wallpaper (up to several megabytes) is read and encoded off the window's thread.
-        val appearance = withContext(Dispatchers.IO) { appearanceJson() }
+        // The wallpaper (up to several megabytes) is read and encoded off the window's thread, and
+        // so are the system files that tell how capable the computer is.
+        val (appearance, device) = withContext(Dispatchers.IO) { appearanceJson() to deviceJson() }
         return buildJsonObject {
             put("profile", buildJsonObject {
                 put("id", active?.profileIndex ?: activeIndex)
@@ -446,6 +458,7 @@ internal class ShellRpc(private val host: ShellHost) {
             })
             put("version", AppVersionConfig.DESKTOP_VERSION_NAME)
             put("appearance", appearance)
+            put("device", device)
             put("native", true)
         }
     }
@@ -561,11 +574,18 @@ internal class ShellRpc(private val host: ShellHost) {
 
     private fun subscribeLibrary(): JsonElement {
         LibraryRepository.ensureLoaded()
-        watch("library", combine(LibraryRepository.uiState, HomeRepository.uiState) { library, home -> library to home }) { (library, home) ->
-            val cloud = home.sections
-                .filter { section -> section.title.contains("library", ignoreCase = true) || section.key.contains("library", ignoreCase = true) }
-                .flatMap { it.items }
-                .distinctBy { "${it.type}:${it.id}" }
+        // Only Home's library rows matter here. Home changes many times while its rows load, and
+        // the whole library used to be rebuilt and compared each time.
+        val cloudRows = HomeRepository.uiState
+            .map { home ->
+                home.sections
+                    .filter { section -> section.title.contains("library", ignoreCase = true) || section.key.contains("library", ignoreCase = true) }
+                    .flatMap { it.items }
+                    .distinctBy { "${it.type}:${it.id}" }
+            }
+            .distinctUntilChanged()
+            .flowOn(Dispatchers.Default)
+        watch("library", combine(LibraryRepository.uiState, cloudRows) { library, cloud -> library to cloud }) { (library, cloud) ->
             buildJsonObject {
                 put("items", buildJsonArray { library.items.forEach { add(ShellJson.libraryItem(it)) } })
                 put("cloud", buildJsonArray { cloud.forEach { add(ShellJson.preview(it)) } })
@@ -991,6 +1011,23 @@ internal class ShellRpc(private val host: ShellHost) {
             put("layout", value.layout)
             put("hazeArt", value.hazeArt)
             put("hiddenTiles", ShellJson.strings(value.hiddenTiles))
+            // The choice in force: NUVIO_PERFORMANCE's when it fixes it (the bootstrap's
+            // device.overridden), so the page resolves the same mode as the player and the helper.
+            put("performance", ShellPerformance.choice())
+        }
+    }
+
+    /** What the app found out about this computer: Settings › Performance says what Auto picked and why. */
+    private fun deviceJson(): JsonObject {
+        val hardware = ShellPerformance.hardware
+        return buildJsonObject {
+            put("os", hardware.os)
+            put("cores", hardware.cores)
+            put("memoryMb", hardware.memoryMb)
+            put("softwareRender", hardware.softwareRender)
+            put("lowEnd", hardware.lowEnd)
+            put("reason", hardware.reason)
+            put("overridden", ShellPerformance.overridden())
         }
     }
 
@@ -1005,6 +1042,7 @@ internal class ShellRpc(private val host: ShellHost) {
         params.bool("trophySound")?.let { value = value.copy(trophySound = it) }
         params.string("layout")?.takeIf { it in setOf("cinema", "haze") }?.let { value = value.copy(layout = it) }
         params.bool("hazeArt")?.let { value = value.copy(hazeArt = it) }
+        params.string("performance")?.trim()?.lowercase()?.takeIf { it in ShellPerformance.Choices }?.let { value = value.copy(performance = it) }
         (params["hiddenTiles"] as? JsonArray)?.let { list ->
             value = value.copy(hiddenTiles = list.asStringList().filter { it in setOf("spotlight", "resume", "later", "library") }.distinct())
         }

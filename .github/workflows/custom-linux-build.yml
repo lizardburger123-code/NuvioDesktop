@@ -111,26 +111,203 @@ jobs:
         run: |
           set -uo pipefail
           sudo apt-get install --yes "./artifacts/packages/Nuvio-Linux-x86_64-${NUVIO_DESKTOP_VERSION_NAME}.deb"
+          cat > measure-app.py <<'EOF'
+          # The running app, for the table at the end of this step: resident memory and processor
+          # time of the app and of every process it started (the page helper, WebKit's processes),
+          # and the JVM's own account of its heap and collections. "snapshot" notes the processor
+          # time so far; "report" prints the rows.
+          import json, os, re, subprocess, sys, time
+
+          TICK = os.sysconf("SC_CLK_TCK")
+
+
+          def text(path):
+              try:
+                  with open(path, encoding="utf-8", errors="replace") as f:
+                      return f.read()
+              except OSError:
+                  return ""
+
+
+          def stat(pid):
+              raw = text(f"/proc/{pid}/stat")
+              return raw[raw.rindex(")") + 2:].split() if ")" in raw else None
+
+
+          def ticks(pid):
+              fields = stat(pid)
+              return int(fields[11]) + int(fields[12]) if fields else None
+
+
+          def kb(path, key):
+              for line in text(path).splitlines():
+                  if line.startswith(key):
+                      return int(line.split()[1])
+              return None
+
+
+          def tree(root):
+              """The app and everything under it, depth first: (pid, depth, name)."""
+              children = {}
+              for entry in os.listdir("/proc"):
+                  fields = stat(entry) if entry.isdigit() else None
+                  if fields:
+                      children.setdefault(int(fields[1]), []).append(int(entry))
+              out = []
+
+              def walk(pid, depth, owner):
+                  name = os.path.basename(text(f"/proc/{pid}/cmdline").split("\0")[0]) or "?"
+                  # WebKit under the page helper draws the interface; WebKit started by the app
+                  # itself is the player's controls page.
+                  if name.startswith("nuvio-shell-host"):
+                      owner = "interface"
+                  elif depth == 1:
+                      owner = "player controls"
+                  label = "Nuvio (Java)" if depth == 0 else name + (f" ({owner})" if name.startswith("WebKit") else "")
+                  out.append((pid, depth, label))
+                  for child in sorted(children.get(pid, [])):
+                      walk(child, depth + 1, owner)
+
+              walk(root, 0, "")
+              return out
+
+
+          def snapshot(root):
+              counted = {}
+              for pid, _, _ in tree(root):
+                  now = ticks(pid)
+                  if now is not None:
+                      counted[pid] = now
+              json.dump({"at": time.time(), "ticks": counted}, sys.stdout)
+
+
+          def java_line(root, gc_file):
+              parts = []
+              jcmd = os.path.join(os.environ.get("JAVA_HOME", ""), "bin", "jcmd")
+              # jcmd is a JVM too: without this it would take the app's options and write its own
+              # collections over the app's log.
+              env = {key: value for key, value in os.environ.items() if key != "JAVA_TOOL_OPTIONS"}
+              if os.path.exists(jcmd):
+                  try:
+                      out = subprocess.run([jcmd, str(root), "GC.heap_info"], capture_output=True, text=True, timeout=30, env=env).stdout
+                      sizes = [(int(total), int(used)) for total, used in re.findall(r"total (\d+)K, used (\d+)K", out)]
+                      if sizes:
+                          parts.append(f"heap {sum(u for _, u in sizes) // 1024} MB used of {sum(t for t, _ in sizes) // 1024} MB")
+                      meta = re.search(r"Metaspace\s+used (\d+)K, committed (\d+)K", out)
+                      if meta:
+                          parts.append(f"class metadata {int(meta.group(2)) // 1024} MB")
+                  except (OSError, subprocess.SubprocessError):
+                      pass
+              log = text(gc_file)
+              using = re.search(r"Using (\S+)", log)
+              pauses = [(kind, float(ms)) for kind, ms in re.findall(r"Pause (\w+).*? ([\d.]+)ms", log)]
+              collector = using.group(1) if using else "collector"
+              if pauses:
+                  full = sum(1 for kind, _ in pauses if kind == "Full")
+                  parts.append(f"{collector}: {len(pauses)} pauses ({full} full), longest {max(ms for _, ms in pauses):.0f} ms, {sum(ms for _, ms in pauses):.0f} ms in all")
+              elif using:
+                  parts.append(f"{collector}: no pauses")
+              return "; ".join(parts)
+
+
+          def report(root, mode, snapshot_file, gc_file):
+              try:
+                  before = json.loads(text(snapshot_file) or "{}")
+              except ValueError:
+                  before = {}
+              took = time.time() - before.get("at", 0) if before else 0
+              earlier = {int(pid): value for pid, value in before.get("ticks", {}).items()}
+              rows = []
+              for pid, depth, label in tree(root):
+                  now = ticks(pid)
+                  if now is None:
+                      continue
+                  rest = (now - earlier[pid]) / TICK / took * 100 if pid in earlier and took > 0 else None
+                  rows.append(("  " * depth + label, kb(f"/proc/{pid}/status", "VmRSS:"), kb(f"/proc/{pid}/smaps_rollup", "Pss:"), now / TICK, rest))
+
+              def mb(value):
+                  return "-" if value is None else str(round(value / 1024))
+
+              def pct(value):
+                  return "-" if value is None else f"{value:.0f}"
+
+              for label, rss, pss, cpu, rest in rows:
+                  print(f"{mode:<5} {label:<38} {mb(rss):>7} {mb(pss):>7} {cpu:>7.1f} {pct(rest):>6}")
+              rests = [row[4] for row in rows if row[4] is not None]
+              print(f"{mode:<5} {'all together':<38} {mb(sum(row[1] or 0 for row in rows)):>7} {mb(sum(row[2] or 0 for row in rows)):>7} "
+                    f"{sum(row[3] for row in rows):>7.1f} {pct(sum(rests) if rests else None):>6}")
+              print(f"{mode:<5} Java: {java_line(root, gc_file)}")
+
+
+          if sys.argv[1] == "snapshot":
+              snapshot(int(sys.argv[2]))
+          else:
+              report(int(sys.argv[2]), sys.argv[3], sys.argv[4], sys.argv[5])
+          EOF
           cat > run-app.sh <<'EOF'
           set -uo pipefail
+          mode="$1"
           export HOME="$(mktemp -d)"
+          # The runner points these at its own home: each run gets its own data instead.
+          export XDG_CONFIG_HOME="$HOME/.config" XDG_CACHE_HOME="$HOME/.cache" XDG_DATA_HOME="$HOME/.local/share"
+          # A computer in use rather than a first start, which stops at the sign-in screen before
+          # the new interface starts: signed in without an account, one profile, the public
+          # Cinemeta catalog (no key) on Home in the Haze look, and no "Who's watching?" step.
+          config="$XDG_CONFIG_HOME/nuvio"
+          mkdir -p "$config"
+          echo 'anonymous_user_id=ci-measure' > "$config/nuvio_auth.properties"
+          echo 'profiles={"userId":"ci-measure","activeProfileIndex":1,"hasEverSelectedProfile":true,"profiles":[{"profile_index":1,"name":"Test"}]}' > "$config/nuvio_profiles.properties"
+          echo 'installed_addon_urls_1=["https://v3-cinemeta.strem.io/manifest.json"]' > "$config/nuvio_addons.properties"
+          echo 'appearance={"layout":"haze","profileGate":false}' > "$config/nuvio_shell.properties"
+          export NUVIO_PERFORMANCE="$mode"
+          # The JVM's own record of its collections, for the table, and its heap sized as on a 4 GB
+          # computer, the kind the Linux JVM options are chosen for (the JVM notes both in the log).
+          export JAVA_TOOL_OPTIONS="-XX:MaxRAM=4g -Xlog:gc:file=$PWD/gc-$mode.log"
           (openbox >/dev/null 2>&1 &)
           sleep 1
-          /opt/nuvio/bin/Nuvio > app.log 2>&1 &
+          /opt/nuvio/bin/Nuvio > "app-$mode.log" 2>&1 &
           pid=$!
-          sleep 40
+          sleep 30
+          # Processor time is read twice: since the start, and over the last 10 seconds, at rest.
+          python3 measure-app.py snapshot "$pid" > "cpu-$mode.json" 2>> measure-errors.log
+          sleep 10
           alive=0; kill -0 "$pid" 2>/dev/null && alive=1
           width="$(xwininfo -root -tree | grep -E '"Nuvio": \("com-nuvio-app-MainKt"' | sed -E 's/.*\)[[:space:]]+([0-9]+)x[0-9]+.*/\1/' | head -n 1)"
+          # Measured after the verdict is taken, so it can't change it.
+          [ "$alive" = 1 ] && timeout 60 python3 measure-app.py report "$pid" "$mode" "cpu-$mode.json" "gc-$mode.log" >> perf.txt 2>> measure-errors.log
           kill "$pid" 2>/dev/null; sleep 2; kill -9 "$pid" 2>/dev/null
-          echo "app running after 40s: $alive, window width ${width:-none}"
+          echo "app running after 40s ($mode): $alive, window width ${width:-none}"
           # Running, and its window is really on screen (not the 1x1 placeholder of a stuck start).
           [ "$alive" = 1 ] && [ "${width:-0}" -ge 400 ] 2>/dev/null
           EOF
           status=0
           # dbus-run-session: a desktop always has a session bus, and without one the app's
           # system-theme lookup never returns.
-          xvfb-run -a -s "-screen 0 1440x900x24" dbus-run-session -- bash run-app.sh || status=$?
-          if [ "$status" != 0 ]; then echo "::error::The installed app did not come up."; tail -n 40 app.log || true; fi
+          xvfb-run -a -s "-screen 0 1440x900x24" dbus-run-session -- bash run-app.sh full || status=$?
+          if [ "$status" != 0 ]; then echo "::error::The installed app did not come up."; tail -n 40 app-full.log || true; fi
+          # Everything below only measures and reports, so none of it may end the step: Actions runs
+          # it with -e and pipefail, and pkill, for one, fails when nothing is left to stop.
+          set +e +o pipefail
+          # Whatever the first run left (its page helper, WebKit's processes) must not weigh on the second.
+          pkill -f nuvio-shell-host; pkill -f 'WebKit(Web|Network|GPU)Process'; sleep 2
+          # The same in Lite, for the comparison. The step's verdict stays the first run's.
+          lite=0
+          xvfb-run -a -s "-screen 0 1440x900x24" dbus-run-session -- bash run-app.sh lite || lite=$?
+          if [ "$lite" != 0 ]; then echo "::warning::With NUVIO_PERFORMANCE=lite the installed app did not come up."; tail -n 20 app-lite.log || true; fi
+          pkill -f nuvio-shell-host; pkill -f 'WebKit(Web|Network|GPU)Process'
+          {
+            echo "The installed app 40 s after it started on a virtual display ($(nproc) cores, $(free -g | awk '/^Mem:/ { print $2 }') GB), NUVIO_PERFORMANCE=full and =lite."
+            echo "Signed in without an account, one profile, Cinemeta's catalogs on Home, Haze look. Java heap sized as on a 4 GB computer (-XX:MaxRAM=4g)."
+            echo "CPU s: processor time since the start. CPU %: of one core over the last 10 s, at rest."
+            echo "RSS counts shared libraries in every process; PSS divides them between the processes."
+            printf '%-5s %-38s %7s %7s %7s %6s\n' mode process "RSS MB" "PSS MB" "CPU s" "CPU %"
+            cat perf.txt 2>/dev/null
+            if [ -s measure-errors.log ]; then echo "Measurement errors:"; tail -n 5 measure-errors.log; fi
+          } > perf-table.txt
+          cat perf-table.txt
+          { echo "### The app at rest, full and lite"; echo '```'; cat perf-table.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          # As an annotation too: it reaches the run's summary and the checks API even where job logs don't.
+          echo "::notice title=The app at rest (full and lite)::$(sed -e 's/%/%25/g' perf-table.txt | awk 'BEGIN { ORS = "%0A" } { print }')"
           exit $status
 
       - name: Build and verify the Arch Linux package

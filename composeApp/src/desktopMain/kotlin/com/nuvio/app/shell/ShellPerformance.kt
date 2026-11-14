@@ -32,7 +32,8 @@ internal object ShellPerformance {
     private val override: String? =
         System.getenv("NUVIO_PERFORMANCE")?.trim()?.lowercase()?.takeIf { it in Choices }
 
-    @Volatile private var saved: String = "auto"
+    /** The saved choice; null until the appearance has been read (see [savedChoice]). */
+    @Volatile private var saved: String? = null
 
     val hardware: Hardware by lazy { detect() }
 
@@ -42,7 +43,7 @@ internal object ShellPerformance {
     }
 
     /** The choice in force: the environment's override, else the saved one. */
-    fun choice(): String = override ?: saved
+    fun choice(): String = override ?: savedChoice()
 
     /** True when the environment fixes the choice, so Settings can't change it. */
     fun overridden(): Boolean = override != null
@@ -53,6 +54,17 @@ internal object ShellPerformance {
         else -> hardware.lowEnd
     }
 
+    /**
+     * The saved choice. Whatever asks first (the page helper as it starts, the player, the
+     * bootstrap) gets it, not the default: the appearance is read once if nothing has loaded it
+     * yet, and loading it calls [setSavedChoice]. If it can't be read, "auto" stands.
+     */
+    private fun savedChoice(): String {
+        saved?.let { return it }
+        if (runCatching { ShellAppearanceStore.load() }.isFailure) saved = "auto"
+        return saved ?: "auto"
+    }
+
     private fun detect(): Hardware {
         val host = DesktopHostOs.current
         val linux = host == DesktopHostOs.LINUX
@@ -60,8 +72,10 @@ internal object ShellPerformance {
         val memoryMb = totalMemoryMb(linux)
         val software = linux && runCatching { LinuxShellRender.mode() == "software" }.getOrDefault(false)
         val reason = when {
-            memoryMb in 1L..4608L -> "${(memoryMb + 512) / 1024} GB of memory"
-            cores <= 2 -> "$cores processor cores"
+            // The system counts a little less than is installed (the kernel and the graphics chip
+            // keep some), so a "4 GB" computer reports 3.3 to 3.9: rounded up, it reads as 4 GB.
+            memoryMb in 1L..4608L -> "${(memoryMb + 1023) / 1024} GB of memory"
+            cores <= 2 -> if (cores == 1) "1 processor core" else "$cores processor cores"
             linux && olderProcessor() -> "an older processor"
             software && cores <= 4 -> "drawing without the graphics card"
             else -> ""
