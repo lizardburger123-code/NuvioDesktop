@@ -5,7 +5,7 @@ import { useApp } from "../AppContext.jsx";
 import { PosterCard, SkeletonPosters } from "./Cards.jsx";
 import { useToggleLater } from "./RowActions.jsx";
 import { EASE } from "../lib/motion.js";
-import { calm, useChunks } from "../lib/lite.js";
+import { Pictures, calm, useChunks, usePicturesValue, watchWindow } from "../lib/lite.js";
 import { useScreenActive } from "../lib/screen.js";
 import "./Discover.css";
 
@@ -45,6 +45,7 @@ export function CatalogGrid({ source, filters, onFilters, emptyText }) {
   const waitingForQuery = Boolean(source?.searchOnly && !effective.search);
   // Lite draws what has loaded a few lines at a time; the next page is asked for once all of it is drawn.
   const drawn = useChunks(items, { resetKey: `${source?.id}:${JSON.stringify(effective)}` });
+  const pictures = usePicturesValue(watchWindow);
 
   // Search as you type (debounced) for catalogs that can search.
   useEffect(() => { setText(filters?.search || ""); }, [source?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -168,9 +169,11 @@ export function CatalogGrid({ source, filters, onFilters, emptyText }) {
       ) : null}
 
       <div ref={gridRef} className="discover-grid">
-        {drawn.shown.map(item => (
-          <PosterCard key={`${item.type}:${item.id}`} item={item} onOpen={openDetails} onToggleLater={toggleLater} saved={laterIds.has(`${item.type}:${item.id}`)} />
-        ))}
+        <Pictures.Provider value={pictures}>
+          {drawn.shown.map(item => (
+            <PosterCard key={`${item.type}:${item.id}`} item={item} onOpen={openDetails} onToggleLater={toggleLater} saved={laterIds.has(`${item.type}:${item.id}`)} />
+          ))}
+        </Pictures.Provider>
       </div>
       {drawn.more ? <div ref={drawn.endRef} className="discover-grid-more" aria-hidden="true" /> : null}
       {loading && !items.length ? <div className="discover-grid"><SkeletonPosters count={12} /></div> : null}

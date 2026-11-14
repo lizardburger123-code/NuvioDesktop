@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import { LuPlay, LuInfo, LuTrash2 } from "react-icons/lu";
 import { year } from "../lib/format.js";
-import { calm, useLite } from "../lib/lite.js";
+import { Pictures, calm, useLite, usePictureShown, usePicturesValue, watchWindow } from "../lib/lite.js";
 import { sized } from "../lib/images.js";
 import { fmtHours } from "../lib/trophies.js";
 import { settle, spring, stop, wake } from "../lib/springs.js";
@@ -18,8 +18,8 @@ const lengthOf = item => (item.type === "series"
   ? (item.episodes ? `${item.episodes} episodes` : "Series")
   : item.durationMs ? fmtHours(item.durationMs) : null);
 
-/** The faces of a Blu-ray case. The back is only drawn on the one in your hands. */
-function CaseFaces({ item, full }) {
+/** The faces of a Blu-ray case. The back is only drawn on the one in your hands. [art]: the cover's picture is in the page. */
+function CaseFaces({ item, full, art = true }) {
   const lite = useLite();
   const cover = sized(item.poster, "poster", lite);
   const meta = [year(item.releaseInfo), lengthOf(item)].filter(Boolean).join(" · ");
@@ -28,7 +28,7 @@ function CaseFaces({ item, full }) {
       <span className="bd-cover">
         <span className="bd-band" />
         <span className="bd-art">
-          {item.poster ? <img src={cover} data-alt={cover !== item.poster ? item.poster : undefined} alt="" loading="lazy" decoding="async" draggable="false" /> : <span className="bd-blank" dir="auto">{item.name}</span>}
+          {!item.poster ? <span className="bd-blank" dir="auto">{item.name}</span> : art ? <img src={cover} data-alt={cover !== item.poster ? item.poster : undefined} alt="" loading="lazy" decoding="async" draggable="false" /> : null}
         </span>
       </span>
       <span className="bd-spine"><span dir="auto">{item.name}</span></span>
@@ -122,19 +122,26 @@ function ShelfRow({ items, away, onLift }) {
     <div className="bd-row" ref={rowRef} onPointerMove={lean} onPointerLeave={rest}>
       {items.map(item => {
         const key = `${item.type}:${item.id}`;
-        return (
-          <button
-            key={key}
-            className={`bd-slot${away === key ? " is-away" : ""}`}
-            aria-label={`${item.name}. Pick up`}
-            title={item.name}
-            onClick={event => onLift(item, event.currentTarget, bodies.current.get(event.currentTarget)?.x.ry || 0)}
-          >
-            <span className="bd-case"><CaseFaces item={item} /></span>
-          </button>
-        );
+        return <Case key={key} item={item} away={away === key} onLift={(slot, lean) => onLift(item, slot, lean)} leanOf={slot => bodies.current.get(slot)?.x.ry || 0} />;
       })}
     </div>
+  );
+}
+
+/** A case on the shelf; in Lite its cover's picture is in the page only while it can be seen soon. */
+function Case({ item, away, onLift, leanOf }) {
+  const ref = useRef(null);
+  const art = usePictureShown(ref);
+  return (
+    <button
+      ref={ref}
+      className={`bd-slot${away ? " is-away" : ""}`}
+      aria-label={`${item.name}. Pick up`}
+      title={item.name}
+      onClick={event => onLift(event.currentTarget, leanOf(event.currentTarget))}
+    >
+      <span className="bd-case"><CaseFaces item={item} art={art} /></span>
+    </button>
   );
 }
 
@@ -318,6 +325,7 @@ function Lifted({ lift, onClose, onPlay, onDetails, onRemove }) {
  */
 export default function Shelf({ shelves, label, onPlay, onDetails, onRemove }) {
   const [lift, setLift] = useState(null);
+  const pictures = usePicturesValue(watchWindow);
   const lastSlot = useRef(null);
   const close = useCallback(() => {
     setLift(null);
@@ -325,7 +333,7 @@ export default function Shelf({ shelves, label, onPlay, onDetails, onRemove }) {
   }, []);
   const away = lift ? `${lift.item.type}:${lift.item.id}` : null;
   return (
-    <>
+    <Pictures.Provider value={pictures}>
       {shelves.map(([key, list], i) => (
         <section className="bd-shelf" key={key} data-rise={i < 2 ? "" : undefined}>
           <h2 className="bd-shelf-title">{label(key)} <span className="num">{list.length}</span></h2>
@@ -340,6 +348,6 @@ export default function Shelf({ shelves, label, onPlay, onDetails, onRemove }) {
         </section>
       ))}
       {lift ? <Lifted key={away} lift={lift} onClose={close} onPlay={onPlay} onDetails={onDetails} onRemove={onRemove} /> : null}
-    </>
+    </Pictures.Provider>
   );
 }

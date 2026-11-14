@@ -1,7 +1,7 @@
 import { memo, useLayoutEffect, useRef } from "react";
 import { LuBookmark, LuBookmarkCheck, LuCheck, LuPlay, LuX } from "react-icons/lu";
 import { episodeCode, minutesLeft, year } from "../lib/format.js";
-import { useLite } from "../lib/lite.js";
+import { useLite, usePictureShown } from "../lib/lite.js";
 import { sized } from "../lib/images.js";
 import "./Cards.css";
 
@@ -13,6 +13,8 @@ export const PosterCard = memo(function PosterCard({ item, onOpen, onToggleLater
   // A card that leaves with the keyboard on it (its bookmark took it off My list) hands the
   // keyboard to the same button on the card beside it, rather than dropping it to the page.
   const ref = useRef(null);
+  // Lite: the picture is in the page only while it can be seen soon (lib/lite.js).
+  const shown = usePictureShown(ref);
   useLayoutEffect(() => {
     const node = ref.current;
     return () => {
@@ -25,7 +27,7 @@ export const PosterCard = memo(function PosterCard({ item, onOpen, onToggleLater
   return (
     <div ref={ref} className="poster" data-card style={{ width }}>
       <button className="card-face" data-hero style={{ height: Math.round(width * 1.5) }} onClick={() => onOpen(item)} aria-label={item.name}>
-        {item.poster ? <img src={poster} data-alt={poster !== item.poster ? item.poster : undefined} alt="" loading="lazy" decoding="async" /> : <span className="poster-fallback" dir="auto">{item.name}</span>}
+        {!item.poster ? <span className="poster-fallback" dir="auto">{item.name}</span> : shown ? <img src={poster} data-alt={poster !== item.poster ? item.poster : undefined} alt="" loading="lazy" decoding="async" /> : null}
       </button>
       {onToggleLater ? (
         <button
@@ -50,16 +52,18 @@ export const PosterCard = memo(function PosterCard({ item, onOpen, onToggleLater
 /** Landscape card for continue watching and episodes: progress runs along its bottom edge. */
 export const WideCard = memo(function WideCard({ image, fallbackImage, logo, title, kicker, meta, progress, watched, onOpen, onRemove, removeLabel, width = 300, badge, label }) {
   const lite = useLite();
+  const ref = useRef(null);
+  const shown = usePictureShown(ref);
   const picture = sized(image, "still", lite);
   const stand = sized(fallbackImage, "still", lite);
   // The stand-in the card was given, else (Lite) the picture as the addon gave it.
   const alt = stand && stand !== picture ? stand : picture !== image ? image : undefined;
   return (
-    <div className="wide" data-card style={{ width }}>
+    <div ref={ref} className="wide" data-card style={{ width }}>
       <button className="card-face" data-hero style={{ height: Math.round(width * 9 / 16) }} onClick={onOpen} aria-label={label || title}>
-        {image ? <img src={picture} data-alt={alt} alt="" loading="lazy" decoding="async" /> : null}
+        {image && shown ? <img src={picture} data-alt={alt} alt="" loading="lazy" decoding="async" /> : null}
         <span className="wide-scrim" />
-        {logo ? <img className="wide-logo" src={sized(logo, "logo", lite)} alt="" loading="lazy" decoding="async" /> : null}
+        {logo && shown ? <img className="wide-logo" src={sized(logo, "logo", lite)} alt="" loading="lazy" decoding="async" /> : null}
         {badge ? <span className="wide-badge">{badge}</span> : null}
         <span className="wide-play" aria-hidden="true"><LuPlay /></span>
         {watched ? <span className="wide-watched" aria-label="Watched"><LuCheck /></span> : null}

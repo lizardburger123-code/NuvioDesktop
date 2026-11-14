@@ -8,7 +8,7 @@ import { useApp } from "../AppContext.jsx";
 import { back, canGoBack, navigate } from "../lib/router.js";
 import { useScreenActive } from "../lib/screen.js";
 import { EASE } from "../lib/motion.js";
-import { calm, useLite } from "../lib/lite.js";
+import { calm, useLite, usePictureShown } from "../lib/lite.js";
 import { sized } from "../lib/images.js";
 import Row from "../components/Row.jsx";
 import { PosterCard, WideCard } from "../components/Cards.jsx";
@@ -140,13 +140,15 @@ const withToken = (marks, token, change) => {
 /** An episode in Cinema's row: the picture plays it; the corner mark says (and sets) whether it was seen. */
 const EpisodeCard = memo(function EpisodeCard({ video, fallback, onPlay, onMark }) {
   const lite = useLite();
+  const ref = useRef(null);
+  const shown = usePictureShown(ref);
   const name = video.title || `Episode ${video.episode}`;
   const image = sized(video.thumbnail || fallback, "still", lite);
   const stand = sized(fallback, "still", lite);
   return (
-    <div className={`wide ep-card${video.watched ? " is-watched" : ""}`} data-card style={{ width: 300 }}>
+    <div ref={ref} className={`wide ep-card${video.watched ? " is-watched" : ""}`} data-card style={{ width: 300 }}>
       <button className="card-face" data-hero style={{ height: 169 }} onClick={() => onPlay(asVideo(video))} disabled={video.upcoming} aria-label={`Episode ${video.episode}: ${name}`}>
-        {image ? <img src={image} data-alt={stand && stand !== image ? stand : undefined} alt="" loading="lazy" decoding="async" /> : null}
+        {image && shown ? <img src={image} data-alt={stand && stand !== image ? stand : undefined} alt="" loading="lazy" decoding="async" /> : null}
         <span className="wide-scrim" />
         {video.upcoming ? <span className="wide-badge">{video.airsAt != null ? `Airs ${airDay(video)}` : "Not out yet"}</span> : null}
         <span className="wide-play" aria-hidden="true"><LuPlay /></span>

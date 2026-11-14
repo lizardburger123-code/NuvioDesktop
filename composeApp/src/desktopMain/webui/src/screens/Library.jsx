@@ -8,6 +8,7 @@ import { goSection, navigate } from "../lib/router.js";
 import { useScreenActive } from "../lib/screen.js";
 import { useSegmentPill } from "../lib/motion.js";
 import { isLite } from "../lib/perf.js";
+import { Pictures, usePicturesValue, watchWindow } from "../lib/lite.js";
 import TorboxClear from "../components/TorboxClear.jsx";
 import Downloads from "../components/Downloads.jsx";
 import Trophies from "../components/Trophies.jsx";
@@ -210,6 +211,7 @@ function ContinueTab() {
   // Taken off at once on every screen and only forgotten once the Undo has passed (removeContinue).
   const { resume, removeContinue } = useApp();
   const shown = useTopic("continue", NO_ITEMS);
+  const pictures = usePicturesValue(watchWindow);
   if (!shown.length) {
     return (
       <section className="empty">
@@ -221,7 +223,9 @@ function ContinueTab() {
   }
   return (
     <section className="library-grid library-grid-wide">
-      {shown.map(entry => <ContinueCard key={entry.key} entry={entry} onResume={resume} onRemove={removeContinue} />)}
+      <Pictures.Provider value={pictures}>
+        {shown.map(entry => <ContinueCard key={entry.key} entry={entry} onResume={resume} onRemove={removeContinue} />)}
+      </Pictures.Provider>
     </section>
   );
 }
@@ -318,6 +322,7 @@ const LITE_STEP = 24;
 function Progressive({ items, render }) {
   const [step] = useState(() => (isLite() ? LITE_STEP : STEP));
   const [count, setCount] = useState(step);
+  const pictures = usePicturesValue(watchWindow);
   const endRef = useRef(null);
   const more = items.length > count;
   useEffect(() => {
@@ -331,7 +336,7 @@ function Progressive({ items, render }) {
   }, [more, count, step]);
   return (
     <>
-      <section className="library-grid">{items.slice(0, count).map(render)}</section>
+      <section className="library-grid"><Pictures.Provider value={pictures}>{items.slice(0, count).map(render)}</Pictures.Provider></section>
       {more ? <div ref={endRef} className="library-more" aria-hidden="true" /> : null}
     </>
   );

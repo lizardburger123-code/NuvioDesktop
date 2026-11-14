@@ -10,7 +10,7 @@ import { PosterCard, WideCard } from "../components/Cards.jsx";
 import TitleMark from "../components/TitleMark.jsx";
 import Ratings, { EpisodeScore } from "../components/Ratings.jsx";
 import Person from "../components/Person.jsx";
-import { scrollMotion, useChunks, useLite } from "../lib/lite.js";
+import { Pictures, scrollMotion, useChunks, useLite, usePictureShown, usePicturesValue, watchWindow } from "../lib/lite.js";
 import { sized } from "../lib/images.js";
 import { useScreenActive } from "../lib/screen.js";
 import { year } from "../lib/format.js";
@@ -176,14 +176,16 @@ function WatchedMark({ video, onMark, className }) {
 
 const Episode = memo(function Episode({ video, fallback, next, nextLabel, onPlay, onMark }) {
   const lite = useLite();
+  const ref = useRef(null);
+  const shown = usePictureShown(ref);
   const image = sized(video.thumbnail || fallback, "still", lite);
   const stand = sized(fallback, "still", lite);
   return (
-    <div className={`hz-ep${next ? " is-next" : ""}${video.watched ? " is-watched" : ""}${video.upcoming ? " is-upcoming" : ""}`}>
+    <div ref={ref} className={`hz-ep${next ? " is-next" : ""}${video.watched ? " is-watched" : ""}${video.upcoming ? " is-upcoming" : ""}`}>
       <button className="hz-ep-main" onClick={() => onPlay(asVideo(video))} disabled={video.upcoming}>
         <span className={`hz-ep-n num${String(video.episode).length > 3 ? " is-long" : ""}`}>{video.episode}</span>
         <span className="hz-ep-thumb">
-          {image ? <img src={image} data-alt={video.thumbnail && fallback ? stand : undefined} alt="" loading="lazy" decoding="async" /> : null}
+          {image && shown ? <img src={image} data-alt={video.thumbnail && fallback ? stand : undefined} alt="" loading="lazy" decoding="async" /> : null}
           <span className="hz-ep-play" aria-hidden="true"><LuPlay /></span>
           {video.progress > 0 ? <span className="wide-progress"><span style={{ width: `${Math.min(100, Math.round(video.progress * 100))}%` }} /></span> : null}
         </span>
@@ -208,13 +210,15 @@ const Episode = memo(function Episode({ video, fallback, next, nextLabel, onPlay
 
 const EpisodeTile = memo(function EpisodeTile({ video, fallback, next, onPlay, onMark }) {
   const lite = useLite();
+  const ref = useRef(null);
+  const shown = usePictureShown(ref);
   const image = sized(video.thumbnail || fallback, "still", lite);
   const stand = sized(fallback, "still", lite);
   return (
-    <div className={`hz-tile${next ? " is-next" : ""}${video.watched ? " is-watched" : ""}`}>
+    <div ref={ref} className={`hz-tile${next ? " is-next" : ""}${video.watched ? " is-watched" : ""}`}>
       <button className="hz-tile-main" onClick={() => onPlay(asVideo(video))} disabled={video.upcoming}>
         <span className="hz-ep-thumb">
-          {image ? <img src={image} data-alt={video.thumbnail && fallback ? stand : undefined} alt="" loading="lazy" decoding="async" /> : null}
+          {image && shown ? <img src={image} data-alt={video.thumbnail && fallback ? stand : undefined} alt="" loading="lazy" decoding="async" /> : null}
           <span className="hz-ep-play" aria-hidden="true"><LuPlay /></span>
           {video.progress > 0 ? <span className="wide-progress"><span style={{ width: `${Math.min(100, Math.round(video.progress * 100))}%` }} /></span> : null}
         </span>
@@ -309,6 +313,8 @@ function RatingsSheet({ meta, seasons, onPlay }) {
 export default function HazeDetails({ meta, topic, seasons, season, setSeason, episodes, target, nextAir, similar, stats, onMark, onMarkSeason, play, openSources, saved, heroRef }) {
   const { appearance, laterIds, toggleLater, openDetails, toast } = useApp();
   const lite = useLite();
+  // Lite: episode pictures and cast faces watch their own distance from the window.
+  const pictures = usePicturesValue(watchWindow);
   // Lite reads no colour out of the artwork: the page wears the accent.
   const color = useArtColor([meta.background, meta.banner, meta.poster], appearance?.hazeArt !== false && !lite);
   const series = seasons.length > 0;
@@ -429,6 +435,7 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
         ))}
       </div>
 
+      <Pictures.Provider value={pictures}>
       {tab === "episodes" ? (
         <section className="hz-d-panel" role="tabpanel" id={panelId("episodes")} aria-labelledby={tabId("episodes")}>
           <div className="hz-ep-tools">
@@ -521,6 +528,7 @@ export default function HazeDetails({ meta, topic, seasons, season, setSeason, e
       {tab === "cast" ? (
         <section className="hz-d-panel" role="tabpanel" id={panelId("cast")} aria-labelledby={tabId("cast")}><div className="hz-cast">{meta.cast.slice(0, 40).map(person => <Person key={`${person.name}:${person.role || ""}`} person={person} titleId={meta.id} />)}</div></section>
       ) : null}
+      </Pictures.Provider>
 
       {tab === "about" ? (
         <section className="hz-d-panel" role="tabpanel" id={panelId("about")} aria-labelledby={tabId("about")}>

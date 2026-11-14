@@ -6,7 +6,7 @@ import { back, canGoBack, navigate } from "../lib/router.js";
 import { useSegmentPill } from "../lib/motion.js";
 import { year } from "../lib/format.js";
 import { PosterCard, SkeletonPosters } from "../components/Cards.jsx";
-import { useChunks, useLite } from "../lib/lite.js";
+import { Pictures, useChunks, useLite, usePicturesValue, watchWindow } from "../lib/lite.js";
 import { sized } from "../lib/images.js";
 import "./Person.css";
 
@@ -60,6 +60,7 @@ export default function Person({ params }) {
   }, [items, kind, sort, counts]);
   // Lite draws a long filmography a few lines at a time; another kind or order starts again.
   const drawn = useChunks(shown, { resetKey: `${key}:${kind}:${sort}` });
+  const pictures = usePicturesValue(watchWindow);
   const chooseSort = next => { setSort(next); try { window.localStorage.setItem(SORT_KEY, next); } catch { /* a nicety */ } };
   const searchName = () => navigate("search", { q: name });
 
@@ -92,9 +93,11 @@ export default function Person({ params }) {
       {state.loading ? <div className="person-grid" aria-hidden="true"><SkeletonPosters count={12} /></div> : null}
       {!state.loading && items.length ? (
         <div className="person-grid">
-          {drawn.shown.map(item => (
-            <PosterCard key={`${item.type}:${item.id}`} item={item} onOpen={openDetails} onToggleLater={toggleLater} saved={laterIds.has(`${item.type}:${item.id}`)} />
-          ))}
+          <Pictures.Provider value={pictures}>
+            {drawn.shown.map(item => (
+              <PosterCard key={`${item.type}:${item.id}`} item={item} onOpen={openDetails} onToggleLater={toggleLater} saved={laterIds.has(`${item.type}:${item.id}`)} />
+            ))}
+          </Pictures.Provider>
         </div>
       ) : null}
       {!state.loading && drawn.more ? <div ref={drawn.endRef} className="person-more" aria-hidden="true" /> : null}
