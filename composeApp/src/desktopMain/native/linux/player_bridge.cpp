@@ -79,15 +79,16 @@ struct Player {
     // driver-dependent: on NVIDIA the dmabuf renderer leaves the pixmap empty and
     // the fallback renderer fills the page background opaque, so the overlay
     // either vanishes or blacks out the video underneath.
-    cairo_surface_t *snapSurf = nullptr;      // buffer mpv's overlay points at
-    cairo_surface_t *snapSurfPrev = nullptr;  // kept one push longer: mpv may
-                                              // still sample it mid-frame
+    // The last snapshot handed to mpv, kept only to compare the next one with:
+    // overlay-add copies the pixels before it returns (mpv 0.18.1 and later), so
+    // mpv itself needs none of them afterwards.
+    cairo_surface_t *snapSurf = nullptr;
     bool snapInFlight = false;
     int snapWaitTicks = 0;  // watchdog: ticks spent waiting on the in-flight snapshot
     // Snapshot requests are generation-stamped: a watchdog reset (or teardown)
     // bumps the generation so the abandoned request's late callback is dropped
-    // instead of racing the replacement (double-clearing snapInFlight, pushing
-    // overlays out of order, or rotating a surface mpv's VO still samples).
+    // instead of racing the replacement (double-clearing snapInFlight, or
+    // pushing overlays out of order).
     int snapGen = 0;
     GCancellable *snapCancel = nullptr;  // cancels the in-flight snapshot, owned
     int snapCooldownTicks = 0;  // watchdog backoff before the next request
@@ -111,6 +112,16 @@ struct Player {
     // state JSON so the gate stays open while either is on screen.
     bool skipPromptShown = false;
     bool nextEpisodeShown = false;
+    // Whether the last full check in compositeOverlay found the overlay needed.
+    // While it is not, that check runs every kIdleCheckTicks ticks (idleTicks
+    // counts them) and the page gets the clock once a second (lastUpdateAt).
+    bool gateOpen = false;
+    int idleTicks = 0;
+    gint64 lastUpdateAt = 0;  // monotonic µs of the last playerUpdate
+    // Lite performance mode, from the controls state's "lite" (see liteSnapshotDue).
+    bool lite = false;
+    gint64 liteBusyUntil = 0;  // monotonic µs: the page counts as changing until then
+    gint64 liteSnapAt = 0;     // monotonic µs of the last snapshot asked for in Lite
     // X input focus owner before the overlay grabbed it (teardown restores it;
     // 0 = nothing saved). The overlay holds real X focus while the player is
     // attached — WKWebView/WebView2 parity — so the page's own keydown
@@ -313,6 +324,68 @@ std::string joinHeaderFields(const std::vector<std::string> &headers) {
 
 Player *asPlayer(jlong handle) { return reinterpret_cast<Player *>(handle); }
 
+// ---- Lite performance mode -------------------------------------------------
+// The app's mode for modest computers, learned from the controls state's
+// "lite". The controls page is snapshotted only while it may be changing, at a
+// lower rate, and mpv draws the picture more cheaply. Full snapshots on every
+// tick the overlay is up, as before.
+
+// While the page is changing (input on it, a message from it, new state, the
+// loading screen): one snapshot per kLiteBusyUs at most, until kLiteSettleUs
+// after the last change. Otherwise, for what moves by itself (the clock, a
+// countdown): one per kLiteQuietUs.
+constexpr gint64 kLiteBusyUs = 80 * 1000;
+constexpr gint64 kLiteSettleUs = 400 * 1000;
+constexpr gint64 kLiteQuietUs = 500 * 1000;
+
+// The controls page may be changing what it shows. GTK thread only.
+void noteOverlayChange(Player *player) {
+    player->liteBusyUntil = g_get_monotonic_time() + kLiteSettleUs;
+}
+
+// Lite: whether this tick may snapshot the controls page. GTK thread only.
+bool liteSnapshotDue(Player *player, bool loading) {
+    const gint64 now = g_get_monotonic_time();
+    // The loading screen counts as changing: its spinner turns.
+    const bool busy = loading || now < player->liteBusyUntil;
+    if (now - player->liteSnapAt < (busy ? kLiteBusyUs : kLiteQuietUs)) return false;
+    player->liteSnapAt = now;
+    return true;
+}
+
+// What mpv gives up in Lite, little of it visible: sharper scalers and their
+// linear-light passes (plain bilinear instead), debanding, frame interpolation,
+// HDR peak measuring (a compute pass per frame), exact decoding in favour of
+// the decoder's fast shortcuts, and most of the stream cache (64 MiB ahead and
+// 16 MiB behind instead of 150 and 50). All can change while a file plays; the
+// decoder shortcuts count from the decoder's start, which is normally still
+// ahead when the first controls state arrives (the stream is still opening).
+constexpr const char *kLiteMpvOptions[][2] = {
+    {"scale", "bilinear"},
+    {"cscale", "bilinear"},
+    {"dscale", "bilinear"},
+    {"correct-downscaling", "no"},
+    {"linear-downscaling", "no"},
+    {"sigmoid-upscaling", "no"},
+    {"deband", "no"},
+    {"interpolation", "no"},
+    {"hdr-compute-peak", "no"},
+    {"vd-lavc-fast", "yes"},
+    {"demuxer-max-bytes", "64MiB"},
+    {"demuxer-max-back-bytes", "16MiB"},
+};
+
+void applyLiteMpvOptions(Player *player) {
+    if (!player->mpv) return;
+    for (const auto &option : kLiteMpvOptions) {
+        const int status = mpv_set_property_string(player->mpv, option[0], option[1]);
+        if (status < 0) {
+            NUVIO_ERR("lite: mpv refused %s=%s (%s)", option[0], option[1], mpv_error_string(status));
+        }
+    }
+    NUVIO_LOG("lite: cheaper scaling and decoding, smaller stream cache");
+}
+
 // ---- WebKitGTK controls overlay -----------------------------------------
 // The controls are the SAME shared HTML page macOS/Windows use. JS talks to
 // us via window.webkit.messageHandlers.player.postMessage({type,value}) — a
@@ -451,6 +524,13 @@ void onPlayerMessage(WebKitUserContentManager *, WebKitJavascriptResult *js, gpo
     // it is up. cursorActivity also arrives while hidden (mouse woke the UI) and
     // must re-activate compositing so the fade-in is actually shown.
     if (type) {
+        // Lite: whatever the page says, it may be changing what it shows; but
+        // not its keep-alive for a pop-up (overlayHold, every 400ms while one is
+        // up) nor what only Windows acts on.
+        if (strcmp(type, "overlayHold") != 0 && strcmp(type, "subtitleOverlayMode") != 0 &&
+            strcmp(type, "glassRects") != 0) {
+            noteOverlayChange(player);
+        }
         if (strcmp(type, "setPlaybackState") == 0 ||
             strcmp(type, "setPlaybackStateQuiet") == 0) {
             bool shouldPlay = value >= 0.5;
@@ -519,12 +599,35 @@ void onOverlayDestroyed(GtkWidget *, gpointer data) {
     player->overlayXid = 0;
 }
 
-// Free the snapshot buffers (safe to call with none allocated). Only after
-// overlay-remove or teardown — mpv's overlay points into snapSurf's data.
+// Free the kept snapshot (safe to call with none). After overlay-remove or
+// teardown, so the next snapshot is handed to mpv instead of compared.
 void releaseSnapshots(Player *player) {
     if (player->snapSurf) cairo_surface_destroy(player->snapSurf);
-    if (player->snapSurfPrev) cairo_surface_destroy(player->snapSurfPrev);
-    player->snapSurf = player->snapSurfPrev = nullptr;
+    player->snapSurf = nullptr;
+}
+
+// Whether a new snapshot shows exactly what the last one handed to mpv did.
+// Compared from the bottom up, where the player's chrome changes most (the
+// progress bar and the clock), so a changed frame is usually told apart early.
+bool sameSnapshot(cairo_surface_t *last, cairo_surface_t *next) {
+    if (!last || !next) return false;
+    const int height = cairo_image_surface_get_height(next);
+    const int stride = cairo_image_surface_get_stride(next);
+    if (cairo_image_surface_get_width(last) != cairo_image_surface_get_width(next) ||
+        cairo_image_surface_get_height(last) != height ||
+        cairo_image_surface_get_stride(last) != stride) {
+        return false;
+    }
+    const unsigned char *a = cairo_image_surface_get_data(last);
+    const unsigned char *b = cairo_image_surface_get_data(next);
+    if (!a || !b) return false;
+    constexpr int kBandRows = 64;
+    for (int bottom = height; bottom > 0; bottom -= kBandRows) {
+        const int top = std::max(0, bottom - kBandRows);
+        const size_t offset = static_cast<size_t>(top) * stride;
+        if (memcmp(a + offset, b + offset, static_cast<size_t>(bottom - top) * stride) != 0) return false;
+    }
+    return true;
 }
 
 // Ties a snapshot request to the generation it was issued under, so callbacks
@@ -554,7 +657,7 @@ void onOverlaySnapshot(GObject *src, GAsyncResult *res, gpointer data) {
         // Abandoned request draining late (after a watchdog reset or a
         // cancellation). Touch nothing: clearing snapInFlight here would let
         // requests pile up concurrently, and pushing the (older) pixels would
-        // rewind the overlay and rotate a surface mpv may still be sampling.
+        // rewind the overlay.
         NUVIO_LOG("stale snapshot (gen %d != %d) dropped", gen, player->snapGen);
         if (surf) cairo_surface_destroy(surf);
         return;
@@ -562,6 +665,13 @@ void onOverlaySnapshot(GObject *src, GAsyncResult *res, gpointer data) {
     player->snapInFlight = false;
     player->snapResets = 0;
     if (!surf) return;
+    // The overlay closed while this was being taken (the chrome hid): pushing
+    // it would put the last frame back over the video until a later check
+    // took it down again.
+    if (!player->gateOpen) {
+        cairo_surface_destroy(surf);
+        return;
+    }
     if (cairo_image_surface_get_format(surf) != CAIRO_FORMAT_ARGB32 ||
         cairo_image_surface_get_width(surf) <= 0 ||
         cairo_image_surface_get_height(surf) <= 0 || !player->mpv) {
@@ -584,6 +694,13 @@ void onOverlaySnapshot(GObject *src, GAsyncResult *res, gpointer data) {
         }
     }
     cairo_surface_flush(surf);
+    // Most snapshots show what the last one did (the chrome sitting still, a
+    // paused film): handing mpv the same picture again would only make it copy
+    // it, upload it and redraw the frame, many times a second.
+    if (player->overlayPushed && sameSnapshot(player->snapSurf, surf)) {
+        cairo_surface_destroy(surf);
+        return;
+    }
     char addr[32], sw[16], sh[16], sstride[16];
     snprintf(addr, sizeof addr, "&%zu",
              (size_t)(uintptr_t)cairo_image_surface_get_data(surf));
@@ -592,12 +709,22 @@ void onOverlaySnapshot(GObject *src, GAsyncResult *res, gpointer data) {
     snprintf(sstride, sizeof sstride, "%d", cairo_image_surface_get_stride(surf));
     const char *cmd[] = {"overlay-add", "0", "0", "0", addr, "0",
                          "bgra", sw, sh, sstride, nullptr};
-    mpv_command(player->mpv, cmd);
+    if (mpv_command(player->mpv, cmd) < 0) {
+        // Not shown, so not what the next snapshot should be compared with.
+        cairo_surface_destroy(surf);
+        return;
+    }
     player->overlayPushed = true;
-    if (player->snapSurfPrev) cairo_surface_destroy(player->snapSurfPrev);
-    player->snapSurfPrev = player->snapSurf;
+    if (player->snapSurf) cairo_surface_destroy(player->snapSurf);
     player->snapSurf = surf;
 }
+
+// While the overlay is not needed, compositeOverlay checks again every this
+// many ticks (33ms each), and the page gets the clock every kHiddenUpdateUs.
+constexpr int kIdleCheckTicks = 6;
+constexpr gint64 kHiddenUpdateUs = 1000 * 1000;
+
+void sendPlayerUpdate(Player *player);  // defined with pushPlayerUpdate below
 
 // Snapshot the controls page (premultiplied BGRA with real alpha) and hand it
 // to mpv as an OSD overlay, so mpv blends the HTML controls over the video in its
@@ -609,6 +736,19 @@ void compositeOverlay(Player *player) {
     GdkWindow *gw = gtk_widget_get_window(player->gtkWindow);
     if (!gw) return;
     Display *dpy = GDK_WINDOW_XDISPLAY(gw);
+    // toastTicks: bounded window for keyboard-feedback toasts; skip prompt /
+    // next-episode card: page elements shown over playing video with the chrome
+    // hidden (always visible on macOS/Windows, whose webviews are real layers).
+    const bool held = player->overlayActive || player->fadeTicks > 0 ||
+                      player->toastTicks > 0 || player->skipPromptShown ||
+                      player->nextEpisodeShown;
+    // Nothing on screen and nothing asking for it (a film playing with the
+    // chrome hidden, most of the time): the rest only has to notice a pause, a
+    // rebuffer or a resize. Its reads go to mpv's core and to the X server
+    // several times over, so they run every kIdleCheckTicks ticks (200ms)
+    // instead of 30 times a second through the whole film.
+    if (!held && !player->gateOpen && ++player->idleTicks < kIdleCheckTicks) return;
+    player->idleTicks = 0;
     // Also composite while loading (before the first frame, or during a rebuffer)
     // so Nuvio's loading screen — poster, title, spinner — shows over mpv's black
     // instead of a bare black screen. mpv is not decoding then, so it is free.
@@ -618,12 +758,7 @@ void compositeOverlay(Player *player) {
     // inactive — the page rendered it but it never reached mpv. mpv is not
     // decoding while paused, so this is free.
     bool paused = mpvGetFlag(player->mpv, "pause");
-    // toastTicks: bounded window for keyboard-feedback toasts; skip prompt /
-    // next-episode card: page elements shown over playing video with the chrome
-    // hidden (always visible on macOS/Windows, whose webviews are real layers).
-    bool active = loading || paused || player->overlayActive || player->fadeTicks > 0 ||
-                  player->toastTicks > 0 || player->skipPromptShown ||
-                  player->nextEpisodeShown;
+    bool active = held || loading || paused;
     // Track the host (video) size BEFORE the activity gate: on resize/fullscreen
     // the host canvas changes size but the overlay does not, so the controls +
     // their click hit-area drift out of alignment. This must also run while the
@@ -676,6 +811,7 @@ void compositeOverlay(Player *player) {
         }
     }
     if (!active) {
+        player->gateOpen = false;
         if (player->overlayPushed) {
             const char *rm[] = {"overlay-remove", "0", nullptr};
             mpv_command(player->mpv, rm);
@@ -684,12 +820,19 @@ void compositeOverlay(Player *player) {
         }
         return;
     }
+    if (!player->gateOpen) {
+        player->gateOpen = true;
+        // Off screen the page only got the clock once a second (see
+        // pushPlayerUpdate): bring it up to date before its first snapshot.
+        sendPlayerUpdate(player);
+        noteOverlayChange(player);
+    }
     if (!player->snapInFlight && player->webview) {
         if (player->snapCooldownTicks > 0) {
             // Backing off after a watchdog reset: a stalled web process gets no
             // relief from being asked again immediately.
             player->snapCooldownTicks--;
-        } else {
+        } else if (!player->lite || liteSnapshotDue(player, loading)) {
             player->snapInFlight = true;
             player->snapWaitTicks = 0;
             if (!player->snapCancel) player->snapCancel = g_cancellable_new();
@@ -875,6 +1018,24 @@ gboolean pushPlayerUpdate(gpointer data) {
             if (!onTop) XRaiseWindow(dpy, player->overlayXid);
         }
     }
+    // While the overlay is off screen (the chrome hidden over a playing film)
+    // the page only has to keep its clock roughly right: once a second instead
+    // of five times, track lists included (dozens of reads from mpv to build).
+    // compositeOverlay brings it up to date the moment the overlay is needed.
+    // Without the composite extension the page is a plain window on screen, so
+    // it gets every update.
+    if (player->overlayXid && !player->gateOpen &&
+        g_get_monotonic_time() - player->lastUpdateAt < kHiddenUpdateUs) {
+        return G_SOURCE_CONTINUE;
+    }
+    sendPlayerUpdate(player);
+    return G_SOURCE_CONTINUE;
+}
+
+// native -> JS: the clock, play state, volume and track lists (window.playerUpdate).
+void sendPlayerUpdate(Player *player) {
+    if (!player->webview || !player->mpv) return;
+    player->lastUpdateAt = g_get_monotonic_time();
     double duration = mpvGetDouble(player->mpv, "duration");
     double position = mpvGetDouble(player->mpv, "time-pos");
     double cache = mpvGetDouble(player->mpv, "demuxer-cache-time");
@@ -892,7 +1053,6 @@ gboolean pushPlayerUpdate(gpointer data) {
     std::string js = std::string(head) + audioTracks +
                      ",subtitleTracks:" + subtitleTracks + "})";
     evalJs(player->webview, js);
-    return G_SOURCE_CONTINUE;
 }
 
 struct WebviewSetup {
@@ -926,6 +1086,23 @@ void notifyWarmupDone(bool ok) {
         gWarmupSucceeded = ok;
     }
     gWarmupCv.notify_all();
+}
+
+// Destroy the warm view, if there is one. GTK thread only.
+void destroyWarmView() {
+    if (!gWarmupWindow) return;
+    // Same fatal-X-error exposure as the overlay teardown (see
+    // destroyWebviewOnGtk): the webview's dispose queries the pointer
+    // position while this window is dying.
+    GdkDisplay *d = gtk_widget_get_display(gWarmupWindow);
+    gdk_x11_display_error_trap_push(d);
+    gtk_widget_destroy(gWarmupWindow);
+    gdk_x11_display_error_trap_pop_ignored(d);
+    // The view/ucm die with their window — null them too or the adoption gate
+    // could later read dangling pointers.
+    gWarmupWindow = nullptr;
+    gWarmupView = nullptr;
+    gWarmupUcm = nullptr;
 }
 
 // One web context shared by every controls webview, with a real HTTP disk
@@ -978,6 +1155,34 @@ gboolean onLoadFailed(WebKitWebView * /*wv*/, WebKitLoadEvent /*event*/,
                       gchar *uri, GError *error, gpointer /*data*/) {
     NUVIO_ERR("webview load-FAILED uri=%s error=%s", uri ? uri : "(null)",
               error ? error->message : "(null)");
+    return FALSE;
+}
+
+// Lite: input on the controls page changes it (hover, dragging the bar, a menu
+// scrolling) before the page says anything, if it does at all.
+gboolean onOverlayInput(GtkWidget *, GdkEvent *event, gpointer data) {
+    auto *player = static_cast<Player *>(data);
+    if (!playerAlive(player)) return FALSE;
+    switch (event->type) {
+        case GDK_MOTION_NOTIFY:
+        case GDK_BUTTON_PRESS:
+        case GDK_DOUBLE_BUTTON_PRESS:
+        case GDK_TRIPLE_BUTTON_PRESS:
+        case GDK_BUTTON_RELEASE:
+        case GDK_SCROLL:
+        case GDK_KEY_PRESS:
+        case GDK_KEY_RELEASE:
+        case GDK_ENTER_NOTIFY:
+        case GDK_LEAVE_NOTIFY:
+        case GDK_TOUCH_BEGIN:
+        case GDK_TOUCH_UPDATE:
+        case GDK_TOUCH_END:
+        case GDK_TOUCH_CANCEL:
+            noteOverlayChange(player);
+            break;
+        default:
+            break;
+    }
     return FALSE;
 }
 
@@ -1050,6 +1255,7 @@ gboolean createWebviewOnGtk(gpointer data) {
             "web-context", sharedControlsContext(),
             "user-content-manager", ucm,
             nullptr));
+        g_object_unref(ucm);  // the view holds its own reference
         GdkRGBA transparent = {0.0, 0.0, 0.0, 0.0};
         webkit_web_view_set_background_color(wv, &transparent);
 
@@ -1130,6 +1336,7 @@ gboolean createWebviewOnGtk(gpointer data) {
                          return TRUE;
                      }),
                      player);
+    g_signal_connect(wv, "event", G_CALLBACK(onOverlayInput), player);
 
     if (!adopted) gtk_container_add(GTK_CONTAINER(win), GTK_WIDGET(wv));
 
@@ -1276,6 +1483,20 @@ bool jsonFlag(const std::string &json, const char *key, bool fallback) {
 gboolean applyControlsOnGtk(gpointer data) {
     auto *u = static_cast<ControlsUpdate *>(data);
     if (playerAlive(u->player)) {
+        // The performance mode travels in the same state ("lite"). Settings is
+        // out of reach while a film plays, so the mode holds for the whole film:
+        // mpv's Lite options are set when it is first seen.
+        const bool lite = jsonFlag(u->json, "lite", false);
+        if (lite && !u->player->lite) {
+            applyLiteMpvOptions(u->player);
+            // Lite keeps no controls page warm for the next film (the app skips
+            // the warm-up at launch). One is only here if Lite was chosen after
+            // a launch in Full: it would hold its own WebKit processes all along.
+            gWarmupUrl.clear();
+            destroyWarmView();
+        }
+        u->player->lite = lite;
+        noteOverlayChange(u->player);
         // Chrome visibility travels authoritatively in this state JSON. The
         // page's hideChrome message only covers its own idle-timer hides —
         // fullscreen hides are decided on the Kotlin side and arrive here as a
@@ -1449,6 +1670,8 @@ gboolean warmupOnGtk(gpointer data) {
                                                      "web-context", sharedControlsContext(),
                                                      "user-content-manager", ucm,
                                                      nullptr));
+    // The view holds its own reference; gWarmupUcm below lives as long as it.
+    g_object_unref(ucm);
     GdkRGBA transparent = {0.0, 0.0, 0.0, 0.0};
     webkit_web_view_set_background_color(wv, &transparent);
     // Full player-parity settings — this view becomes the player's overlay.
@@ -2039,23 +2262,7 @@ JNIEXPORT void JNICALL NP(shutdownWebView2Warmup)(JNIEnv *, jobject) {
     if (gShuttingDown.load()) return;
     g_main_context_invoke(nullptr,
                           +[](gpointer) -> gboolean {
-                              if (gWarmupWindow) {
-                                  // Same fatal-X-error exposure as the overlay
-                                  // teardown (see destroyWebviewOnGtk): the
-                                  // webview's dispose queries the pointer
-                                  // position while this window is dying.
-                                  GdkDisplay *d =
-                                      gtk_widget_get_display(gWarmupWindow);
-                                  gdk_x11_display_error_trap_push(d);
-                                  gtk_widget_destroy(gWarmupWindow);
-                                  gdk_x11_display_error_trap_pop_ignored(d);
-                                  // The view/ucm die with their window — null
-                                  // them too or the adoption gate could later
-                                  // read dangling pointers.
-                                  gWarmupWindow = nullptr;
-                                  gWarmupView = nullptr;
-                                  gWarmupUcm = nullptr;
-                              }
+                              destroyWarmView();
                               return G_SOURCE_REMOVE;
                           },
                           nullptr);

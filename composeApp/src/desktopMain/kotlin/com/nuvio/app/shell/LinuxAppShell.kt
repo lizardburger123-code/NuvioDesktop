@@ -171,14 +171,20 @@ internal class LinuxAppShellWindow private constructor(
             val helper = helper()
             val data = DesktopStorage.rootDir.resolve("webview-shell").toFile().apply { mkdirs() }
             val mode = LinuxShellRender.mode()
+            val lite = ShellPerformance.isLite()
             val builder = ProcessBuilder(helper.absolutePath, hostXid.toString(), pageUrl, data.absolutePath)
                 .redirectError(ProcessBuilder.Redirect.INHERIT)
             builder.environment().apply {
                 // The helper turns this into WebKit's own switches (and clears the player's).
                 put("NUVIO_SHELL_RENDER", mode)
+                // Lite: smaller caches and fewer page features in WebKit. Read once at start; the
+                // page itself follows a change of mode at once.
+                put("NUVIO_PERFORMANCE_LITE", if (lite) "1" else "0")
                 put("GDK_BACKEND", "x11")
             }
-            Logger.withTag("LinuxAppShell").i { "starting the interface helper, drawing mode $mode" }
+            Logger.withTag("LinuxAppShell").i {
+                "starting the interface helper, drawing mode $mode, performance ${if (lite) "lite" else "full"}"
+            }
             val process = builder.start()
             val window = LinuxAppShellWindow(process, sink, mode, onGone)
             window.start()

@@ -14,7 +14,7 @@
 //
 // Protocol (lines of UTF-8 text; JSON never contains a raw newline):
 //   stdin   P<json>   deliver a message to the page
-//           V1 / V0   show / hide
+//           V1 / V0   show / hide (hidden, the page is hidden for WebKit too: it stops painting)
 //           L         match the host window's size now
 //           F         take keyboard focus
 //           Q         quit
@@ -28,6 +28,10 @@
 //             between processes, which is the part that breaks on some drivers)
 //   software  no GPU at all: the page is painted on the CPU (NVIDIA's driver shows a black
 //             window otherwise). The page is told, and leaves out what needs the compositor.
+// Performance (NUVIO_PERFORMANCE_LITE=1, the app's Lite mode for modest computers): WebKit keeps
+// smaller caches and gives memory back much earlier, scrolling jumps instead of animating, and
+// page features the interface never uses are off. Read once at start: a change of mode while the
+// app runs restyles the page at once, and these follow at the next start.
 // "out" is the original stdout; fd 1 itself is pointed at stderr so nothing WebKit or a library
 // prints can corrupt the protocol.
 
@@ -54,6 +58,7 @@ typedef struct {
     gboolean loaded;
     gboolean quitting;
     gboolean software;    // drawing mode "software"
+    gboolean lite;        // performance mode "lite" (NUVIO_PERFORMANCE_LITE=1)
     int loads;
     GPtrArray *pending;   // messages posted before the page finished loading
     char *page_base;      // page URL without query/fragment: the only place navigation may go
@@ -205,10 +210,17 @@ static void set_visible(gboolean visible) {
     // remembers, which are meaningless for a child of the app window.
     if (visible) {
         sync_size(TRUE);
+        if (S.view) gtk_widget_set_child_visible(GTK_WIDGET(S.view), TRUE);
         gdk_window_show(gw);
         gdk_window_raise(gw);
     } else {
         gdk_window_hide(gw);
+        // Hiding the X window alone leaves WebKit sure the page is on screen: behind the player it
+        // would go on painting and running its animations, and the page's own rules for being
+        // hidden (notices wait, the hero stops turning) would never apply. Unmapping the view
+        // makes the page hidden, as WebView2's hidden state does on Windows; the app gives it the
+        // keyboard back ("F") when it shows it again.
+        if (S.view) gtk_widget_set_child_visible(GTK_WIDGET(S.view), FALSE);
     }
 }
 
@@ -369,6 +381,30 @@ static gboolean on_stdin(GIOChannel *channel, GIOCondition condition, gpointer d
 
 // ---- setup --------------------------------------------------------------------------------------
 
+// Lite: the page's process gives memory back once its own memory passes about a third of this
+// limit (~300 MB: caches it can rebuild) and half of it (~450 MB: also every picture's decoded
+// pixels and compiled script code), checked every 10 seconds. WebKit's own limit is the
+// computer's memory up to 3 GB, checked every 30 seconds, so on a 4 GB computer the page could
+// hold a gigabyte before WebKit tried. Past half, the pictures on screen are decoded again once;
+// behind the player nothing is, so what was freed stays freed while a film plays.
+#define LITE_PAGE_MEMORY_MB 900
+#define LITE_PAGE_MEMORY_CHECK_SECONDS 10.0
+
+static WebKitWebContext *new_context(WebKitWebsiteDataManager *manager) {
+#if WEBKIT_CHECK_VERSION(2, 34, 0)
+    if (S.lite) {
+        WebKitMemoryPressureSettings *pressure = webkit_memory_pressure_settings_new();
+        webkit_memory_pressure_settings_set_memory_limit(pressure, LITE_PAGE_MEMORY_MB);
+        webkit_memory_pressure_settings_set_poll_interval(pressure, LITE_PAGE_MEMORY_CHECK_SECONDS);
+        WebKitWebContext *context = WEBKIT_WEB_CONTEXT(g_object_new(
+            WEBKIT_TYPE_WEB_CONTEXT, "website-data-manager", manager, "memory-pressure-settings", pressure, NULL));
+        webkit_memory_pressure_settings_free(pressure);
+        return context;
+    }
+#endif
+    return webkit_web_context_new_with_website_data_manager(manager);
+}
+
 static WebKitWebView *create_view(const char *data_dir) {
     WebKitUserContentManager *content = webkit_user_content_manager_new();
     webkit_user_content_manager_register_script_message_handler(content, "shell");
@@ -388,16 +424,22 @@ static WebKitWebView *create_view(const char *data_dir) {
         webkit_user_script_unref(mark);
     }
 
-    WebKitWebContext *context;
+    WebKitWebsiteDataManager *manager;
     if (data_dir && *data_dir) {
         char *cache_dir = g_build_filename(data_dir, "cache", NULL);
-        WebKitWebsiteDataManager *manager = webkit_website_data_manager_new(
-            "base-data-directory", data_dir, "base-cache-directory", cache_dir, NULL);
-        context = webkit_web_context_new_with_website_data_manager(manager);
-        g_object_unref(manager);
+        manager = webkit_website_data_manager_new("base-data-directory", data_dir, "base-cache-directory", cache_dir, NULL);
         g_free(cache_dir);
     } else {
-        context = webkit_web_context_new_ephemeral();
+        manager = webkit_website_data_manager_new_ephemeral();
+    }
+    WebKitWebContext *context = new_context(manager);
+    g_object_unref(manager);
+    if (S.lite) {
+        // Lite: the cache for browsing a set of documents keeps far fewer pictures that are no
+        // longer on screen than the default web-browser one. Not the even smaller single-document
+        // cache: that one also turns the disk cache off, so every poster and backdrop would be
+        // downloaded again at every launch and every time a screen is rebuilt.
+        webkit_web_context_set_cache_model(context, WEBKIT_CACHE_MODEL_DOCUMENT_BROWSER);
     }
 
     WebKitWebView *view = WEBKIT_WEB_VIEW(g_object_new(
@@ -414,9 +456,24 @@ static WebKitWebView *create_view(const char *data_dir) {
     webkit_settings_set_allow_universal_access_from_file_urls(settings, TRUE);
     webkit_settings_set_javascript_can_access_clipboard(settings, TRUE);
     webkit_settings_set_enable_developer_extras(settings, g_getenv("NUVIO_SHELL_DEVTOOLS") != NULL);
-    webkit_settings_set_enable_smooth_scrolling(settings, TRUE);
+    // Lite: a wheel step or a key jumps straight there; animating the scroll repaints the page
+    // every frame on the way.
+    webkit_settings_set_enable_smooth_scrolling(settings, !S.lite);
     webkit_settings_set_enable_back_forward_navigation_gestures(settings, FALSE);
     webkit_settings_set_media_playback_requires_user_gesture(settings, FALSE);
+    if (S.lite) {
+        // Only the interface page itself ever loads here (see on_decide_policy): a cached copy of
+        // a previous page would only hold memory.
+        webkit_settings_set_enable_page_cache(settings, FALSE);
+        // Nothing in the interface uses these (it draws with 2D canvas, opens trailers outside the
+        // page, and its one sound is a Web Audio chime, which stays), so nothing can start a GL
+        // context or a media pipeline in the page's process.
+        webkit_settings_set_enable_webgl(settings, FALSE);
+        webkit_settings_set_enable_mediasource(settings, FALSE);
+#if WEBKIT_CHECK_VERSION(2, 26, 0)
+        webkit_settings_set_enable_media(settings, FALSE);
+#endif
+    }
     if (S.software) {
         webkit_settings_set_hardware_acceleration_policy(settings, WEBKIT_HARDWARE_ACCELERATION_POLICY_NEVER);
     } else {
@@ -522,6 +579,9 @@ int main(int argc, char **argv) {
     if (cut) *cut = '\0';
     S.pending = g_ptr_array_new_with_free_func(g_free);
     apply_render_mode();
+    const char *lite = g_getenv("NUVIO_PERFORMANCE_LITE");
+    S.lite = lite && strcmp(lite, "1") == 0;
+    LOG("performance: %s", S.lite ? "lite" : "full");
 
     // The app window is an X11 window (XWayland on Wayland sessions), so this one must be too.
     gdk_set_allowed_backends("x11");

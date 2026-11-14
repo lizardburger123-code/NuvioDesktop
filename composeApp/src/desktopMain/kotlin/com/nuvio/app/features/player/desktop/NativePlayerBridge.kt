@@ -2,6 +2,7 @@ package com.nuvio.app.features.player.desktop
 
 import co.touchlab.kermit.Logger
 import com.nuvio.app.core.storage.DesktopCache
+import com.nuvio.app.shell.ShellPerformance
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -145,29 +146,34 @@ internal object NativePlayerBridge {
             val controlsPage = runCatching { controlsPageAssets }
                 .getOrNull()
                 ?: return@Thread
-            // Linux warms the WebKitGTK engine through the same entry point
-            // (the bridge maps warmupWebView2 to a hidden WebKitGTK view).
-            if (DesktopHostOs.current == DesktopHostOs.WINDOWS ||
-                DesktopHostOs.current == DesktopHostOs.LINUX
-            ) {
-                runCatching { warmupWebView2(controlsPage.url) }
-            }
-            if (DesktopHostOs.current == DesktopHostOs.WINDOWS) {
-                runCatching { shutdownWebView2Warmup() }
+            when (DesktopHostOs.current) {
+                DesktopHostOs.WINDOWS -> {
+                    runCatching { warmupWebView2(controlsPage.url) }
+                    runCatching { shutdownWebView2Warmup() }
+                }
+                // Linux warms the WebKitGTK engine through the same entry point (the bridge
+                // maps warmupWebView2 to a hidden WebKitGTK view, which the first player adopts).
+                // Lite keeps nothing warm: that page would hold its own WebKit processes for the
+                // whole session, so the first film builds its own instead.
+                DesktopHostOs.LINUX -> {
+                    if (ShellPerformance.isLite()) return@Thread
+                    runCatching {
+                        Runtime.getRuntime().addShutdownHook(
+                            Thread {
+                                runCatching { shutdownWebView2Warmup() }
+                            }.apply {
+                                name = "nuvio-webview2-warmup-shutdown"
+                            }
+                        )
+                    }
+                    runCatching { warmupWebView2(controlsPage.url) }
+                }
+                else -> Unit
             }
         }.apply {
             name = "nuvio-native-player-preload"
             isDaemon = true
             start()
-        }
-        if (DesktopHostOs.current == DesktopHostOs.LINUX) {
-            Runtime.getRuntime().addShutdownHook(
-                Thread {
-                    runCatching { shutdownWebView2Warmup() }
-                }.apply {
-                    name = "nuvio-webview2-warmup-shutdown"
-                }
-            )
         }
     }
 
