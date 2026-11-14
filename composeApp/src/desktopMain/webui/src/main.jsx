@@ -3,6 +3,8 @@ import "./theme/base.css";
 import "./app.css";
 import "./theme/haze.css";
 import App from "./App.jsx";
+// Last, so Lite's flat versions win over every look and component at the same specificity.
+import "./theme/lite.css";
 import { notify } from "./bridge.js";
 import { applyLook, rememberedLook } from "./lib/look.js";
 import { applyPerf, forcedPerf, rememberedPerf } from "./lib/perf.js";

@@ -1,0 +1,114 @@
+/* Lite (Settings › Performance): the same interface, flat and still, for modest computers.
+   On Linux the page can be painted by the processor alone, where every blur, mask, blend, big
+   soft shadow and moving layer is paid for again on each frame (and a scroll repaints the whole
+   window, because the bar and the rail stay put). Lite keeps the layout, the type and the colours,
+   as flat fills: glass becomes an opaque panel of the same colour, a haze wash becomes a tint,
+   a glow goes, and nothing animates.
+
+   Every rule here is under html[data-perf="lite"], so Full is untouched. This file comes last
+   (main.jsx), after every look and component. */
+
+/* ---- Everywhere: what is never needed to read or use the page --------------------------------
+   Blur and other filters, backdrop filters, masks, blend modes and compositing hints go; motion
+   takes no time. Transition delays stay (a tooltip still waits for the pointer to rest), and
+   nothing waits for transitionend: a transition of no length never fires one. Animations end at
+   once in their resting state (their fill still applies). */
+html[data-perf="lite"],
+html[data-perf="lite"] *,
+html[data-perf="lite"] *::before,
+html[data-perf="lite"] *::after {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  filter: none !important;
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+  mix-blend-mode: normal !important;
+  will-change: auto !important;
+  scroll-behavior: auto !important;
+  transition-duration: 0s !important;
+  animation-duration: 0s !important;
+  animation-delay: 0s !important;
+}
+
+/* Spinners keep turning: they are the only sign that something is still on its way, and they are
+   a few pixels across. */
+html[data-perf="lite"] .spin { animation-duration: 900ms !important; }
+html[data-perf="lite"] .pc-spin,
+html[data-perf="lite"] .pc-pick-busy::after { animation-duration: 700ms !important; }
+
+/* A picture that didn't load: a plain tile. */
+html[data-perf="lite"] :is(.card-face, .hz-ep-thumb)[data-broken-name]::before { background: #17191e; }
+
+/* The back of a case in Trophies is the cover darkened by a filter; with no filters it would be
+   the cover at full brightness behind small type, so the sleeve shows its own dark ground. */
+html[data-perf="lite"] .bd-blurb .bd-blurb-art { display: none; }
+
+/* ---- Cinema's bar ------------------------------------------------------------------------- */
+html[data-perf="lite"] .topbar.is-solid { background-color: rgb(7 8 10 / .95); }
+
+/* ---- Haze: glass becomes flat panels of the same colour --------------------------------------- */
+html[data-perf="lite"] .hz-rail { background: rgb(10 11 14); }
+html[data-perf="lite"] .hz-top.is-solid { background-color: rgb(7 8 10 / .95); }
+html[data-perf="lite"] :is(.hz-tabs, .hz-search) { background: rgb(18 20 24); }
+html[data-perf="lite"] .hz-search:hover { background: rgb(28 31 37); }
+html[data-perf="lite"] .hz-search.is-on { box-shadow: inset 0 0 0 1px rgb(var(--accent-rgb) / .5); }
+html[data-perf="lite"] .hz-tip { box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1); }
+/* Where you are: a tint and a ring instead of light through haze, and the edge bar without glow. */
+html[data-perf="lite"] .hz-rail-item[aria-current="page"] {
+  background: rgb(var(--accent-rgb) / .22);
+  box-shadow: inset 0 0 0 1px rgb(var(--accent-rgb) / .38);
+}
+html[data-perf="lite"] .hz-rail-item::before { box-shadow: none; }
+
+/* The main action: a flat tint of the colour with its ring, no glow. */
+html[data-perf="lite"][data-layout="haze"] :is(.btn-primary, .search-go, .sp-best) {
+  background: rgb(var(--haze-rgb) / .36);
+  box-shadow: inset 0 0 0 1px rgb(var(--haze-rgb) / .52), inset 0 1px 0 rgb(255 255 255 / .16);
+  text-shadow: none;
+}
+html[data-perf="lite"][data-layout="haze"] :is(.btn-primary, .search-go, .sp-best):hover {
+  background: rgb(var(--haze-rgb) / .46);
+  box-shadow: inset 0 0 0 1px rgb(var(--haze-rgb) / .7), inset 0 1px 0 rgb(255 255 255 / .2);
+}
+html[data-perf="lite"][data-layout="haze"] .btn-primary:disabled { box-shadow: inset 0 0 0 1px rgb(255 255 255 / .12); }
+html[data-perf="lite"][data-layout="haze"] .btn-glass { background: rgb(255 255 255 / .14); }
+html[data-perf="lite"][data-layout="haze"] .btn-glass:hover { background: rgb(255 255 255 / .22); }
+
+/* What is switched on: a flat tint under the same ring. A segmented control's sliding pill
+   carries it for its group, so the pressed button there stays clear. */
+html[data-perf="lite"][data-layout="haze"] :is(
+  .btn-glass.is-on, .chip[aria-pressed="true"], .chip.on, .seg:not(.has-pill) button[aria-pressed="true"], .preset[aria-pressed="true"],
+  .discover-source[aria-pressed="true"], .addons-chip[aria-pressed="true"], .poster-save.is-saved, .poster-save:hover, .wide-remove:hover, .seg-pill
+) {
+  background: rgb(var(--haze-rgb) / .24);
+}
+
+/* Lines, bars and rings keep their colour and lose their glow. */
+html[data-perf="lite"][data-layout="haze"] :is(.tabs button, .settings-nav-item)::after,
+html[data-perf="lite"][data-layout="haze"] :is(.wide-progress span, .dl-progress i, .source-cache-bar i) { box-shadow: none; }
+
+/* Cards: the coloured edge marks the one under the pointer or the keyboard; nothing lifts. */
+html[data-perf="lite"][data-layout="haze"] .card-face:hover,
+html[data-perf="lite"][data-layout="haze"] .card-face:focus-visible { transform: none; box-shadow: none; }
+html[data-perf="lite"][data-layout="haze"] .wide-play {
+  background: rgb(var(--haze-rgb) / .55);
+  box-shadow: inset 0 0 0 1px rgb(var(--haze-rgb) / .7);
+}
+
+/* ---- Notes, the profile card, the shortcuts sheet: opaque, with a hairline edge -------------- */
+html[data-perf="lite"] .toast { background: rgb(26 28 34); box-shadow: inset 0 0 0 1px var(--line-strong); }
+html[data-perf="lite"] .toast-error { box-shadow: inset 0 0 0 1px rgb(255 150 140 / .6); }
+html[data-perf="lite"] .profile-pop { background: rgb(18 19 24); box-shadow: inset 0 0 0 1px var(--line-strong); }
+html[data-perf="lite"] .pc-pick:hover:not(:disabled) { transform: none; }
+html[data-perf="lite"] .keys-sheet { box-shadow: inset 0 0 0 1px var(--line-strong); }
+
+/* ---- Who's watching: the ring marks the profile under the pointer or the keyboard; it doesn't rise. */
+html[data-perf="lite"] .gate-profile:hover:not(:disabled) .gate-ring,
+html[data-perf="lite"] .gate-profile:focus-visible .gate-ring { transform: none; }
+
+/* ---- Settings: the look you have is ringed, not lit; the drawings and the subtitle preview's
+   picture keep their shapes without the glow. */
+html[data-perf="lite"] .look-card[aria-checked="true"] { box-shadow: inset 0 0 0 2px rgb(var(--accent-rgb)); }
+html[data-perf="lite"] :is(.lm-rail i.on, .look-mini-haze .lm-cta) { box-shadow: none; }
+html[data-perf="lite"] .look-mini-haze .lm-cta { background: rgb(var(--accent-rgb) / .7); }
+html[data-perf="lite"] .sub-preview { background: linear-gradient(180deg, #1c2734 0%, #33404c 46%, #5a4a40 58%, #131a22 59%, #0a0d11 100%); }
