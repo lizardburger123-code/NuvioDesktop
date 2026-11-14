@@ -248,6 +248,17 @@ jobs:
           set -uo pipefail
           mode="$1"
           export HOME="$(mktemp -d)"
+          # The runner points these at its own home: each run gets its own data instead.
+          export XDG_CONFIG_HOME="$HOME/.config" XDG_CACHE_HOME="$HOME/.cache" XDG_DATA_HOME="$HOME/.local/share"
+          # A computer in use rather than a first start, which stops at the sign-in screen before
+          # the new interface starts: signed in without an account, one profile, the public
+          # Cinemeta catalog (no key) on Home in the Haze look, and no "Who's watching?" step.
+          config="$XDG_CONFIG_HOME/nuvio"
+          mkdir -p "$config"
+          echo 'anonymous_user_id=ci-measure' > "$config/nuvio_auth.properties"
+          echo 'profiles={"userId":"ci-measure","activeProfileIndex":1,"hasEverSelectedProfile":true,"profiles":[{"profile_index":1,"name":"Test"}]}' > "$config/nuvio_profiles.properties"
+          echo 'installed_addon_urls_1=["https://v3-cinemeta.strem.io/manifest.json"]' > "$config/nuvio_addons.properties"
+          echo 'appearance={"layout":"haze","profileGate":false}' > "$config/nuvio_shell.properties"
           export NUVIO_PERFORMANCE="$mode"
           # The JVM's own record of its collections, for the table, and its heap sized as on a 4 GB
           # computer, the kind the Linux JVM options are chosen for (the JVM notes both in the log).
@@ -286,7 +297,7 @@ jobs:
           pkill -f nuvio-shell-host; pkill -f 'WebKit(Web|Network|GPU)Process'
           {
             echo "The installed app 40 s after it started on a virtual display ($(nproc) cores, $(free -g | awk '/^Mem:/ { print $2 }') GB), NUVIO_PERFORMANCE=full and =lite."
-            echo "Its Java heap is sized as on a 4 GB computer (-XX:MaxRAM=4g)."
+            echo "Signed in without an account, one profile, Cinemeta's catalogs on Home, Haze look. Java heap sized as on a 4 GB computer (-XX:MaxRAM=4g)."
             echo "CPU s: processor time since the start. CPU %: of one core over the last 10 s, at rest."
             echo "RSS counts shared libraries in every process; PSS divides them between the processes."
             printf '%-5s %-38s %7s %7s %7s %6s\n' mode process "RSS MB" "PSS MB" "CPU s" "CPU %"
