@@ -84,6 +84,8 @@ internal data class ShellAppearance(
     val hazeArt: Boolean = true,
     /** Home dashboard tiles the user hid (spotlight, resume, later, library). */
     val hiddenTiles: List<String> = emptyList(),
+    /** Settings › Performance: "auto" (lite on a modest computer), "lite" or "full". See ShellPerformance. */
+    val performance: String = "auto",
 )
 
 /** Colours, wallpaper and motion of the shell. The custom wallpaper is a JPEG next to the prefs. */
@@ -92,12 +94,15 @@ internal object ShellAppearanceStore {
     private val store by lazy { DesktopStorage.store("nuvio_shell") }
     private val wallpaperFile by lazy { DesktopStorage.rootDir.resolve("shell-wallpaper.jpg") }
 
+    /** The saved appearance. Its performance choice goes to ShellPerformance on every load and save. */
     fun load(): ShellAppearance =
-        store.getString(Key)?.let { runCatching { storeJson.decodeFromString(ShellAppearance.serializer(), it) }.getOrNull() }
-            ?: ShellAppearance()
+        (store.getString(Key)?.let { runCatching { storeJson.decodeFromString(ShellAppearance.serializer(), it) }.getOrNull() }
+            ?: ShellAppearance())
+            .also { ShellPerformance.setSavedChoice(it.performance) }
 
     fun save(value: ShellAppearance) {
         store.putString(Key, storeJson.encodeToString(ShellAppearance.serializer(), value))
+        ShellPerformance.setSavedChoice(value.performance)
     }
 
     fun wallpaperDataUrl(): String? = runCatching {

@@ -424,8 +424,9 @@ internal class ShellRpc(private val host: ShellHost) {
         val avatars = state.profiles.associate { profile ->
             profile.profileIndex to (if (profile.profileIndex == active?.profileIndex) avatar else runCatching { ShellProfiles.avatarFor(profile) }.getOrNull())
         }
-        // The wallpaper (up to several megabytes) is read and encoded off the window's thread.
-        val appearance = withContext(Dispatchers.IO) { appearanceJson() }
+        // The wallpaper (up to several megabytes) is read and encoded off the window's thread, and
+        // so are the system files that tell how capable the computer is.
+        val (appearance, device) = withContext(Dispatchers.IO) { appearanceJson() to deviceJson() }
         return buildJsonObject {
             put("profile", buildJsonObject {
                 put("id", active?.profileIndex ?: activeIndex)
@@ -446,6 +447,7 @@ internal class ShellRpc(private val host: ShellHost) {
             })
             put("version", AppVersionConfig.DESKTOP_VERSION_NAME)
             put("appearance", appearance)
+            put("device", device)
             put("native", true)
         }
     }
@@ -991,6 +993,23 @@ internal class ShellRpc(private val host: ShellHost) {
             put("layout", value.layout)
             put("hazeArt", value.hazeArt)
             put("hiddenTiles", ShellJson.strings(value.hiddenTiles))
+            // The choice in force: NUVIO_PERFORMANCE's when it fixes it (the bootstrap's
+            // device.overridden), so the page resolves the same mode as the player and the helper.
+            put("performance", ShellPerformance.choice())
+        }
+    }
+
+    /** What the app found out about this computer: Settings › Performance says what Auto picked and why. */
+    private fun deviceJson(): JsonObject {
+        val hardware = ShellPerformance.hardware
+        return buildJsonObject {
+            put("os", hardware.os)
+            put("cores", hardware.cores)
+            put("memoryMb", hardware.memoryMb)
+            put("softwareRender", hardware.softwareRender)
+            put("lowEnd", hardware.lowEnd)
+            put("reason", hardware.reason)
+            put("overridden", ShellPerformance.overridden())
         }
     }
 
@@ -1005,6 +1024,7 @@ internal class ShellRpc(private val host: ShellHost) {
         params.bool("trophySound")?.let { value = value.copy(trophySound = it) }
         params.string("layout")?.takeIf { it in setOf("cinema", "haze") }?.let { value = value.copy(layout = it) }
         params.bool("hazeArt")?.let { value = value.copy(hazeArt = it) }
+        params.string("performance")?.trim()?.lowercase()?.takeIf { it in ShellPerformance.Choices }?.let { value = value.copy(performance = it) }
         (params["hiddenTiles"] as? JsonArray)?.let { list ->
             value = value.copy(hiddenTiles = list.asStringList().filter { it in setOf("spotlight", "resume", "later", "library") }.distinct())
         }
