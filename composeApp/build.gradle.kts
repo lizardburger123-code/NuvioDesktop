@@ -1302,6 +1302,35 @@ compose.desktop {
             "--add-opens=java.desktop/sun.awt.X11=ALL-UNNAMED",
             smokePlayerUrl?.takeIf { it.isNotBlank() }?.let { "-Dnuvio.desktop.smokePlayerUrl=$it" },
         )
+        // Linux packages (the build runs on the system it packages for). The Linux build also has
+        // to run on modest computers: 2 to 4 cores and 4 GB shared with the desktop, WebKit's
+        // processes and the video player. The JVM's defaults suit a server instead: a quarter of
+        // memory for the heap, collector threads, compiler threads and samplers sized by core count.
+        // The Java side here is light (the interface and the video live in other processes and in
+        // native code), so it gives most of that back without a strong computer noticing.
+        if (isLinuxHost) {
+            jvmArgs += listOf(
+                // The serial collector: the least memory of its own and no threads of its own
+                // competing with WebKit and the player for a few cores. With a heap this small its
+                // pauses stay short; it is what the JVM itself picks on smaller computers.
+                "-XX:+UseSerialGC",
+                // The heap may grow to a fifth of memory instead of a quarter (800 MB rather than
+                // 1 GB on a 4 GB computer). It only grows as far as the app needs below that.
+                "-XX:MaxRAMPercentage=20",
+                // Loading the app's classes passes the 21 MB class-metadata mark that starts a
+                // collection several times during start-up, and with the serial collector each
+                // of those is a full one. Starting at 128 MB skips them; it reserves nothing.
+                "-XX:MetaspaceSize=128m",
+                // One compiler thread of each kind. On 4 cores the default runs a second optimizing
+                // compiler, which competes with the interface for the processor as the app starts.
+                "-XX:CICompilerCount=2",
+                // Room for compiled code: 240 MB by default, of which this app uses a fraction.
+                "-XX:ReservedCodeCacheSize=128m",
+                // No performance counters: they wake the JVM 20 times a second and keep a
+                // shared-memory file in /tmp, for monitoring tools a desktop app never meets.
+                "-XX:-UsePerfData",
+            )
+        }
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Rpm, TargetFormat.AppImage)
