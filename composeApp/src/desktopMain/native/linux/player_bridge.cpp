@@ -118,6 +118,10 @@ struct Player {
     bool gateOpen = false;
     int idleTicks = 0;
     gint64 lastUpdateAt = 0;  // monotonic µs of the last playerUpdate
+    // Lite performance mode, from the controls state's "lite" (see liteSnapshotDue).
+    bool lite = false;
+    gint64 liteBusyUntil = 0;  // monotonic µs: the page counts as changing until then
+    gint64 liteSnapAt = 0;     // monotonic µs of the last snapshot asked for in Lite
     // X input focus owner before the overlay grabbed it (teardown restores it;
     // 0 = nothing saved). The overlay holds real X focus while the player is
     // attached — WKWebView/WebView2 parity — so the page's own keydown
@@ -320,6 +324,68 @@ std::string joinHeaderFields(const std::vector<std::string> &headers) {
 
 Player *asPlayer(jlong handle) { return reinterpret_cast<Player *>(handle); }
 
+// ---- Lite performance mode -------------------------------------------------
+// The app's mode for modest computers, learned from the controls state's
+// "lite". The controls page is snapshotted only while it may be changing, at a
+// lower rate, and mpv draws the picture more cheaply. Full snapshots on every
+// tick the overlay is up, as before.
+
+// While the page is changing (input on it, a message from it, new state, the
+// loading screen): one snapshot per kLiteBusyUs at most, until kLiteSettleUs
+// after the last change. Otherwise, for what moves by itself (the clock, a
+// countdown): one per kLiteQuietUs.
+constexpr gint64 kLiteBusyUs = 80 * 1000;
+constexpr gint64 kLiteSettleUs = 400 * 1000;
+constexpr gint64 kLiteQuietUs = 500 * 1000;
+
+// The controls page may be changing what it shows. GTK thread only.
+void noteOverlayChange(Player *player) {
+    player->liteBusyUntil = g_get_monotonic_time() + kLiteSettleUs;
+}
+
+// Lite: whether this tick may snapshot the controls page. GTK thread only.
+bool liteSnapshotDue(Player *player, bool loading) {
+    const gint64 now = g_get_monotonic_time();
+    // The loading screen counts as changing: its spinner turns.
+    const bool busy = loading || now < player->liteBusyUntil;
+    if (now - player->liteSnapAt < (busy ? kLiteBusyUs : kLiteQuietUs)) return false;
+    player->liteSnapAt = now;
+    return true;
+}
+
+// What mpv gives up in Lite, little of it visible: sharper scalers and their
+// linear-light passes (plain bilinear instead), debanding, frame interpolation,
+// HDR peak measuring (a compute pass per frame), exact decoding in favour of
+// the decoder's fast shortcuts, and most of the stream cache (64 MiB ahead and
+// 16 MiB behind instead of 150 and 50). All can change while a file plays; the
+// decoder shortcuts count from the decoder's start, which is normally still
+// ahead when the first controls state arrives (the stream is still opening).
+constexpr const char *kLiteMpvOptions[][2] = {
+    {"scale", "bilinear"},
+    {"cscale", "bilinear"},
+    {"dscale", "bilinear"},
+    {"correct-downscaling", "no"},
+    {"linear-downscaling", "no"},
+    {"sigmoid-upscaling", "no"},
+    {"deband", "no"},
+    {"interpolation", "no"},
+    {"hdr-compute-peak", "no"},
+    {"vd-lavc-fast", "yes"},
+    {"demuxer-max-bytes", "64MiB"},
+    {"demuxer-max-back-bytes", "16MiB"},
+};
+
+void applyLiteMpvOptions(Player *player) {
+    if (!player->mpv) return;
+    for (const auto &option : kLiteMpvOptions) {
+        const int status = mpv_set_property_string(player->mpv, option[0], option[1]);
+        if (status < 0) {
+            NUVIO_ERR("lite: mpv refused %s=%s (%s)", option[0], option[1], mpv_error_string(status));
+        }
+    }
+    NUVIO_LOG("lite: cheaper scaling and decoding, smaller stream cache");
+}
+
 // ---- WebKitGTK controls overlay -----------------------------------------
 // The controls are the SAME shared HTML page macOS/Windows use. JS talks to
 // us via window.webkit.messageHandlers.player.postMessage({type,value}) — a
@@ -458,6 +524,13 @@ void onPlayerMessage(WebKitUserContentManager *, WebKitJavascriptResult *js, gpo
     // it is up. cursorActivity also arrives while hidden (mouse woke the UI) and
     // must re-activate compositing so the fade-in is actually shown.
     if (type) {
+        // Lite: whatever the page says, it may be changing what it shows; but
+        // not its keep-alive for a pop-up (overlayHold, every 400ms while one is
+        // up) nor what only Windows acts on.
+        if (strcmp(type, "overlayHold") != 0 && strcmp(type, "subtitleOverlayMode") != 0 &&
+            strcmp(type, "glassRects") != 0) {
+            noteOverlayChange(player);
+        }
         if (strcmp(type, "setPlaybackState") == 0 ||
             strcmp(type, "setPlaybackStateQuiet") == 0) {
             bool shouldPlay = value >= 0.5;
@@ -745,13 +818,14 @@ void compositeOverlay(Player *player) {
         // Off screen the page only got the clock once a second (see
         // pushPlayerUpdate): bring it up to date before its first snapshot.
         sendPlayerUpdate(player);
+        noteOverlayChange(player);
     }
     if (!player->snapInFlight && player->webview) {
         if (player->snapCooldownTicks > 0) {
             // Backing off after a watchdog reset: a stalled web process gets no
             // relief from being asked again immediately.
             player->snapCooldownTicks--;
-        } else {
+        } else if (!player->lite || liteSnapshotDue(player, loading)) {
             player->snapInFlight = true;
             player->snapWaitTicks = 0;
             if (!player->snapCancel) player->snapCancel = g_cancellable_new();
@@ -1060,6 +1134,34 @@ gboolean onLoadFailed(WebKitWebView * /*wv*/, WebKitLoadEvent /*event*/,
     return FALSE;
 }
 
+// Lite: input on the controls page changes it (hover, dragging the bar, a menu
+// scrolling) before the page says anything, if it does at all.
+gboolean onOverlayInput(GtkWidget *, GdkEvent *event, gpointer data) {
+    auto *player = static_cast<Player *>(data);
+    if (!playerAlive(player)) return FALSE;
+    switch (event->type) {
+        case GDK_MOTION_NOTIFY:
+        case GDK_BUTTON_PRESS:
+        case GDK_DOUBLE_BUTTON_PRESS:
+        case GDK_TRIPLE_BUTTON_PRESS:
+        case GDK_BUTTON_RELEASE:
+        case GDK_SCROLL:
+        case GDK_KEY_PRESS:
+        case GDK_KEY_RELEASE:
+        case GDK_ENTER_NOTIFY:
+        case GDK_LEAVE_NOTIFY:
+        case GDK_TOUCH_BEGIN:
+        case GDK_TOUCH_UPDATE:
+        case GDK_TOUCH_END:
+        case GDK_TOUCH_CANCEL:
+            noteOverlayChange(player);
+            break;
+        default:
+            break;
+    }
+    return FALSE;
+}
+
 // Runs on the GTK thread: build a transparent WebKitGTK window, reparent it
 // as a child of the host AWT/X11 window (over the mpv video), load the
 // controls page, and start the state-push timer.
@@ -1209,6 +1311,7 @@ gboolean createWebviewOnGtk(gpointer data) {
                          return TRUE;
                      }),
                      player);
+    g_signal_connect(wv, "event", G_CALLBACK(onOverlayInput), player);
 
     if (!adopted) gtk_container_add(GTK_CONTAINER(win), GTK_WIDGET(wv));
 
@@ -1355,6 +1458,13 @@ bool jsonFlag(const std::string &json, const char *key, bool fallback) {
 gboolean applyControlsOnGtk(gpointer data) {
     auto *u = static_cast<ControlsUpdate *>(data);
     if (playerAlive(u->player)) {
+        // The performance mode travels in the same state ("lite"). Settings is
+        // out of reach while a film plays, so the mode holds for the whole film:
+        // mpv's Lite options are set when it is first seen.
+        const bool lite = jsonFlag(u->json, "lite", false);
+        if (lite && !u->player->lite) applyLiteMpvOptions(u->player);
+        u->player->lite = lite;
+        noteOverlayChange(u->player);
         // Chrome visibility travels authoritatively in this state JSON. The
         // page's hideChrome message only covers its own idle-timer hides —
         // fullscreen hides are decided on the Kotlin side and arrive here as a
