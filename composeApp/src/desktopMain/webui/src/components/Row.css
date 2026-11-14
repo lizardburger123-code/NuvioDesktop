@@ -59,3 +59,7 @@
 
 /* Lite: the row's tools appear and change without moving. */
 html[data-perf="lite"] :is(.row-title-link, .row-title-link svg, .row-arrow, .row-hide, .row-end-more, .row-end-more-icon) { transition: none; }
+/* Lite rows let their cards go when far from the window (Row.jsx) and hold their height meanwhile,
+   so the track needs no skipping of its own; skipped, it would also report a stale width just as
+   its cards come back, and the row couldn't return to where it was scrolled. */
+html[data-perf="lite"] .row-track { content-visibility: visible; }

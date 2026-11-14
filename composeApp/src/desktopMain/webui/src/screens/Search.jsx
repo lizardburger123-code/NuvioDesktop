@@ -11,7 +11,7 @@ import { useScreenActive } from "../lib/screen.js";
 import { recovered } from "../lib/session.js";
 import { loadHistory, recordSearch } from "../lib/searchHistory.js";
 import { EASE, useSegmentPill } from "../lib/motion.js";
-import { calm, scrollMotion, useChunks } from "../lib/lite.js";
+import { Pictures, calm, scrollMotion, useChunks, usePicturesValue, watchWindow } from "../lib/lite.js";
 import "./Search.css";
 
 const TYPING_MS = 300; // a pause this long in typing runs the search
@@ -429,9 +429,10 @@ function NoResults({ query, onSuggest }) {
 /** All of one kind, as a grid; Lite draws it a few lines at a time as it is scrolled. */
 function ResultGrid({ items, card }) {
   const { shown, more, endRef } = useChunks(items);
+  const pictures = usePicturesValue(watchWindow);
   return (
     <>
-      <div className="search-grid">{shown.map(card)}</div>
+      <div className="search-grid"><Pictures.Provider value={pictures}>{shown.map(card)}</Pictures.Provider></div>
       {more ? <div ref={endRef} className="search-grid-more" aria-hidden="true" /> : null}
     </>
   );

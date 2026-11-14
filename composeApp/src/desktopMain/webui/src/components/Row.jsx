@@ -2,13 +2,21 @@ import { Children, useCallback, useEffect, useLayoutEffect, useRef, useState } f
 import { LuArrowRight, LuChevronLeft, LuChevronRight } from "react-icons/lu";
 import { useScreenActive } from "../lib/screen.js";
 import { BEFORE_NAV } from "../lib/router.js";
-import { scrollMotion, useLite } from "../lib/lite.js";
+import { Pictures, scrollMotion, useLite, usePicturesValue, watchNear } from "../lib/lite.js";
+
+// Lite: a card in a row keeps its picture while it is within the row's width of what the row
+// shows (scrolled past, or not yet reached, it lets it go).
+const ROW_PICTURES = "0px 100%";
 import "./Row.css";
 
 // Lite draws a row's first cards, and more as it is scrolled (or its keyboard focus moves)
 // toward its end: a catalog of a hundred titles costs a dozen cards until someone looks further.
 const LITE_FIRST = 12;
 const LITE_STEP = 12;
+// Lite also lets a row's cards go once it is a window and a half away (their pictures with them),
+// and draws them again as it comes back within a few hundred pixels.
+const LITE_ENTER = "300px 0px";
+const LITE_LEAVE = "150% 0px";
 
 // The card each screen was left from, so coming back puts the keyboard where it was.
 const leftFrom = new WeakMap();
@@ -66,7 +74,8 @@ const moveWithin = (track, event) => {
 
 /**
  * A titled horizontal shelf. Children render only once the row nears the viewport; in Lite only
- * its first cards do, and the rest as the row is scrolled toward them.
+ * its first cards do, the rest as the row is scrolled toward them, and they go again when the
+ * row is far from the window.
  */
 export default function Row({ title, subtitle, action, children, className = "", empty, onMore, moreLabel = "See all" }) {
   const rowRef = useRef(null);
@@ -91,18 +100,58 @@ export default function Row({ title, subtitle, action, children, className = "",
 
   useEffect(() => {
     const node = rowRef.current;
-    if (!node) return undefined;
+    if (!node || lite) return undefined;
     const observer = new IntersectionObserver(entries => {
       if (entries.some(entry => entry.isIntersecting)) {
         setNear(true);
         observer.disconnect();
       }
-    }, { rootMargin: lite ? "300px 0px" : "600px 0px" });
+    }, { rootMargin: "600px 0px" });
     observer.observe(node);
     return () => observer.disconnect();
-    // Where a row starts drawing is decided once, when it is made.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lite]);
+
+  // Lite: what an emptied row holds on to, so the page doesn't move and the row comes back where
+  // it was scrolled to. Followed only while the screen is on display.
+  const held = useRef({ height: 0, left: 0 });
+  // One observer for the row's cards, looking through the row itself (made when the first asks).
+  const cardWatch = useRef(null);
+  const watchCards = useCallback((element, onChange) => {
+    const track = trackRef.current;
+    if (!track) return () => {};
+    if (!cardWatch.current) {
+      const callbacks = new Map();
+      const observer = new IntersectionObserver(entries => {
+        entries.forEach(entry => callbacks.get(entry.target)?.(entry.isIntersecting));
+      }, { root: track, rootMargin: ROW_PICTURES });
+      cardWatch.current = { observer, callbacks };
+    }
+    const { observer, callbacks } = cardWatch.current;
+    callbacks.set(element, onChange);
+    observer.observe(element);
+    return () => { observer.unobserve(element); callbacks.delete(element); };
   }, []);
+  useEffect(() => () => cardWatch.current?.observer.disconnect(), []);
+  const pictures = usePicturesValue(watchCards);
+  useEffect(() => {
+    const node = rowRef.current;
+    if (!node || !lite || !active) return undefined;
+    const offEnter = watchNear(node, LITE_ENTER, inside => { if (inside) setNear(true); });
+    const offLeave = watchNear(node, LITE_LEAVE, inside => {
+      const track = trackRef.current;
+      // A row with the keyboard in it stays as it is.
+      if (inside || !track || track.contains(document.activeElement)) return;
+      if (!track.querySelector(":scope > .row-placeholder")) held.current = { height: track.offsetHeight, left: track.scrollLeft };
+      setNear(false);
+    });
+    return () => { offEnter(); offLeave(); };
+  }, [lite, active]);
+  useLayoutEffect(() => {
+    const track = trackRef.current;
+    if (!near || !track || !held.current.left) return;
+    track.scrollLeft = held.current.left;
+    held.current.left = 0;
+  }, [near]);
 
   const measure = useCallback(() => {
     const track = trackRef.current;
@@ -192,8 +241,15 @@ export default function Row({ title, subtitle, action, children, className = "",
           )}
         </div>
       </header>
-      <div className="row-track" ref={trackRef} onScroll={measure} onKeyDown={onKeyDown} onFocus={lite ? onFocus : undefined}>
-        {!near ? <div className="row-placeholder" /> : lite ? items.slice(0, limit) : children}
+      <div
+        className="row-track"
+        ref={trackRef}
+        style={!near && held.current.height ? { minHeight: held.current.height } : undefined}
+        onScroll={measure}
+        onKeyDown={onKeyDown}
+        onFocus={lite ? onFocus : undefined}
+      >
+        {!near ? (held.current.height ? null : <div className="row-placeholder" />) : lite ? <Pictures.Provider value={pictures}>{items.slice(0, limit)}</Pictures.Provider> : children}
         {near && onMore && !more ? (
           <button className="row-end-more" onClick={onMore} aria-label={`${moreLabel}: ${title}`}>
             <span className="row-end-more-icon"><LuArrowRight /></span>
