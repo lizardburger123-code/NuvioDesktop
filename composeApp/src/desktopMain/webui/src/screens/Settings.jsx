@@ -12,7 +12,7 @@ import { navigate } from "../lib/router.js";
 import { useSegmentPill } from "../lib/motion.js";
 import { reloadApp } from "../lib/session.js";
 import { LOOKS, lookOf, switchLook } from "../lib/look.js";
-import { resolvePerf } from "../lib/perf.js";
+import { resolvePerf, usePerf } from "../lib/perf.js";
 import { SHORTCUTS } from "../lib/nav.js";
 import { PROFILE_CARD, initials } from "../components/TopBar.jsx";
 import "./Settings.css";
@@ -162,6 +162,7 @@ function Appearance() {
 
   const mode = appearance.wallpaper?.mode || "featured";
   const look = lookOf(appearance);
+  const lite = usePerf() === "lite";
   return (
     <>
       <Panel title="Look" description="Two interfaces over the same library. Switch whenever you like (Ctrl+Shift+L does it from anywhere); nothing else changes." saved={saved === "look"}>
@@ -200,7 +201,7 @@ function Appearance() {
           <div className="classic-row look-art">
             <div>
               <strong>Colour from the artwork</strong>
-              <p>Each title's page and the featured title on Home take their accent from the picture. Off, everything uses your accent below.</p>
+              <p>Each title's page and the featured title on Home take their accent from the picture. Off, everything uses your accent below.{lite ? " Lite always uses your accent." : null}</p>
             </div>
             <Toggle checked={appearance.hazeArt !== false} onChange={value => update({ hazeArt: value }, "look")} label="Colour from the artwork" />
           </div>
@@ -248,6 +249,7 @@ function Appearance() {
           </span>
           <Toggle checked={appearance.blurArt === true} onChange={value => update({ blurArt: value }, "backdrop")} label="Blur title artwork too" />
         </div>
+        {lite ? <p className="perf-note">Lite shows pictures without blur (Settings › Performance).</p> : null}
       </Panel>
 
 
