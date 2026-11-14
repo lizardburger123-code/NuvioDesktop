@@ -67,9 +67,10 @@ internal object ShellSeasons {
         if (started) return
         started = true
         ShellAiring.onStillAiring = ::takeBack
-        // Seasons that were waiting for their run to end: look again a little after launch.
+        // Seasons that were waiting for their run to end: look again a little after launch (in
+        // Lite, once start-up is well over: each look fetches a whole series' details).
         scope.launch {
-            delay(20_000)
+            delay(if (ShellPerformance.isLite()) 90_000L else 20_000L)
             val pending = synchronized(this@ShellSeasons) { waiting.toList() }
             pending.forEach { line ->
                 val parts = line.split('|')

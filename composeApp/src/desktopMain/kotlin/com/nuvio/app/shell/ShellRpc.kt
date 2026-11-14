@@ -47,6 +47,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -54,6 +55,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
@@ -81,6 +84,9 @@ internal interface ShellHost {
 
 /** How long unmarking an episode can still bring back the resume point that marking it cleared. */
 private const val KEEP_CLEARED_PROGRESS_MS = 10 * 60 * 1000L
+
+/** Lite: the shortest time between two sends of one topic (see watch). */
+private const val LITE_TOPIC_SPACING_MS = 400L
 
 /**
  * Answers the page's requests from the app's repositories and pushes their state as topics.
@@ -150,6 +156,11 @@ internal class ShellRpc(private val host: ShellHost) {
                 } ?: return@collect
                 last = data
                 push(topic, data)
+                // Lite: a topic that changes in bursts (Home and Search as each addon answers, the
+                // sources as they arrive) is sent at most every LITE_TOPIC_SPACING_MS, so the page
+                // redraws long lists less often. The flow is conflated: the latest value still
+                // follows once this wait is over.
+                if (ShellPerformance.isLite()) delay(LITE_TOPIC_SPACING_MS)
             }
         }
     }
@@ -563,11 +574,18 @@ internal class ShellRpc(private val host: ShellHost) {
 
     private fun subscribeLibrary(): JsonElement {
         LibraryRepository.ensureLoaded()
-        watch("library", combine(LibraryRepository.uiState, HomeRepository.uiState) { library, home -> library to home }) { (library, home) ->
-            val cloud = home.sections
-                .filter { section -> section.title.contains("library", ignoreCase = true) || section.key.contains("library", ignoreCase = true) }
-                .flatMap { it.items }
-                .distinctBy { "${it.type}:${it.id}" }
+        // Only Home's library rows matter here. Home changes many times while its rows load, and
+        // the whole library used to be rebuilt and compared each time.
+        val cloudRows = HomeRepository.uiState
+            .map { home ->
+                home.sections
+                    .filter { section -> section.title.contains("library", ignoreCase = true) || section.key.contains("library", ignoreCase = true) }
+                    .flatMap { it.items }
+                    .distinctBy { "${it.type}:${it.id}" }
+            }
+            .distinctUntilChanged()
+            .flowOn(Dispatchers.Default)
+        watch("library", combine(LibraryRepository.uiState, cloudRows) { library, cloud -> library to cloud }) { (library, cloud) ->
             buildJsonObject {
                 put("items", buildJsonArray { library.items.forEach { add(ShellJson.libraryItem(it)) } })
                 put("cloud", buildJsonArray { cloud.forEach { add(ShellJson.preview(it)) } })

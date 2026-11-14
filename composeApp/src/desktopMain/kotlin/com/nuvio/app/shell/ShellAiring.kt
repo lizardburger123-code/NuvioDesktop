@@ -7,6 +7,7 @@ import com.nuvio.app.features.details.MetaDetailsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,6 +35,11 @@ internal object ShellAiring {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val store by lazy { DesktopStorage.store("nuvio_shell") }
     private val gate = Semaphore(3)
+    /** Lite: one look at a time, and none while the app is still starting (see [review]). */
+    private val liteGate = Semaphore(1)
+    private const val LiteStartMs = 60_000L
+    /** About when the app started: the record is first needed as Home subscribes. */
+    private val since = System.currentTimeMillis()
     private const val Key = "airing_verdicts"
     private const val OngoingRecheckDays = 2L
     private const val EndedRecheckDays = 45L
@@ -88,7 +94,11 @@ internal object ShellAiring {
             if (!start) return@forEach
             scope.launch {
                 try {
-                    gate.withPermit {
+                    // Lite: these looks (a whole series' details each) are for the Trophies shelf,
+                    // not for what is on screen. They wait until start-up is over, one at a time.
+                    val lite = ShellPerformance.isLite()
+                    if (lite) delay(LiteStartMs - (System.currentTimeMillis() - since))
+                    (if (lite) liteGate else gate).withPermit {
                         val meta = runCatching { MetaDetailsRepository.fetch(type = "series", id = id, cacheResult = false) }
                             .onFailure { log.d { "No episodes for $id: ${it.message}" } }
                             .getOrNull() ?: return@withPermit

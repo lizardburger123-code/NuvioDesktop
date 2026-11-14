@@ -78,6 +78,9 @@ internal object ShellRatings {
                     val found = runCatching { load(meta, episodes, imdb, sites) }
                         .onFailure { log.d { "No extra scores for ${meta.name}: ${it.message}" } }
                         .getOrDefault(Extra())
+                    // One entry per title opened, a long series' episode scores included: keep a
+                    // bounded number. The title just loaded (the one on screen) goes in after.
+                    if (cache.size >= 100) cache.clear()
                     cache[key] = found
                     inFlight.remove(key)
                     _version.update { it + 1 }
