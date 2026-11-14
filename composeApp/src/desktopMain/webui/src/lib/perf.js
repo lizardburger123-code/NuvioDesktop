@@ -25,6 +25,19 @@ export function rememberedPerf() {
   try { return window.localStorage.getItem(KEY) === "lite" ? "lite" : "full"; } catch { return "full"; }
 }
 
+/** A mode the preview forces with ?perf=lite or ?perf=full, else null (the app's page has none). */
+export function forcedPerf() {
+  try {
+    const value = new URLSearchParams(window.location.search).get("perf");
+    return value === "lite" || value === "full" ? value : null;
+  } catch { return null; }
+}
+
+// What the app found out about this computer (the bootstrap's `device`), for "auto".
+let device = null;
+export const setPerfDevice = value => { device = value && typeof value === "object" ? value : null; };
+export const perfDevice = () => device;
+
 /** Puts a mode in force and tells everything that follows it. */
 export function applyPerf(mode) {
   const next = mode === "lite" ? "lite" : "full";

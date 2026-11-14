@@ -10,6 +10,7 @@ import { playScreenEntrance } from "./lib/motion.js";
 import { recovered, reloadApp } from "./lib/session.js";
 import { setArtProxy } from "./lib/artColor.js";
 import { switchLook } from "./lib/look.js";
+import { setPerfDevice } from "./lib/perf.js";
 import { ScreenActiveContext } from "./lib/screen.js";
 import { SHORTCUTS, focusSearch } from "./lib/nav.js";
 import Shortcuts from "./components/Shortcuts.jsx";
@@ -457,6 +458,8 @@ export default function App() {
     call("app.bootstrap").then(
       data => {
         if (!alive) return;
+        // Known before the appearance is applied: "auto" goes by what the app found out about it.
+        setPerfDevice(data.device);
         applyAppearance(data.appearance);
         setBoot(data);
         call("net.get").then(net => { if (net?.port) { imageProxy = `http://127.0.0.1:${net.port}/img?k=${encodeURIComponent(net.key || "")}&u=`; setArtProxy(imageProxy); } }, () => {});
