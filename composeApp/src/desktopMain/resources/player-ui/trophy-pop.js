@@ -13,6 +13,9 @@
   const esc = text => String(text == null ? "" : text).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
   let seenVersion = null;
+  // Cards this page has shown, by key: one that is posted again (the app sends the same film
+  // each time its progress is saved past the end) is not shown again.
+  const shownKeys = new Set();
   let busy = false;
   let audio = null;
   const queue = [];
@@ -102,7 +105,11 @@
     const now = Date.now();
     (Array.isArray(trophy.cards) ? trophy.cards : [])
       .filter(card => card && (!card.at || now - card.at < FRESH_MS))
-      .forEach(card => queue.push(card));
+      .forEach(card => {
+        if (card.key && shownKeys.has(card.key)) return;
+        if (card.key) shownKeys.add(card.key);
+        queue.push(card);
+      });
     run();
   };
 

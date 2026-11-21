@@ -12,6 +12,7 @@
 // The computer the preview pretends to run on (Settings › Performance, "auto"):
 //   &lowend          a modest one, so "auto" picks Lite
 //   &perfenv=lite    NUVIO_PERFORMANCE fixes the choice (lite, full or auto), as the app reports it
+//   &profile=2       the profile the preview starts as (an id from its list), instead of the first
 const SHELL_METHODS = [
   "app.openUrl", "app.useClassic", "legacy.open", "settings.appearance.set", "settings.subtitles.set", "settings.playback.set",
   "home.rows.set", "addons.list", "addons.remove", "addons.setEnabled", "addons.configure", "net.get", "net.set",
@@ -45,7 +46,8 @@ export default ctx => {
     ...Object.fromEntries(SHELL_METHODS.filter(name => ctx.base[name]).map(name => [name, guarded(name)])),
     "app.bootstrap": params => {
       const boot = ctx.base["app.bootstrap"](params);
-      return { ...boot, appearance: appearance(boot.appearance), device };
+      const profile = boot.profiles.find(p => String(p.id) === query.get("profile")) || boot.profile;
+      return { ...boot, profile, appearance: appearance(boot.appearance), device };
     },
     "settings.appearance.get": params => appearance(ctx.base["settings.appearance.get"](params)),
     "settings.appearance.set": params => {

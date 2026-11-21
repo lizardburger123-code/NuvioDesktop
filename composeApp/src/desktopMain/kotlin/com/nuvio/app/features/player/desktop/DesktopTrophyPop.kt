@@ -18,6 +18,9 @@ internal object DesktopTrophyPop {
     @Synchronized fun attach(player: Any, onPosted: () -> Unit) {
         owner = player
         refresh = onPosted
+        // A new player starts with a new controls page, which has seen nothing: the cards of the
+        // player before it would show there a second time.
+        cards = "[]"
     }
 
     @Synchronized fun detach(player: Any) {

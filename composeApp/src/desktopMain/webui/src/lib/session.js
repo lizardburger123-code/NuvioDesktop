@@ -23,6 +23,13 @@ write(SESSION, "1");
 /** This load replaces a page that was lost under the user. */
 export const recovered = loadedBefore && !intended;
 
+// A profile switch was asked for. The app changes profile before it answers, so until this page
+// is replaced what it pushes may already be the next profile's: nothing of it belongs in what
+// this page keeps for its own profile.
+let leaving = false;
+export const leavingProfile = on => { leaving = on; };
+export const isLeavingProfile = () => leaving;
+
 /** Reload on purpose (profile switch, "Try again"): a fresh start. */
 export const reloadApp = () => {
   write(INTENDED, "1");

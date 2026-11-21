@@ -10,7 +10,7 @@ import { useApp } from "../AppContext.jsx";
 import { PRESETS, accentOf, applyAppearance } from "../theme/appearance.js";
 import { navigate } from "../lib/router.js";
 import { useSegmentPill } from "../lib/motion.js";
-import { reloadApp } from "../lib/session.js";
+import { leavingProfile, reloadApp } from "../lib/session.js";
 import { LOOKS, lookOf, switchLook } from "../lib/look.js";
 import { resolvePerf, usePerf } from "../lib/perf.js";
 import { SHORTCUTS } from "../lib/nav.js";
@@ -904,7 +904,8 @@ function Profile() {
   const switchTo = profile => {
     if (switching || profile.pin || profile.id === boot.profile?.id) return;
     setSwitching(profile.id);
-    call("profiles.switch", { id: profile.id }).then(reloadApp, error => { setSwitching(null); toast(error.message, { tone: "error" }); });
+    leavingProfile(true);
+    call("profiles.switch", { id: profile.id }).then(reloadApp, error => { leavingProfile(false); setSwitching(null); toast(error.message, { tone: "error" }); });
   };
   const save = (patch, panel) => setAppearance(patch).then(ok => { if (ok) stamp(panel); });
   return (
