@@ -109,9 +109,10 @@ export default ctx => {
 
   return {
     // Every trophy card handed out, for tests; window.__mockPlayerOpen = true takes them "into
-    // the player" so they don't queue in the page.
+    // the player" so they don't queue in the page, and "silent" never answers (a busy app).
     "player.trophy": ({ cards }) => {
       window.__mockTrophyCards = [...(window.__mockTrophyCards || []), ...(cards || []).map(card => card.key)];
+      if (window.__mockPlayerOpen === "silent") return new Promise(() => {});
       return Boolean(window.__mockPlayerOpen);
     },
     "completed.remove": ({ type, id }) => { hiddenTrophies.add(`${type}:${id}`); publishTrophies(60); return true; },

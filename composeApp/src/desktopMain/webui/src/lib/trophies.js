@@ -134,6 +134,14 @@ export function newlyEarned(before, after) {
   return badges(after).filter(b => b.earned && (!prev.get(b.id)?.earned || prev.get(b.id).tier !== b.tier));
 }
 
+/** The names cards go by: one per title, per badge tier, per level and per season. */
+export const cardKeys = {
+  title: item => `case:${item.type}:${item.id}`,
+  badge: (id, tier) => `badge:${id}:${tier}`,
+  level: number => `level:${number}`,
+  season: season => `season:${season.key}`,
+};
+
 /** Level: every finished title counts; each level asks for a little more than the last. */
 export function level(items) {
   const total = items.length;
@@ -150,4 +158,54 @@ export function inReach(items, count = 3) {
     .sort((a, b) => b.progress - a.progress)
     .slice(0, count)
     .map(b => ({ ...b, nextTier: TIERS[TIERS.indexOf(b.earned ? b.tier : "") + 1] || "bronze" }));
+}
+
+/**
+ * Every card a shelf has already earned as it stands: its titles, its badges (at their tier and
+ * the ones below) and its levels. What was there when the page loaded, or arrived in bulk, is
+ * written down with these so none of it is announced later.
+ */
+export function earnedKeys(items) {
+  const keys = items.map(cardKeys.title);
+  badges(items).filter(b => b.earned).forEach(b => TIERS.slice(0, TIERS.indexOf(b.tier) + 1).forEach(tier => keys.push(cardKeys.badge(b.id, tier))));
+  for (let number = level(items).level; number > 1; number--) keys.push(cardKeys.level(number));
+  return keys;
+}
+
+// ---- Shown once ---------------------------------------------------------------------------------
+// The cards already handed out, for each profile. A card in this record never shows again,
+// whatever the app pushes later (a title's finish time moves each time its progress is saved)
+// and however often the page or the app starts again. It is kept in localStorage; where that
+// can't be read or written, in memory for as long as the page lives.
+const SHOWN = "nuvio.trophies.shown";
+const SHOWN_MAX = 4000;
+const records = new Map();
+
+function record(profile) {
+  const name = `${SHOWN}.${profile}`;
+  let entry = records.get(name);
+  if (entry) return entry;
+  entry = { name, keys: new Set() };
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(name) || "[]");
+    if (Array.isArray(saved)) saved.forEach(key => { if (typeof key === "string") entry.keys.add(key); });
+  } catch { /* a missing or damaged record is an empty one */ }
+  records.set(name, entry);
+  return entry;
+}
+
+/** Whether this profile was already shown the card with this key. */
+export const wasShown = (profile, key) => record(profile).keys.has(key);
+
+/** Writes cards down as shown, by key. The oldest are let go past a few thousand. */
+export function markShown(profile, keys) {
+  const { name, keys: known } = record(profile);
+  const size = known.size;
+  keys.forEach(key => known.add(key));
+  if (known.size === size) return;
+  for (const key of known) {
+    if (known.size <= SHOWN_MAX) break;
+    known.delete(key);
+  }
+  try { window.localStorage.setItem(name, JSON.stringify([...known])); } catch { /* memory keeps it for this page */ }
 }

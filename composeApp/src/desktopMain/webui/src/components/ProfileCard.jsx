@@ -8,7 +8,7 @@ import { level, streaks } from "../lib/trophies.js";
 import { BEFORE_NAV, goSection } from "../lib/router.js";
 import { EASE, reduceMotion } from "../lib/motion.js";
 import { holdAmbient } from "../lib/hold.js";
-import { reloadApp } from "../lib/session.js";
+import { leavingProfile, reloadApp } from "../lib/session.js";
 import "./ProfileCard.css";
 
 // What Tab can reach inside the card (the hidden file input and disabled buttons are skipped).
@@ -299,7 +299,8 @@ export default function ProfileCard({ anchorRef, onClose, closeRequest = 0, init
   const go = (name, params) => { close(); goSection(name, params); };
   const switchTo = target => {
     if (target.pin) return;
-    call("profiles.switch", { id: target.id }).then(reloadApp, () => {});
+    leavingProfile(true);
+    call("profiles.switch", { id: target.id }).then(reloadApp, () => leavingProfile(false));
   };
 
   const onPicked = result => {

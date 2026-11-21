@@ -7,7 +7,8 @@ import { reduceMotion } from "../lib/motion.js";
 import { useLite } from "../lib/lite.js";
 import { sized } from "../lib/images.js";
 import { navigate } from "../lib/router.js";
-import { level, newlyEarned } from "../lib/trophies.js";
+import { isLeavingProfile } from "../lib/session.js";
+import { cardKeys, earnedKeys, level, markShown, newlyEarned, wasShown } from "../lib/trophies.js";
 import "./TrophyToast.css";
 
 const ICONS = { shelf: LuLibrary, film: LuFilm, tv: LuTv, flame: LuFlame, layers: LuLayers, clock: LuClock, moon: LuMoon, history: LuHistory, star: LuStar, sun: LuSun, hourglass: LuHourglass, calendar: LuCalendar };
@@ -18,6 +19,9 @@ const FOLD_MS = 460;
 const LEAVE_MS = 360;
 const pct = value => Math.round(Math.max(0, Math.min(1, value)) * 100);
 const MODAL = "[data-modal-open], [aria-modal=\"true\"]";
+// More new titles than this in one push is a sync from another device or a restored profile,
+// not something just watched here (the app uses the same number for seasons).
+const BULK = 6;
 
 /**
  * A short two-note chime as the medal lands (three for platinum). The sound device is let go once
@@ -66,24 +70,31 @@ function chime(tier) {
  * beside it to say what was earned and fills the level bar, then folds away. Finishing a film or
  * a series, the last episode of a season, a badge and a new level each get one, in that order.
  * While a film is still playing, the cards go to the player and show over the video instead.
+ *
+ * Each card shows once, ever: what has been handed out is written down for the profile (see
+ * lib/trophies.js), and so is everything already earned when the page loads. A title is new
+ * when it was never on the shelf, not when its finish time moves: the app stamps that time
+ * again with every progress save while the credits roll.
  */
 export default function TrophyToast() {
-  const { appearance } = useApp();
+  const { appearance, boot } = useApp();
+  const profile = boot?.profile?.id ?? 0;
   const items = useTopic("completed", null);
   const seasons = useTopic("seasonsDone", null);
   const seen = useRef(null);
-  // Every title seen on the shelf this session, with when it was finished: one taken off and
-  // put back (Undo) keeps its old time and is not new; one finished again moves on.
-  const known = useRef(new Map());
-  const seenSeasons = useRef(null);
+  const seasonsSeen = useRef(false);
   const [queue, setQueue] = useState([]);
   const [current, setCurrent] = useState(null);
   const [retry, setRetry] = useState(0);
   const sound = appearance?.trophySound !== false;
 
   const deliver = cards => {
-    if (!cards.length) return;
-    const stamped = cards.map(card => ({ ...card, sound, at: Date.now() }));
+    const fresh = cards.filter((card, i) => !wasShown(profile, card.key) && cards.findIndex(other => other.key === card.key) === i);
+    if (!fresh.length) return;
+    // Written down before they go anywhere: a push that arrives while these are on their way
+    // to the player, waiting in the queue or on screen can't hand them out again.
+    markShown(profile, fresh.map(card => card.key));
+    const stamped = fresh.map(card => ({ ...card, sound, at: Date.now() }));
     // Over the video when the player is open; here otherwise.
     call("player.trophy", { cards: stamped }, { timeoutMs: 4000 }).then(
       shown => { if (!shown) setQueue(q => [...q, ...stamped]); },
@@ -92,31 +103,30 @@ export default function TrophyToast() {
   };
 
   useEffect(() => {
-    if (!Array.isArray(items)) return;
+    if (!Array.isArray(items) || isLeavingProfile()) return;
     const before = seen.current;
-    const added = before == null ? [] : items.filter(i => {
-      const at = known.current.get(`${i.type}:${i.id}`);
-      return at == null || (i.completedAt || 0) - at > 60e3;
-    });
-    items.forEach(i => known.current.set(`${i.type}:${i.id}`, i.completedAt || 0));
     seen.current = items;
-    if (!added.length) return; // the first load, a title put back, or one taken off
+    // The shelf as the page first sees it was earned before: nothing on it is news.
+    if (before == null) { markShown(profile, earnedKeys(items)); return; }
+    const added = items.filter(item => !wasShown(profile, cardKeys.title(item)));
+    if (!added.length) return; // a title put back, taken off, or finished again
+    if (added.length > BULK) { markShown(profile, earnedKeys(items)); return; }
     const was = level(before);
     const now = level(items);
     const bar = { from: pct(was.progress), to: now.level > was.level ? 100 : pct(now.progress) };
     const cards = added.map(item => ({
-      kind: "case", key: `case:${item.type}:${item.id}`, tier: "accent", image: item.poster,
+      kind: "case", key: cardKeys.title(item), tier: "accent", image: item.poster,
       kicker: item.type === "series" ? "Series complete" : "Film finished",
       title: item.name,
       sub: item.type === "series" ? `Every episode watched${item.episodes ? ` · ${item.episodes}` : ""}` : "Added to your trophy shelf",
       ...bar,
     }));
     newlyEarned(before, items).forEach(badge => cards.push({
-      kind: "badge", key: `badge:${badge.id}:${badge.tier}`, tier: badge.tier, icon: badge.icon,
+      kind: "badge", key: cardKeys.badge(badge.id, badge.tier), tier: badge.tier, icon: badge.icon,
       kicker: `Trophy earned · ${TIER_NAMES[badge.tier]}`, title: badge.name, sub: badge.what, ...bar,
     }));
     if (now.level > was.level) cards.push({
-      kind: "level", key: `level:${now.level}`, tier: "accent", level: now.level,
+      kind: "level", key: cardKeys.level(now.level), tier: "accent", level: now.level,
       kicker: "Level up", title: `Level ${now.level}`,
       sub: `${now.toNext} ${now.toNext === 1 ? "finish" : "finishes"} to level ${now.level + 1}`, from: 0, to: pct(now.progress),
     });
@@ -125,12 +135,14 @@ export default function TrophyToast() {
   }, [items]);
 
   useEffect(() => {
-    if (!Array.isArray(seasons)) return;
-    if (seenSeasons.current == null) { seenSeasons.current = new Set(seasons.map(s => s.key)); return; }
-    const fresh = seasons.filter(s => !seenSeasons.current.has(s.key));
-    fresh.forEach(s => seenSeasons.current.add(s.key));
-    deliver(fresh.reverse().map(s => ({
-      kind: "season", key: `season:${s.key}`, tier: "accent", image: s.poster,
+    if (!Array.isArray(seasons) || isLeavingProfile()) return;
+    if (!seasonsSeen.current) {
+      seasonsSeen.current = true;
+      markShown(profile, seasons.map(cardKeys.season));
+      return;
+    }
+    deliver([...seasons].reverse().map(s => ({
+      kind: "season", key: cardKeys.season(s), tier: "accent", image: s.poster,
       kicker: s.final ? "Final season complete" : "Season complete",
       title: `${s.name} · Season ${s.season}`,
       sub: `${s.episodes} of ${s.episodes} episodes`,
