@@ -17,6 +17,12 @@ const SORT_KEY = "nuvio.person.sort";
 const savedSort = () => { try { return window.localStorage.getItem(SORT_KEY) === "old" ? "old" : "new"; } catch { return "new"; } };
 const initialsOf = name => name.split(/\s+/).map(word => word[0] || "").join("").slice(0, 2).toUpperCase();
 const yearOf = item => Number(year(item.releaseInfo)) || null;
+// The app gives the lookup 16 seconds; an answer that hasn't come by LIMIT_MS isn't coming.
+const LIMIT_MS = 20000;
+// How long the page waits quietly before it says the lookup is slow and offers other ways on.
+const SLOW_MS = 6000;
+const sentence = text => (/[.!?]$/.test(text) ? text : `${text}.`);
+const reasonOf = error => (error?.timeout ? "The film database took too long to answer." : sentence(String(error?.message || "No answer came back").trim()));
 
 /** Everything a person is in (as cast, voice or director), newest or oldest first. */
 export default function Person({ params }) {
@@ -37,13 +43,25 @@ export default function Person({ params }) {
 
   useEffect(() => {
     if (cache.has(key)) { setState({ items: cache.get(key) }); return undefined; }
+    // Each lookup stands alone: once another person or another try has taken its place, or the
+    // screen is gone, whatever it comes back with is dropped. One that outlives LIMIT_MS is
+    // dropped by the bridge, so a late answer never replaces the message already on screen.
     let alive = true;
     setState({ loading: true });
-    call("people.works", titleId ? { name, titleId } : { name }).then(
-      result => { const items = result?.items || []; if (items.length) cache.set(key, items); if (alive) setState({ items }); },
-      error => { if (alive) setState({ error: error.message || "No answer came back.", items: [] }); },
+    const slow = window.setTimeout(() => { if (alive) setState({ loading: true, slow: true }); }, SLOW_MS);
+    call("people.works", titleId ? { name, titleId } : { name }, { timeoutMs: LIMIT_MS }).then(
+      result => {
+        window.clearTimeout(slow);
+        const items = Array.isArray(result?.items) ? result.items : [];
+        if (items.length) cache.set(key, items);
+        if (alive) setState({ items });
+      },
+      error => {
+        window.clearTimeout(slow);
+        if (alive) setState({ error: reasonOf(error), items: [] });
+      },
     );
-    return () => { alive = false; };
+    return () => { alive = false; window.clearTimeout(slow); };
   }, [key, attempt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const items = state.items || [];
@@ -73,7 +91,7 @@ export default function Person({ params }) {
         <div className="person-id">
           <span className="person-kicker">Cast and crew</span>
           <h1 className="t-page" dir="auto">{name}</h1>
-          <p className="t-meta num" role="status">{state.loading ? "Looking up their work" : items.length ? `${items.length} ${items.length === 1 ? "title" : "titles"}` : ""}</p>
+          <p className="t-meta num" role="status">{state.loading ? (state.slow ? "Still looking. The film database is slow to answer." : "Looking up their work") : items.length ? `${items.length} ${items.length === 1 ? "title" : "titles"}` : ""}</p>
         </div>
       </header>
 
@@ -90,6 +108,13 @@ export default function Person({ params }) {
         </div>
       ) : null}
 
+      {/* A slow lookup is never a dead end: the other ways on are offered while it runs. */}
+      {state.loading && state.slow ? (
+        <div className="person-wait">
+          <button className="btn btn-sm btn-glass" onClick={searchName}><LuSearch /> Search for “{name}”</button>
+          {canGoBack() ? <button className="btn btn-sm btn-line" onClick={() => back()}><LuArrowLeft /> Back</button> : null}
+        </div>
+      ) : null}
       {state.loading ? <div className="person-grid" aria-hidden="true"><SkeletonPosters count={12} /></div> : null}
       {!state.loading && items.length ? (
         <div className="person-grid">
@@ -106,7 +131,7 @@ export default function Person({ params }) {
           <h2 dir="auto">{state.error ? `Couldn't look up ${name}` : `No films or series found for ${name}`}</h2>
           <p>
             {state.error
-              ? `${state.error} Check your connection, then try again.`
+              ? `${state.error} Try again in a moment, or search for the name instead.`
               : "The open film database this page uses (Wikidata) lists nothing under exactly this name. A search may still find titles they are in."}
           </p>
           <div className="person-actions">

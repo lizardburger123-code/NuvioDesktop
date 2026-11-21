@@ -161,7 +161,7 @@ internal object ShellPeople {
     private fun personIds(name: String): List<String> {
         val url = "https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&type=item&language=en&uselang=en&limit=20&search=" +
             URLEncoder.encode(name, "UTF-8")
-        val text = suggestGet(url, 6, mapOf("User-Agent" to "NuvioDesktopFork/1.0 (cast lookup)"))
+        val text = suggestGet(url, 4, mapOf("User-Agent" to "NuvioDesktopFork/1.0 (cast lookup)"))
         val found = (suggestJson.parseToJsonElement(text) as? JsonObject)?.get("search") as? JsonArray ?: return emptyList()
         val wanted = name.lowercase()
         return found.mapNotNull { it as? JsonObject }
@@ -184,34 +184,56 @@ internal object ShellPeople {
         val literal = wanted.replace("\\", "\\\\").replace("\"", "\\\"")
         // A label match is exact ("leonardo dicaprio" misses); Wikidata's search ignores case. When
         // the search can't help, the exact label is used as before.
-        val ids = withContext(Dispatchers.IO) { runCatching { personIds(wanted) }.getOrDefault(emptyList()) }
+        val started = System.currentTimeMillis()
+        val ids = withContext(Dispatchers.IO) {
+            runCatching { personIds(wanted) }
+                .onFailure { log.d { "Wikidata's search didn't answer: ${it.message}" } }
+                .getOrDefault(emptyList())
+        }
         val whoClause = if (ids.isNotEmpty()) {
             "VALUES ?person { ${ids.joinToString(" ") { "wd:$it" }} } ?person wdt:P31 wd:Q5 ."
         } else {
             "?person rdfs:label \"$literal\"@en ; wdt:P31 wd:Q5 ."
         }
+        // Nothing but the person stands beside the UNION: everything about a work is an OPTIONAL
+        // keyed on it. Wikidata's engine runs a group's plain patterns before its UNIONs, so the
+        // IMDb id and the title as plain patterns made it read every title there is before it
+        // looked at the person, and no answer came in time (measured: none in 25 s; this shape
+        // answers in under a second). Years, not dates: a film's many release dates are one row.
         val query = """
-            SELECT ?person ?work ?workLabel ?imdb ?date ?start ?kindLabel ?role WHERE {
+            SELECT DISTINCT ?person ?work ?workLabel ?imdb (YEAR(?date) AS ?year) (YEAR(?start) AS ?startYear) ?kindLabel ?role WHERE {
               $whoClause
               { ?work wdt:P161 ?person . BIND("cast" AS ?role) }
               UNION { ?work wdt:P725 ?person . BIND("voice" AS ?role) }
               UNION { ?work wdt:P57 ?person . BIND("director" AS ?role) }
-              ?work wdt:P345 ?imdb .
+              OPTIONAL { ?work wdt:P345 ?imdb }
+              OPTIONAL { ?work rdfs:label ?workLabel . FILTER(LANG(?workLabel) = "en") }
               OPTIONAL { ?work wdt:P577 ?date }
               OPTIONAL { ?work wdt:P580 ?start }
               OPTIONAL { ?work wdt:P31 ?kind . ?kind rdfs:label ?kindLabel . FILTER(LANG(?kindLabel) = "en") }
-              ?work rdfs:label ?workLabel . FILTER(LANG(?workLabel) = "en")
             } LIMIT 4000
         """.trimIndent()
         val url = "https://query.wikidata.org/sparql?format=json&query=" + URLEncoder.encode(query, "UTF-8")
         val text = withContext(Dispatchers.IO) {
             runCatching {
-                suggestGet(url, 20, mapOf(
+                suggestGet(url, 12, mapOf(
                     "Accept" to "application/sparql-results+json",
                     "User-Agent" to "NuvioDesktopFork/1.0 (cast lookup)",
                 ))
-            }.onFailure { log.d { "Wikidata didn't answer: ${it.message}" } }.getOrNull()
-        } ?: error("Couldn't reach the film database. Try again in a moment.")
+            }.getOrElse { failure ->
+                log.w { "No work for $wanted after ${System.currentTimeMillis() - started} ms: ${failure::class.simpleName}: ${failure.message}" }
+                // suggestGet fails with "HTTP <code>" when the service answers with a refusal.
+                val status = failure.message?.takeIf { it.startsWith("HTTP ") }?.removePrefix("HTTP ")?.toIntOrNull()
+                // What the page shows: plain words; the log above has the detail.
+                error(
+                    when {
+                        failure is java.io.InterruptedIOException -> "The film database took too long to answer."
+                        status != null -> "The film database refused the request ($status)."
+                        else -> "No connection to the film database."
+                    }
+                )
+            }
+        }
         val rows = ((suggestJson.parseToJsonElement(text) as? JsonObject)?.get("results") as? JsonObject)?.get("bindings") as? JsonArray
             ?: JsonArray(emptyList())
         fun JsonObject.value(key: String): String? = (this[key] as? JsonObject)?.text("value")
@@ -221,7 +243,7 @@ internal object ShellPeople {
             val person = row.value("person") ?: return@forEach
             val imdb = row.value("imdb")?.takeIf { it.matches(Regex("tt\\d{5,}")) } ?: return@forEach
             val work = people.getOrPut(person) { LinkedHashMap() }.getOrPut(imdb) { Work(imdb, row.value("workLabel").orEmpty()) }
-            (row.value("date") ?: row.value("start"))?.take(4)?.toIntOrNull()?.let { year -> work.year = minOf(work.year ?: year, year) }
+            (row.value("year") ?: row.value("startYear"))?.toIntOrNull()?.let { year -> work.year = minOf(work.year ?: year, year) }
             row.value("kindLabel")?.let { work.kinds += it.lowercase() }
             row.value("role")?.let { work.roles += it }
         }
@@ -231,7 +253,7 @@ internal object ShellPeople {
             .filter { work -> work.name.isNotBlank() && work.kinds.none { "episode" in it || "season" in it } }
             .sortedWith(compareByDescending<Work> { it.year ?: 0 }.thenBy { it.name })
             .take(200)
-        log.i { "Work for $wanted: ${works.size} titles" }
+        log.i { "Work for $wanted: ${works.size} titles in ${System.currentTimeMillis() - started} ms" }
         val result = buildJsonObject {
             put("name", wanted)
             put("items", buildJsonArray {

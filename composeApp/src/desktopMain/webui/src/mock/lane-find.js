@@ -7,6 +7,15 @@
 // Test hooks (set from a test script before acting):
 //   window.__mockSearch = { delay: { "<query>": ms }, fail: true }   slow or failing searches
 //   a search containing "offline" fails like an unreachable addon.
+//
+// Person page (navigate("person", { name })): any name outside the cast has no works, and
+//   "Offline Person"   fails the first time, loads on "Try again"
+//   "Refused Person"   fails every time
+//   "Slow Person"      answers after 9 s (the page says it is taking longer, then loads)
+//   "Late Person"      answers after 25 s, past the page's own limit: the answer must be ignored
+//   "Silent Person"    never answers
+//   "Empty Reply"      answers with nothing at all
+//   window.__mockPeopleAsked = { name, titleId, count } is what the page last asked for.
 export default ctx => {
   const { push, base, data } = ctx;
   const option = () => window.__mockSearch || {};
@@ -44,6 +53,9 @@ export default ctx => {
   // People the preview knows (the cast of every title page, and a few more). The app asks an open
   // film database that only knows exact names; anything else has no works.
   const knownPeople = new Set([...data.cast, "Keanu Reeves", "Rosamund Pike"]);
+  // Names that show the person page's other states (see the header).
+  const peopleStates = new Set(["Offline Person", "Slow Person", "Late Person"]);
+  let offlineAsked = false;
   const worksOf = name => {
     const pool = [...data.trendingMovies, ...data.trendingSeries, ...data.library];
     const start = [...name].reduce((sum, c) => sum + c.charCodeAt(0), 0) % pool.length;
@@ -153,8 +165,15 @@ export default ctx => {
       return true;
     },
 
-    "people.works": ({ name }) => new Promise(resolve => setTimeout(() => {
-      resolve({ name, items: knownPeople.has(name) ? worksOf(name) : [] });
-    }, option().peopleDelay ?? 700)),
+    "people.works": ({ name, titleId }) => new Promise((resolve, reject) => {
+      window.__mockPeopleAsked = { name, titleId, count: (window.__mockPeopleAsked?.count || 0) + 1 };
+      const works = () => resolve({ name, items: knownPeople.has(name) || peopleStates.has(name) ? worksOf(name) : [] });
+      const after = (ms, answer) => setTimeout(answer, ms);
+      if (name === "Silent Person") return;
+      if (name === "Offline Person" && !offlineAsked) { offlineAsked = true; after(600, () => reject(new Error("No connection to the film database."))); return; }
+      if (name === "Refused Person") { after(600, () => reject(new Error("The film database refused the request (429)."))); return; }
+      if (name === "Empty Reply") { after(600, () => resolve(null)); return; }
+      after(name === "Slow Person" ? 9000 : name === "Late Person" ? 25000 : option().peopleDelay ?? 700, works);
+    }),
   };
 };

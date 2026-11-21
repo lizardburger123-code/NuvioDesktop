@@ -8,6 +8,8 @@
 .person-kinds button span { margin-left: 6px; font-weight: 500; opacity: .7; }
 .person-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
 .person-actions .btn { margin-top: 0; }
+/* Ways on while a slow lookup is still running. */
+.person-wait { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px var(--gutter) 0; }
 .person-grid { display: grid; grid-template-columns: repeat(auto-fill, 168px); gap: 28px 18px; padding: 26px var(--gutter) 0; justify-content: start; }
 
 /* In a cast list a person is a button now. */
