@@ -5,7 +5,11 @@
 # dependencies, checks every native library resolves, and runs the interface host on a virtual
 # display.
 #
-# Usage: build-arch-package.sh <path-to.deb> <version> <out-dir>
+# With the setup file (the AppImage that installs the app) as a fourth argument, the container
+# also tries that: it starts without the app's system parts, so this is where the setup's check
+# for them, its words about them and its install of them are proved.
+#
+# Usage: build-arch-package.sh <path-to.deb> <version> <out-dir> [<setup.AppImage>]
 set -euo pipefail
 
 deb="$(realpath "$1")"
@@ -16,6 +20,10 @@ work="$(mktemp -d)"
 trap 'sudo rm -rf "$work"' EXIT
 
 cp "$deb" "$work/nuvio.deb"
+if [[ -n "${4:-}" && -f "${4:-}" ]]; then
+    cp "$4" "$work/nuvio-setup.AppImage"
+    chmod a+rx "$work/nuvio-setup.AppImage"
+fi
 cp "$root/scripts/linux/custom/smoke-shell-host.sh" "$work/smoke-shell-host.sh"
 mkdir -p "$work/app-ui"
 cp -r "$root/composeApp/src/desktopMain/resources/app-ui/." "$work/app-ui/"
@@ -60,6 +68,34 @@ chown -R builder /work
 su builder -c "cd /work && makepkg --nodeps --noconfirm"
 pkg="$(ls /work/*.pkg.tar.zst | head -1)"
 echo "== package"; pacman -Qip "$pkg" | sed -n 1,14p
+setup_status=0
+if [ -f /work/nuvio-setup.AppImage ]; then
+    echo "== the setup file, on a system without the app's system parts"
+    # No FUSE in a container: the file unpacks itself to run.
+    setup() { su builder -c "APPIMAGE_EXTRACT_AND_RUN=1 /work/nuvio-setup.AppImage $*"; }
+    rc=0; setup --check > /tmp/setup-check.txt 2>&1 || rc=$?
+    cat /tmp/setup-check.txt
+    if [ "$rc" != 3 ] || ! grep -q "sudo pacman -S --needed .*mpv.*webkit2gtk-4.1" /tmp/setup-check.txt; then
+        echo "FAIL: the setup file did not name the missing parts and the command for them (exit $rc)"; setup_status=1
+    fi
+    # Installing works without them; the setup says what is still needed and how to get it.
+    rc=0; setup --install --yes --no-launch > /tmp/setup-install.txt 2>&1 || rc=$?
+    cat /tmp/setup-install.txt
+    if [ ! -x /home/builder/.local/share/nuvio/bin/Nuvio ] || [ "$rc" = 0 ] || ! grep -q "sudo pacman -S --needed" /tmp/setup-install.txt; then
+        echo "FAIL: the setup file should install the app and say which parts are still needed (exit $rc)"; setup_status=1
+    fi
+    # As the administrator it installs exactly those parts itself.
+    rc=0; APPIMAGE_EXTRACT_AND_RUN=1 /work/nuvio-setup.AppImage --install-deps || rc=$?
+    if [ "$rc" != 0 ]; then echo "FAIL: the setup file could not install the missing parts (exit $rc)"; setup_status=1; fi
+    rc=0; setup --check || rc=$?
+    if [ "$rc" != 0 ]; then echo "FAIL: parts are still reported missing after installing them (exit $rc)"; setup_status=1; fi
+    if LD_LIBRARY_PATH=/home/builder/.local/share/nuvio/lib/runtime/lib:/home/builder/.local/share/nuvio/lib/runtime/lib/server ldd /home/builder/.local/share/nuvio/lib/runtime/lib/libawt_xawt.so | grep "not found"; then
+        echo "FAIL: the app the setup file installed has missing libraries"; setup_status=1
+    fi
+    setup --uninstall --yes || setup_status=1
+    if [ -e /home/builder/.local/share/nuvio ]; then echo "FAIL: removing left the app behind"; setup_status=1; fi
+    if [ "$setup_status" = 0 ]; then echo "ok: setup file"; fi
+fi
 echo "== install with dependencies"
 pacman -U --noconfirm "$pkg" >/dev/null
 test -x /opt/nuvio/bin/Nuvio
@@ -108,6 +144,7 @@ APP
 xvfb-run -a -s "-screen 0 1440x900x24" dbus-run-session -- bash /tmp/run-app.sh || true
 grep -iE "exception|error|UnsatisfiedLink" /work/smoke-arch/app.log | head -n 8 || true
 chmod -R a+rwX /work/smoke-arch 2>/dev/null || true
+[ "$setup_status" = 0 ] || status=1
 exit $status
 ARCH
 chmod +x "$work/in-arch.sh"

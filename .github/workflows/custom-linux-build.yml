@@ -1,6 +1,7 @@
 name: Custom Linux Build
 
 # Builds this fork for Linux without the upstream project's private release secrets:
+#   * Any distribution: Nuvio-Setup-Linux-x86_64-<version>.AppImage  (one file that installs the app)
 #   * Ubuntu / Debian:  Nuvio-Linux-x86_64-<version>.deb          (Ubuntu 24.04 or newer)
 #   * Arch Linux:       nuvio-fork-bin-<version>-1-x86_64.pkg.tar.zst
 # Each is installed and started on a virtual display before it is published. Local (offline)
@@ -22,7 +23,7 @@ concurrency:
 
 jobs:
   linux:
-    name: Linux x64 (deb + Arch package)
+    name: Linux x64 (setup AppImage, deb, Arch package)
     runs-on: ubuntu-24.04
     steps:
       - name: Check out source
@@ -265,7 +266,8 @@ jobs:
           export JAVA_TOOL_OPTIONS="-XX:MaxRAM=4g -Xlog:gc:file=$PWD/gc-$mode.log"
           (openbox >/dev/null 2>&1 &)
           sleep 1
-          /opt/nuvio/bin/Nuvio > "app-$mode.log" 2>&1 &
+          # NUVIO_BIN: the app somewhere other than where the .deb puts it (the setup file's install).
+          "${NUVIO_BIN:-/opt/nuvio/bin/Nuvio}" > "app-$mode.log" 2>&1 &
           pid=$!
           sleep 30
           # Processor time is read twice: since the start, and over the last 10 seconds, at rest.
@@ -274,7 +276,7 @@ jobs:
           alive=0; kill -0 "$pid" 2>/dev/null && alive=1
           width="$(xwininfo -root -tree | grep -E '"Nuvio": \("com-nuvio-app-MainKt"' | sed -E 's/.*\)[[:space:]]+([0-9]+)x[0-9]+.*/\1/' | head -n 1)"
           # Measured after the verdict is taken, so it can't change it.
-          [ "$alive" = 1 ] && timeout 60 python3 measure-app.py report "$pid" "$mode" "cpu-$mode.json" "gc-$mode.log" >> perf.txt 2>> measure-errors.log
+          [ "$alive" = 1 ] && [ -z "${NUVIO_BIN:-}" ] && timeout 60 python3 measure-app.py report "$pid" "$mode" "cpu-$mode.json" "gc-$mode.log" >> perf.txt 2>> measure-errors.log
           kill "$pid" 2>/dev/null; sleep 2; kill -9 "$pid" 2>/dev/null
           echo "app running after 40s ($mode): $alive, window width ${width:-none}"
           # Running, and its window is really on screen (not the 1x1 placeholder of a stuck start).
@@ -310,12 +312,60 @@ jobs:
           echo "::notice title=The app at rest (full and lite)::$(sed -e 's/%/%25/g' perf-table.txt | awk 'BEGIN { ORS = "%0A" } { print }')"
           exit $status
 
+      - name: Build the setup file (AppImage)
+        shell: bash
+        run: |
+          bash ./scripts/linux/custom/build-installer-appimage.sh \
+            "artifacts/packages/Nuvio-Linux-x86_64-${NUVIO_DESKTOP_VERSION_NAME}.deb" \
+            "${FORK_VERSION}" artifacts/packages
+
+      - name: Install with the setup file and start the app
+        shell: bash
+        run: |
+          set -uo pipefail
+          setup="$(realpath "$(ls artifacts/packages/Nuvio-Setup-Linux-x86_64-*.AppImage | head -n 1)")"
+          # A home of its own, as on a computer where the app was never installed.
+          home="$(mktemp -d)"
+          as_user() { env HOME="$home" XDG_DATA_HOME="$home/.local/share" XDG_CONFIG_HOME="$home/.config" "$@"; }
+          fail() { echo "::error::$1"; exit 1; }
+          # The file mounts itself where the system has FUSE, as on a desktop; where it can't,
+          # it unpacks itself instead. Which one this runner used is noted.
+          if as_user "$setup" --help >/dev/null 2>&1; then
+            echo "The setup file runs by mounting itself (FUSE)."
+          else
+            export APPIMAGE_EXTRACT_AND_RUN=1
+            as_user "$setup" --help >/dev/null || fail "The setup file does not run."
+            echo "No FUSE on this runner: the setup file unpacked itself to run."
+          fi
+          as_user "$setup" --check || fail "The setup file reports missing system parts on a system that has them all."
+          as_user env -u DISPLAY -u WAYLAND_DISPLAY "$setup" --install --yes --no-launch || fail "The setup file did not install the app."
+          app="$home/.local/share/nuvio"
+          test -x "$app/bin/Nuvio" || fail "The app is not where the setup file should have put it."
+          test "$(cat "$app/VERSION")" = "$FORK_VERSION" || fail "The installed app does not say its version."
+          test "$(readlink "$home/.local/bin/nuvio")" = "$app/bin/Nuvio" || fail "The nuvio command was not linked."
+          entry="$home/.local/share/applications/nuvio.desktop"
+          cat "$entry"
+          if command -v desktop-file-validate >/dev/null 2>&1; then
+            desktop-file-validate "$entry" || fail "The menu entry is not valid."
+          fi
+          status=0
+          NUVIO_BIN="$app/bin/Nuvio" xvfb-run -a -s "-screen 0 1440x900x24" dbus-run-session -- bash run-app.sh full || status=$?
+          if [ "$status" != 0 ]; then tail -n 40 app-full.log || true; fail "The app the setup file installed did not come up."; fi
+          # Installing over it is an update, and removing it leaves nothing of the app behind.
+          as_user env -u DISPLAY -u WAYLAND_DISPLAY "$setup" --install --yes --no-launch || fail "Installing a second time failed."
+          as_user "$setup" --uninstall --yes || fail "The setup file did not remove the app."
+          if [ -e "$app" ] || [ -e "$entry" ] || [ -e "$home/.local/bin/nuvio" ]; then fail "Removing left parts of the app behind."; fi
+          echo "Setup file: installs, starts, updates and removes cleanly."
+
       - name: Build and verify the Arch Linux package
         shell: bash
         run: |
+          # The setup file goes along: the container starts without the app's system parts, the
+          # one place to try what the setup does about that.
           bash ./scripts/linux/custom/build-arch-package.sh \
             "artifacts/packages/Nuvio-Linux-x86_64-${NUVIO_DESKTOP_VERSION_NAME}.deb" \
-            "${FORK_VERSION}" artifacts/arch
+            "${FORK_VERSION}" artifacts/arch \
+            "$(ls artifacts/packages/Nuvio-Setup-Linux-x86_64-*.AppImage 2>/dev/null | head -n 1)"
           cp artifacts/arch/*.pkg.tar.zst artifacts/packages/
 
       - name: Write install instructions
@@ -327,9 +377,28 @@ jobs:
           deb="Nuvio-Linux-x86_64-${NUVIO_DESKTOP_VERSION_NAME}.deb"
           arch="$(cd artifacts/packages && ls *.pkg.tar.zst 2>/dev/null | head -n 1 || true)"
           arch="${arch:-nuvio-fork-bin-${FORK_VERSION}-1-x86_64.pkg.tar.zst}"
+          setup="Nuvio-Setup-Linux-x86_64-${FORK_VERSION}.AppImage"
           cat > artifacts/packages/INSTALL-LINUX.txt <<EOF
           Nuvio for Linux (fork build ${NUVIO_DESKTOP_VERSION_NAME})
           ==========================================================
+
+          ANY DISTRIBUTION: THE SETUP FILE (the simple way)
+
+            ${setup}
+
+            Install:    Allow the file to run, then open it:
+                          in the file manager: right-click > Properties > Permissions >
+                          "Allow running as a program", then double-click it
+                          or in a terminal:  chmod +x ${setup} && ./${setup}
+                        It installs Nuvio for you only (no password needed), adds it to the
+                        app menu, and offers to open it. If the computer lacks something the
+                        app needs (mpv, WebKitGTK, GStreamer plugins), it offers to install
+                        that, or shows the one command to run.
+            Start:      "Nuvio" in the app menu, or:  ~/.local/bin/nuvio
+            Update:     open a newer setup file; settings and profiles are kept.
+            Remove:     ./${setup} --uninstall   or   ~/.local/share/nuvio/uninstall.sh
+
+          The packages below are the same app for those who prefer their package manager.
 
           UBUNTU 24.04 or newer
 
@@ -370,7 +439,18 @@ jobs:
           {
             echo "## Install on Linux"
             echo
-            echo "Download the package for your system from **Artifacts** at the bottom of this page, unzip it, open a terminal in that folder and run the command."
+            echo "Download from **Artifacts** at the bottom of this page and unzip it."
+            echo
+            echo "### Any distribution: the setup file (the simple way)"
+            echo "Artifact: \`nuvio-custom-linux-setup-appimage\`"
+            echo
+            echo "Allow the file to run, then open it: in the file manager, right-click › Properties › Permissions › *Allow running as a program*, then double-click it. Or in a terminal:"
+            echo '```'
+            echo "chmod +x ${setup} && ./${setup}"
+            echo '```'
+            echo "It installs Nuvio for you only (no password needed), adds it to the app menu and offers to open it. If the computer lacks something the app needs (mpv, WebKitGTK, GStreamer plugins), it offers to install that, or shows the one command to run. Open a newer setup file to update. Remove it with \`./${setup} --uninstall\`."
+            echo
+            echo "The packages below are the same app, for those who prefer their package manager: open a terminal in the folder and run the command."
             echo
             echo "### Ubuntu 24.04 or newer"
             echo "Artifact: \`nuvio-custom-linux-ubuntu-deb\`"
@@ -401,6 +481,17 @@ jobs:
             echo
             echo "On Ubuntu write \`/opt/nuvio/bin/Nuvio\` instead of \`nuvio\`. The same instructions are in \`INSTALL-LINUX.txt\` inside each download."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload setup file
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nuvio-custom-linux-setup-appimage
+          path: |
+            artifacts/packages/*.AppImage
+            artifacts/packages/INSTALL-LINUX.txt
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Upload Ubuntu package
         if: always()
